@@ -781,6 +781,62 @@ export function apply(ctx) {
     }
   }
 
+  /**
+   * 按月结算固定收支：把「收支.月收入／月支出」按跨过的月份数加到「金钱」上。
+   *
+   * 为什么不交给模型：周期性的事它最容易漏（资产盘点、待更新清单里都没提这件事），
+   * 而房租、月薪这类东西靠自觉记账迟早会断。放宿主侧算，模型记不记得都不影响。
+   *
+   * 约定：
+   *   - 首次运行只记基准月份，**不结算**（新局不会莫名其妙扣一大笔）
+   *   - 月收入／月支出都为空时不改钱，只记得月份往前走
+   *   - 一次跨多个月按倍数补，最多补 MONTHLY_MAX 个月（存档日期异常时不至于把余额炸成天文数字）
+   *   - 日期解析不出来、数字解析不出来，一律原样返回、不写脏数据
+   * 记录存在 s._收支结算月（state 顶层的私有键，不进主角字段表、界面上看不到）。
+   */
+  const MONTHLY_MAX = 120;
+  function settleMonthly(s) {
+    try {
+      const w = s.world || {};
+      const m = String(w.当前日期时间 || '').match(/(\d{4})\s*年\s*(\d{1,2})\s*月/);
+      if (!m) return null;
+      const y = Number(m[1]);
+      const mo = Number(m[2]);
+      if (!(y > 0 && mo >= 1 && mo <= 12)) return null;
+      const cur = y * 12 + (mo - 1);
+
+      const p = s.protagonist || {};
+      const sh = p.收支 || {};
+      const toN = (v) => {
+        const n = Number(String(v == null ? '' : v).replace(/[^\d.\-]/g, ''));
+        return Number.isFinite(n) ? n : 0;
+      };
+      const inc = toN(sh.月收入);
+      const exp = toN(sh.月支出);
+
+      const lastRaw = s._收支结算月;
+      if (lastRaw == null || lastRaw === '' || !Number.isFinite(Number(lastRaw))) {
+        s._收支结算月 = cur;
+        return null;
+      }
+      let n = cur - Number(lastRaw);
+      if (n <= 0) return null; // 没跨月（或存档回退），什么都不做
+      if (n > MONTHLY_MAX) n = MONTHLY_MAX;
+      if (!inc && !exp) {
+        s._收支结算月 = cur;
+        return null;
+      }
+      const money = toN(p.金钱);
+      const delta = (inc - exp) * n;
+      const next = Math.round((money + delta) * 100) / 100;
+      // 只算不改：由调用方赋值，并把它作为一条 diff 记下 from/to ——
+      // 这样「重新生成这一轮」时能正确回滚，不会因为缺 _had/_prev 把金钱删掉。
+      return { months: n, delta, inc, exp, money, next, curMonth: cur };
+    } catch (e) {
+      return null;
+    }
+  }
+
   /** 反向应用一批 diff：把变量退回到这批改动发生之前 */
   function rollbackDiffs(s, diffs) {
     for (let i = (diffs || []).length - 1; i >= 0; i--) {
@@ -2107,6 +2163,17 @@ export function apply(ctx) {
           summary = String(sj.summary || '');
           settleOptions = Array.isArray(sj.options) ? sj.options : [];
           applyDiffs(s, diffs);
+          // 模型更新完变量后，顺带把「跨月的固定收支」结一次（它自己不会记这件事）
+          const monthly = settleMonthly(s);
+          if (monthly) {
+            const before = (s.protagonist || {}).金钱;
+            if (!s.protagonist) s.protagonist = {};
+            s.protagonist.金钱 = monthly.next;
+            s._收支结算月 = monthly.curMonth;
+            // 把这条也记进 diff（带上 from）：applyDiffs 已经跑过，它不会再自动快照，
+            // 重算这一轮时要靠 from 才能把金钱退回原值。
+            diffs.push({ path: ['protagonist', '金钱'], from: before, to: monthly.next, byMonthly: true });
+          }
           await turnLog(
             '[settle] gameId=' +
               gid +
