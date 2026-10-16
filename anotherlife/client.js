@@ -3876,6 +3876,26 @@ window.__ModuleLoader__.load({
               preferred: ['类型', '归属', '取得方式', '取得时间', '成本', '当前估值', '到期日', '收益方式', '状态', '风险与纠纷', '说明', '备注'],
             },
             {
+              // 居所存的是对象（{住所, 交通}）而不是数组：在这里构造成两条，
+              // 好让它复用资产条目的「点开查看」详情弹窗，不用另写一套。
+              key: '居所',
+              path: ['protagonist', '居所'],
+              get: (s) => {
+                const j = (s.protagonist && s.protagonist.居所) || {};
+                const a = String(j.住所 == null ? '' : j.住所).trim();
+                const b = String(j.交通 == null ? '' : j.交通).trim();
+                const out = [];
+                if (a) out.push({ 名称: '住所', 说明: a });
+                if (b) out.push({ 名称: '交通', 说明: b });
+                return out;
+              },
+              nameKeys: ['名称'],
+              tagKeys: [],
+              lineKeys: ['说明'],
+              empty: '还没有记住处与交通。',
+              preferred: ['说明'],
+            },
+            {
               key: '技能',
               path: ['skills_items', '技能'],
               get: (s) => (s.skills_items || {}).技能,
@@ -4919,11 +4939,6 @@ window.__ModuleLoader__.load({
                     h('div', { className: 'sim-block-b' }, node)
                   )
                 : null;
-            const live = p.居所 || {};
-            const liveRows = [
-              ['住所', live.住所],
-              ['交通', live.交通],
-            ].filter((x) => String(x[1] == null ? '' : x[1]).trim());
             return h(
               'div',
               { className: 'sim-fz2' },
@@ -4956,16 +4971,7 @@ window.__ModuleLoader__.load({
               box('债务与欠账', rowList(p.债务, ['对象', '内容', '分量', '到期', '状态'])),
               box('凭证与资格', rowList(p.凭证, ['名称', '取得', '效力'])),
               box('事业与投资', rowList(p.事业, ['名称', '性质', '状态', '收益'])),
-              box(
-                '居所与出行',
-                liveRows.length
-                  ? h(
-                      'div',
-                      { style: { display: 'flex', flexDirection: 'column', gap: 6, fontSize: 'var(--sim-fs-2)', lineHeight: 1.5 } },
-                      liveRows.map((r, i) => h('div', { key: i }, r[0] + '：' + String(r[1]).trim()))
-                    )
-                  : null
-              ),
+              h('div', { className: 'sim-card' }, sec('居所与出行'), objGrid('居所')),
               h(
                 'div',
                 { style: { marginTop: 10 } },
