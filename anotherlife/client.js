@@ -3537,6 +3537,16 @@ window.__ModuleLoader__.load({
                   upd({ world: Object.assign(blankLike(draft.world), p) });
                 } else {
                   const merged = Object.assign(blankLike(draft.protagonist), p);
+                  // 「人物关系」不是主角的属性，它是解析阶段用来接住「描述里提到的人」的容器
+                  // （字段表里没有父母、兄弟姐妹的位置，不接住就丢了）。
+                  // 这里挪进备注栏 —— 第 0 轮的人物盘点会照着备注建角色。
+                  // 追加而不是覆盖，免得把玩家自己在备注里写的东西冲掉。
+                  const rel = String(merged.人物关系 == null ? '' : merged.人物关系).trim();
+                  delete merged.人物关系;
+                  if (rel) {
+                    const prev = String(draft.extraInfo || '').trim();
+                    upd({ extraInfo: prev ? prev + '\n' + rel : rel });
+                  }
                   // 「是否艺人」是界面上的开关，玩家说了算 —— 不许模型自己判断：
                   // 它会因为「顶流小生」这类描述就把整批演艺字段填上，哪怕开关没开。
                   const star = !!(backup && backup.是否艺人);
