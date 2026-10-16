@@ -4096,6 +4096,13 @@ window.__ModuleLoader__.load({
             // 「人物关系」是模型自己加的摘要字段（角色页已经有正式的关系表了），
             // 放进排除名单，免得它被兜底追加到「基本信息」里
             all.push('人物关系');
+            // 这几份名单里的字段各自都有专属区块（图头摘要行 / 私密面板 / 长字段块 / 标签排），
+            // 也必须进排除名单 —— protNarrow 末尾那段兜底**只查 PROT_KNOWN**，
+            // 上一版只把它们加进 NSFW_KEYS 是不够的，兜底照样把「隐患」「私人关系」追加回了基本信息。
+            NSFW_KEYS.forEach((k) => all.push(k));
+            STATUS_KEYS.forEach((k) => all.push(k));
+            WIDE_KEYS.forEach((k) => all.push(k));
+            TAGROW_KEYS.forEach((k) => all.push(k));
             // 资产页那几块也单独渲染，不进主角页的通用字段表（否则同一份内容会两边各显示一遍）
             ['收支', '债务', '凭证', '事业', '住所', '交通', '居所'].forEach((k) => all.push(k));
             // 演艺资料整批由「星途模拟」页签显示，不再散在「其他字段」里
