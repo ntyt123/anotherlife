@@ -22,7 +22,7 @@ const P = 'dsh-tavern-simulator/';
 const KEY_SLOTS = ['retrieve', 'settle', 'summary', 'assistant'];
 
 /** 每次改动宿主侧都改一下这个版本号：ping 会回报它，用来确认 Tavern 到底加载的是哪一版 */
-const REV = 'host-v26-slot-text-20261016r';
+const REV = 'host-v27-assistant-history-20261016r';
 
 /**
  * 只有这一局用的是这些卡时，插件才出现在界面上（其余卡片游玩时完全不打扰）。
@@ -3441,6 +3441,14 @@ export function apply(ctx) {
       recent || '（还没开始）',
     ].join('\n');
   }
+
+  /** 清空助手的对话记录 */
+  reg('assistantClear', async ({ gameId }) => {
+    const s = await loadState(gameId);
+    s.assistant = [];
+    await saveState(s);
+    return { ok: true };
+  });
 
   reg('assistantChat', async ({ gameId, text, history }) => {
     const s = await loadState(gameId);

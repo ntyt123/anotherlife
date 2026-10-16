@@ -39,6 +39,8 @@ window.__ModuleLoader__.load({
       '.sim-as-txt{font-size:var(--sim-fs-3);line-height:1.68;white-space:pre-wrap;word-break:break-word}',
       '.sim-as-m.me .sim-as-txt{color:#fff}',
       '.sim-as-err{margin-top:5px;font-size:var(--sim-fs-2);color:var(--sim-err)}',
+      '.sim-as-acts{margin-top:6px;display:flex;gap:6px;opacity:0;transition:opacity .12s}',
+      '.sim-as-m:hover .sim-as-acts{opacity:1}',
       '.sim-as-foot{display:flex;gap:8px;align-items:flex-end;padding:10px 12px;border-top:1px solid var(--sim-bd)}',
       '.sim-as-in{flex:1 1 auto;min-height:54px;max-height:130px;resize:none;padding:9px 10px;border:1px solid var(--sim-bd);border-radius:10px;background:var(--sim-bg);color:var(--sim-t);font-size:var(--sim-fs-3);line-height:1.55;font-family:inherit}',
       '.sim-as-in:focus{outline:none;border-color:var(--sim-ac)}',
@@ -2341,6 +2343,7 @@ window.__ModuleLoader__.load({
           const [asIn, setAsIn] = React.useState(''); // 助手输入框
           const [asBusy, setAsBusy] = React.useState(false); // 助手正在等回复
           const asBodyRef = React.useRef(null); // 助手消息区（新消息来了滚到底）
+          const asLoadedRef = React.useRef(false); // 存档里的助手对话只装一次
           const lastAssistRef = React.useRef(null); // 上一轮已提示过的正文序号（提示音用）
           const dingRef = React.useRef(false); // 这一轮生成完成后要响一声（重新生成这种「序号没变但正文换了」的情况靠它）
           const [editingKey, setEditingKey] = React.useState(''); // 正在编辑哪一段：role-seq
@@ -2500,6 +2503,16 @@ window.__ModuleLoader__.load({
             const el = asBodyRef.current;
             if (el) el.scrollTop = el.scrollHeight;
           }, [asLog, asBusy, asOpen]);
+
+          // 第一次打开浮窗时，把存档里存的助手对话装进来（之后以本地这份为准）
+          React.useEffect(() => {
+            if (asLoadedRef.current || !asOpen || !state) return;
+            asLoadedRef.current = true;
+            const hist = (state.assistant || [])
+              .filter((m) => m && m.content)
+              .map((m) => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: String(m.content) }));
+            if (hist.length) setAsLog(hist);
+          }, [asOpen, state]);
 
           React.useEffect(() => {
             let alive = true;
@@ -2998,6 +3011,42 @@ window.__ModuleLoader__.load({
                 else done('', (r && r.msg) || '助手没有回复');
               })
               .catch((e) => done('', msg(e)));
+          }
+          /**
+           * 重新生成第 i 条助手回复：把它前面那条用户提问再问一遍，用新回复替换它。
+           * 第 i 条之前的对话原样作为历史传下去。
+           */
+          function regenAssistant(i) {
+            if (asBusy) return;
+            const upto = asLog.slice(0, i); // 不含要被替换的那条
+            let q = '';
+            let qi = -1;
+            for (let k = upto.length - 1; k >= 0; k--) {
+              if (upto[k].role === 'user') {
+                q = String(upto[k].content || '').trim();
+                qi = k;
+                break;
+              }
+            }
+            if (!q) return;
+            setAsBusy(true);
+            const done = (reply, e) => {
+              setAsBusy(false);
+              setAsLog(upto.concat([{ role: 'assistant', content: asText(reply), err: asText(e) }]));
+            };
+            call('assistantChat', { text: q, history: upto.slice(0, qi) }, gameId)
+              .then((r) => {
+                if (r && r.ok) done(r.reply);
+                else done('', (r && r.msg) || '助手没有回复');
+              })
+              .catch((e) => done('', msg(e)));
+          }
+          /** 清空助手的全部对话：界面与存档一起清 */
+          function clearAssistant() {
+            if (asBusy) return;
+            if (!window.confirm('清空全部助手对话？')) return;
+            setAsLog([]);
+            call('assistantClear', {}, gameId).catch(() => {});
           }
 
           function setProtag(k, v) {
@@ -6040,6 +6089,7 @@ window.__ModuleLoader__.load({
                     'div',
                     { className: 'sim-as-top' },
                     h('span', { className: 'sim-as-title' }, '助手'),
+                    h(Btn, { disabled: asBusy || !asLog.length, onClick: () => clearAssistant() }, '清空'),
                     h(Btn, { onClick: () => { setAsOpen(false); if (close) close(); } }, '切换到普通聊天')
                   ),
                   h(
@@ -6051,7 +6101,14 @@ window.__ModuleLoader__.load({
                             'div',
                             { key: i, className: 'sim-as-m' + (m.role === 'user' ? ' me' : '') },
                             h('div', { className: 'sim-as-txt' }, m.content),
-                            m.err ? h('div', { className: 'sim-as-err' }, m.err) : null
+                            m.err ? h('div', { className: 'sim-as-err' }, m.err) : null,
+                            m.role === 'user'
+                              ? null
+                              : h(
+                                  'div',
+                                  { className: 'sim-as-acts' },
+                                  h('button', { className: 'sim-btn mini', disabled: asBusy, onClick: () => regenAssistant(i) }, '重新生成')
+                                )
                           )
                         )
                       : h('div', { className: 'sim-as-empty' }, '剧情、设定、下一步怎么走 —— 问点什么吧。')
