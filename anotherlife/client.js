@@ -2493,6 +2493,14 @@ window.__ModuleLoader__.load({
             }
           }, [gameId, !!state, txLen, txStamp]);
 
+          // 助手有新消息就滚到底。
+          // 注意：这个必须和其他 hooks 待在一起 —— App 里有个「没加载好就 return 加载中」的
+          // 提前返回，hooks 写在它之后会让两次渲染的 hooks 数量不一致，React 直接抛 #310。
+          React.useEffect(() => {
+            const el = asBodyRef.current;
+            if (el) el.scrollTop = el.scrollHeight;
+          }, [asLog, asBusy, asOpen]);
+
           React.useEffect(() => {
             let alive = true;
             setBusy(true);
@@ -2972,11 +2980,6 @@ window.__ModuleLoader__.load({
               })
               .catch((e) => done('', msg(e)));
           }
-          // 有新消息就滚到底
-          React.useEffect(() => {
-            const el = asBodyRef.current;
-            if (el) el.scrollTop = el.scrollHeight;
-          }, [asLog, asBusy, asOpen]);
 
           function setProtag(k, v) {
             const p = Object.assign({}, draft.protagonist);
