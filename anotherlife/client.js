@@ -4511,15 +4511,42 @@ window.__ModuleLoader__.load({
            * 还是「未知」就灰着，已经发掘出来就亮起来（可能有多条，切成小标签）。
            * **不做计数、不给进度** —— 这些是开放集合，没有「集满」这回事。
            */
+          /**
+           * 「私密」面板的一行（字段名 + 一串小标签）。
+           * 值可能是字符串、字符串数组、对象或对象数组 —— 直接 String() 对象会得到
+           * [object Object]，所以按类型分别摊平：对象取各字段的值串成一句。
+           */
           function knowField(label, value) {
-            const raw = String(value == null ? '' : value).trim();
-            const unknown = !raw || raw === '未知';
-            const tags = unknown
-              ? []
-              : raw
-                  .split(/[、,，;；/|]+/)
-                  .map((x) => x.trim())
+            const flat = (() => {
+              if (Array.isArray(value)) {
+                return value
+                  .map((it) => {
+                    if (it == null) return '';
+                    if (typeof it === 'object') {
+                      return Object.keys(it)
+                        .map((k) => String(it[k] == null ? '' : it[k]).trim())
+                        .filter(Boolean)
+                        .join(' · ');
+                    }
+                    return String(it).trim();
+                  })
                   .filter(Boolean);
+              }
+              if (value && typeof value === 'object') {
+                const one = Object.keys(value)
+                  .map((k) => String(value[k] == null ? '' : value[k]).trim())
+                  .filter(Boolean)
+                  .join(' · ');
+                return one ? [one] : [];
+              }
+              const raw = String(value == null ? '' : value).trim();
+              if (!raw || raw === '未知') return [];
+              return raw
+                .split(/[、,，;；/|]+/)
+                .map((x) => x.trim())
+                .filter(Boolean);
+            })();
+            const unknown = !flat.length;
             return h(
               'div',
               { className: 'sim-know' + (unknown ? ' unk' : ''), key: label },
@@ -4530,7 +4557,7 @@ window.__ModuleLoader__.load({
                   h(
                     'span',
                     { className: 'vals' },
-                    tags.map((c, i) => h('span', { className: 'tag', key: i }, c))
+                    flat.map((c, i) => h('span', { className: 'tag', key: i }, c))
                   )
             );
           }
