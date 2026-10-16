@@ -37,18 +37,30 @@ window.__ModuleLoader__.load({
       '.sim-as-m{max-width:88%;align-self:flex-start;padding:9px 12px;border-radius:10px;background:var(--sim-bg);border:1px solid var(--sim-bd)}',
       '.sim-as-m.me{align-self:flex-end;background:var(--sim-ac);border-color:transparent}',
       '.sim-as-txt{font-size:var(--sim-fs-3);line-height:1.68;word-break:break-word}',
-      '.sim-md-p{margin:0 0 6px}',
+      '.sim-md-p{margin:0 0 14px;line-height:1.9}',
       '.sim-md-p:last-child{margin-bottom:0}',
-      '.sim-md-h{font-weight:700;margin:8px 0 4px}',
-      '.sim-md-h.lv1{font-size:var(--sim-fs-6);margin:12px 0 6px}',
-      '.sim-md-h.lv2{font-size:var(--sim-fs-5)}',
-      '.sim-md-h.lv3{font-size:var(--sim-fs-4)}',
+      // 对白：整段以引号开头 → 单独配色，和叙述一眼分开（取自界面里的蓝）
+      '.sim-md-p.say{color:var(--sim-say)}',
+      // 标题：原来 lv3（14px）比正文还小，层次出不来。现在按 # 的个数拉开字号与间距。
+      '.sim-md-h{font-weight:700;margin:16px 0 9px;line-height:1.45}',
+      '.sim-md-h.lv1{font-size:calc(var(--sim-fs-6) + 5px)}',
+      '.sim-md-h.lv2{font-size:calc(var(--sim-fs-5) + 3px)}',
+      '.sim-md-h.lv3{font-size:calc(var(--sim-fs-5) + 0.5px)}',
+      '.sim-md-h.lv4{font-size:var(--sim-fs-4)}',
       '.sim-md-h:first-child{margin-top:0}',
-      '.sim-md-hr{border:0;border-top:1px solid var(--sim-bd);margin:10px 0}',
-      // 正文里的段落块：段落之间留一点空隙（原来是 pre-wrap 靠换行撑开）
-      '.sim-md-block{padding:0}',
-      '.sim-md-block .sim-md-p{margin:0 0 8px}',
+      '.sim-md-hr{border:0;border-top:1px solid var(--sim-bd);margin:14px 0}',
+      // 正文块：限宽居中（一行太长，眼睛回行容易串行）+ 正文字号可单独调
+      '.sim-md-block{max-width:40em;margin:0 auto;font-size:var(--sim-read-fs,15.5px)}',
+      '.sim-md-block .sim-md-p{margin:0 0 14px;line-height:1.9}',
       '.sim-md-block .sim-md-p:last-child{margin-bottom:0}',
+      '.sim-md-block .sim-md-h{margin:16px 0 9px;line-height:1.45}',
+      '.sim-md-block .sim-md-h.lv1{font-size:calc(var(--sim-read-fs,15.5px) + 6px)}',
+      '.sim-md-block .sim-md-h.lv2{font-size:calc(var(--sim-read-fs,15.5px) + 3px)}',
+      '.sim-md-block .sim-md-h.lv3{font-size:calc(var(--sim-read-fs,15.5px) + 0.5px)}',
+      '.sim-md-block .sim-md-list{line-height:1.9}',
+      '.sim-md-block .sim-md-q{line-height:1.9}',
+      '.sim-as-txt .sim-md-p{margin:0 0 10px;line-height:1.75}',
+      '.sim-as-txt .sim-md-p.say{color:var(--sim-say)}',
       '.sim-md-list{margin:4px 0 6px;padding-left:20px}',
       '.sim-md-list:last-child{margin-bottom:0}',
       '.sim-md-list li{margin:2px 0}',
@@ -710,9 +722,9 @@ window.__ModuleLoader__.load({
       '.sim-acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}',
       '.sim-note{background:var(--sim-bg);border:1px solid var(--sim-bd);border-left:3px solid var(--sim-ac);border-radius:0 8px 8px 0;padding:6px 10px;font-size:var(--sim-fs-1);color:var(--sim-t2);margin-bottom:10px}',
       '.sim-hint{color:var(--sim-t2);font-size:var(--sim-fs-1);margin-bottom:4px}',
-      '.skin-paper{--sim-bg:#faf8f4;--sim-bg2:#fff;--sim-bd:#e0dbd2;--sim-t:#2f2b26;--sim-t2:#8a8175;--sim-t3:#b8af9f;--sim-ac:#8b3a2e;--sim-acfg:#fff;--sim-mut:#b3542e;--sim-good:#2e7d32;--sim-err:#b3261e}',
-      '.skin-parchment{--sim-bg:#141013;--sim-bg2:#1c1619;--sim-bd:#5c4630;--sim-t:#f1e2c8;--sim-t2:#c9a86a;--sim-t3:#9b8a6b;--sim-ac:#f0b357;--sim-acfg:#141013;--sim-mut:#c77b3a;--sim-good:#8fbf6f;--sim-err:#e06c5a}',
-      '.skin-neon{--sim-bg:#141726;--sim-bg2:#1a1d2e;--sim-bd:rgba(255,255,255,.09);--sim-t:#e6e8f2;--sim-t2:#9aa0b8;--sim-t3:#5c6080;--sim-ac:#7c5cff;--sim-acfg:#fff;--sim-mut:#f0a35e;--sim-good:#31d0d8;--sim-err:#ff5c7a}',
+      '.skin-paper{--sim-bg:#faf8f4;--sim-bg2:#fff;--sim-bd:#e0dbd2;--sim-t:#2f2b26;--sim-t2:#8a8175;--sim-t3:#b8af9f;--sim-ac:#8b3a2e;--sim-acfg:#fff;--sim-mut:#b3542e;--sim-good:#2e7d32;--sim-err:#b3261e;--sim-say:#2f6fd0}',
+      '.skin-parchment{--sim-bg:#141013;--sim-bg2:#1c1619;--sim-bd:#5c4630;--sim-t:#f1e2c8;--sim-t2:#c9a86a;--sim-t3:#9b8a6b;--sim-ac:#f0b357;--sim-acfg:#141013;--sim-mut:#c77b3a;--sim-good:#8fbf6f;--sim-err:#e06c5a;--sim-say:#8fb4f0}',
+      '.skin-neon{--sim-bg:#141726;--sim-bg2:#1a1d2e;--sim-bd:rgba(255,255,255,.09);--sim-t:#e6e8f2;--sim-t2:#9aa0b8;--sim-t3:#5c6080;--sim-ac:#7c5cff;--sim-acfg:#fff;--sim-mut:#f0a35e;--sim-good:#31d0d8;--sim-err:#ff5c7a;--sim-say:#8ea8ff}',
       '@media(max-width:820px){',
       '.sim-rail{width:48px}',
       '.sim-rail-tab .lb{display:none}',
@@ -1056,7 +1068,7 @@ window.__ModuleLoader__.load({
          * 算出要挂在根元素上的 CSS 变量。
          * 最终字号 = 基准 × 整体缩放 + 该档微调量（adj 形如 {3: 0.5}），最低 6px 防呆。
          */
-        function uiVars(font, scale, adj) {
+        function uiVars(font, scale, adj, readFs) {
           const k = FS_SCALES[scale] || 1;
           const a = adj || {};
           const v = {};
@@ -1065,6 +1077,10 @@ window.__ModuleLoader__.load({
             const d = Number(a[i + 1]) || 0;
             v['--sim-fs-' + (i + 1)] = Math.max(6, Math.round((b * k + d) * 10) / 10) + 'px';
           });
+          // 正文字号单独一档：它跟着整体缩放走，但还能再单独加减 ——
+          // 正文是长时间盯着看的部分，别的面板不需要跟着一起变大。
+          const rf = Number(readFs);
+          v['--sim-read-fs'] = Math.max(11, Math.round((Number.isFinite(rf) && rf > 0 ? rf : 15.5) * k * 10) / 10) + 'px';
           return v;
         }
         function readUiPref(key, dflt) {
@@ -1815,7 +1831,14 @@ window.__ModuleLoader__.load({
               if (qt[1]) out.push(h('div', { key: i, className: 'sim-md-q' }, mdInline(qt[1])));
               return;
             }
-            out.push(h('div', { key: i, className: 'sim-md-p' }, mdInline(t)));
+            out.push(
+              h(
+                'div',
+                // 整段以引号开头 → 当作对白，单独配色，和叙述一眼分开
+                { key: i, className: 'sim-md-p' + (/^[“"「『]/.test(t) ? ' say' : '') },
+                mdInline(t)
+              )
+            );
           });
           flush();
           return out;
@@ -2435,6 +2458,8 @@ window.__ModuleLoader__.load({
           // 界面字体与字号：存 localStorage，改完立即生效（挂到根元素的 CSS 变量上）
           const [uiFont, setUiFont] = React.useState(() => readUiPref('font', ''));
           const [uiScale, setUiScale] = React.useState(() => readUiPref('scale', 'm'));
+          // 正文字号：单独一档（正文是长时间盯着看的部分，不必拖着别的面板一起变）
+          const [readFs, setReadFs] = React.useState(() => readUiPref('readfs', '15.5'));
           // 各档的微调量（在整体基准上加减），形如 {3: 0.5}
           const [uiAdj, setUiAdj] = React.useState(() => {
             try {
@@ -2445,6 +2470,7 @@ window.__ModuleLoader__.load({
           });
           const setUiPref = (key, val) => {
             if (key === 'font') setUiFont(val);
+            else if (key === 'readfs') setReadFs(val);
             else setUiScale(val);
             writeUiPref(key, val);
           };
@@ -5887,9 +5913,21 @@ window.__ModuleLoader__.load({
                   Object.keys(FS_LABELS).map((k) => h('option', { key: k, value: k }, FS_LABELS[k]))
                 )
               ),
+              h(
+                'div',
+                { className: 'sim-field' },
+                h('label', null, '正文'),
+                h(
+                  'select',
+                  { className: 'sim-select', value: readFs, onChange: (e) => setUiPref('readfs', e.target.value) },
+                  [['13', '偏小'], ['14', '小'], ['15.5', '标准'], ['17', '大'], ['18.5', '特大'], ['20', '巨大']].map(([v, t]) =>
+                    h('option', { key: v, value: v }, t)
+                  )
+                )
+              ),
               h('div', { className: 'sim-hint', style: { marginTop: 10 } }, '分区微调（在整体基准上加减）'),
               (function () {
-                const cur = uiVars(uiFont, uiScale, uiAdj);
+                const cur = uiVars(uiFont, uiScale, uiAdj, readFs);
                 return FS_ZONES.map(([n, name, desc]) =>
                   h(
                     'div',
@@ -6176,7 +6214,7 @@ window.__ModuleLoader__.load({
 
           return h(
             'div',
-            { className: 'sim-root skin-' + skin, style: uiVars(uiFont, uiScale, uiAdj) },
+            { className: 'sim-root skin-' + skin, style: uiVars(uiFont, uiScale, uiAdj, readFs) },
             rail,
             h(
               'div',
