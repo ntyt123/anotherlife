@@ -5051,9 +5051,23 @@ window.__ModuleLoader__.load({
           const assetEditor = (function () {
             const p = (state && state.protagonist) || {};
             const sh = p.收支 || {};
+            const has = (v) => {
+              if (Array.isArray(v)) return v.length > 0;
+              if (v && typeof v === 'object') return Object.keys(v).length > 0;
+              return v != null && String(v).trim() !== '';
+            };
+            /**
+             * 模型时不时会把「界面上的显示名」当字段名写进来（月收入 / 债务与欠账 /
+             * 凭证与资格 / 事业与投资…），那些内容会落到界面上看不见的地方。
+             * 这里按「规范字段优先、为空才看旧名」取一次，让它们照样显示出来。
+             */
+            const alias = (main, old) => (has(main) ? main : old);
             const toN = (v) => Number(String(v == null ? '' : v).replace(/[^\d.-]/g, '')) || 0;
-            const inc = toN(sh.月收入);
-            const exp = toN(sh.月支出);
+            const inc = toN(alias(sh.月收入, p.月收入));
+            const exp = toN(alias(sh.月支出, p.月支出));
+            const debts = alias(p.债务, p.债务与欠账);
+            const certs = alias(p.凭证, p.凭证与资格);
+            const bizs = alias(p.事业, p.事业与投资);
             const net = inc - exp;
             const fm = (n) => Number(n || 0).toLocaleString('en-US');
             /** 私有键 _收支结算月 是「年 × 12 + 月序」的整数，转回给人看 */
@@ -5121,16 +5135,22 @@ window.__ModuleLoader__.load({
                 : null,
               h('div', { className: 'sim-card' }, sec('实体资产'), objGrid('实体资产')),
               h('div', { className: 'sim-card' }, sec('虚拟资产'), objGrid('虚拟资产')),
-              box('债务与欠账', rowList(p.债务, ['对象', '内容', '分量', '到期', '状态'])),
-              box('凭证与资格', rowList(p.凭证, ['名称', '取得', '效力'])),
-              box('事业与投资', rowList(p.事业, ['名称', '性质', '状态', '收益'])),
+              box('债务与欠账', rowList(debts, ['对象', '内容', '分量', '到期', '状态'])),
+              box('凭证与资格', rowList(certs, ['名称', '取得', '效力'])),
+              box('事业与投资', rowList(bizs, ['名称', '性质', '状态', '收益'])),
               h('div', { className: 'sim-card' }, sec('住所'), objGrid('住所')),
               h('div', { className: 'sim-card' }, sec('交通'), objGrid('交通')),
               h(
                 'div',
                 { style: { marginTop: 10 } },
                 jsonEditor('实体资产', '实体资产'),
-                jsonEditor('虚拟资产', '虚拟资产')
+                jsonEditor('虚拟资产', '虚拟资产'),
+                jsonEditor('as-home', '住所', ['protagonist', '住所']),
+                jsonEditor('as-car', '交通', ['protagonist', '交通']),
+                jsonEditor('as-sh', '收支', ['protagonist', '收支']),
+                jsonEditor('as-debt', '债务', ['protagonist', '债务']),
+                jsonEditor('as-cert', '凭证', ['protagonist', '凭证']),
+                jsonEditor('as-biz', '事业', ['protagonist', '事业'])
               )
             );
           })();
