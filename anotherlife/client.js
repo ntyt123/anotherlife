@@ -5571,7 +5571,7 @@ window.__ModuleLoader__.load({
                     'div',
                     { className: 'sim-field' },
                     h('span', { className: 'sim-hint', style: { flex: '1 1 auto' } }, '这一栏还在用旧的自填地址：' + c.baseURL),
-                    h(Btn, { disabled: busy, onClick: dropLegacy }, '改走主模型同一套凭据')
+                    h(Btn, { disabled: busy, onClick: dropLegacy }, '同步主模型')
                   )
                 : null,
               h('div', { className: 'sim-hint' }, '留空 = 用当前主模型。改完记得点下面的「保存设定」。')
