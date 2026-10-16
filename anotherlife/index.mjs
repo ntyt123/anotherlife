@@ -22,7 +22,7 @@ const P = 'dsh-tavern-simulator/';
 const KEY_SLOTS = ['retrieve', 'settle', 'summary', 'assistant'];
 
 /** 每次改动宿主侧都改一下这个版本号：ping 会回报它，用来确认 Tavern 到底加载的是哪一版 */
-const REV = 'host-v31-birthplace-baseline-20261016r';
+const REV = 'host-v32-recent-rounds-20261016r';
 
 /**
  * 只有这一局用的是这些卡时，插件才出现在界面上（其余卡片游玩时完全不打扰）。
@@ -289,6 +289,8 @@ export function apply(ctx) {
         // 靠检索挑的话，玩家这轮没提家乡就永远轮不到它，AI 等于不知道。
         baseline: '姓名,性别,出生地',
         retrieveMax: 24,
+        // 给正文附带最近几轮原文。0 = 跟着总结频率走（总结每 N 轮一次，原文就接最近 N 轮）。
+        recentRounds: 0,
       },
       world: EMPTY_WORLD(),
       protagonist: EMPTY_PROTAG(),
@@ -1497,6 +1499,12 @@ export function apply(ctx) {
     head.push(opts.all ? '【全部设定（开局）】' : '【本轮相关状态】');
     head.push(ctxText.text);
     head.push('');
+    // 最近几轮的原文：接在状态之后。前情总结管更早的，这段管最近的，首尾相接。
+    const rec = recentSection(s, recentRounds(s));
+    if (rec) {
+      head.push(rec);
+      head.push('');
+    }
     head.push('【输出格式】每次回复依次：');
     head.push('1) 一个 <think> 块，含四节：场景锚定（时间/地点/在场角色）、意图校准（玩家意图与约束）、逻辑构建（因果与一致性）、待办与刻板印象检查；');
     head.push('2) 正文（只叙事，不输出变量 JSON）；');
@@ -2267,9 +2275,16 @@ export function apply(ctx) {
   //   ② 大总结（小结超过 SUMMARY_MERGE_AT 段时，把最早的几段并成一份长期记录）
   // 总结会随上下文一起注入（见 buildStoryContext），顶掉那些早就翻过去的原文。
 
-  const SUMMARY_EVERY = 6; // 默认：攒够这么多「还没总结」的轮次就自动总结一段
+  const SUMMARY_EVERY = 10; // 默认：攒够这么多「还没总结」的轮次就自动总结一段
   const SUMMARY_MERGE_AT = 4; // 默认：小结超过这么多段就合并
   const SUMMARY_KEEP_TAIL = 2; // 默认：合并时保留最近几段不动
+  /**
+   * 给正文附带的「最近 N 轮原文」—— 补上**总结还没覆盖的那一段**。
+   * 默认 0 表示跟着 SUMMARY_EVERY 走：总结每 10 轮做一次，那最近 10 轮的原文就一直带着，
+   * 于是「长期记忆（总结）」与「短期记忆（最近原文）」首尾相接、没有缝。
+   * 注：模型上下文够长时可以放心给；这是滑动窗口，不随总轮数增长。
+   */
+  const RECENT_ROUNDS = 0; // 0 = 跟 SUMMARY_EVERY
 
   /** 默认破限提示词（设定页里可改；清空并保存＝只用内置规则） */
   const SUMMARY_JAILBREAK =
@@ -2429,6 +2444,47 @@ export function apply(ctx) {
       '【前情总结】下面是已经发生过的剧情的记录（长期记忆，按时间顺序；被总结掉的原文不再重复给出）：\n' +
       keep.map((x) => '◆ ' + String(x.name || '') + '\n' + String(x.content || '')).join('\n\n')
     );
+  }
+
+  /** 附带最近几轮：配置里有就用配置，否则跟着总结频率走（总结覆盖到哪儿，原文就接到哪儿）。 */
+  function recentRounds(s) {
+    const cfg = Number(s && s.config && s.config.recentRounds);
+    if (Number.isFinite(cfg) && cfg > 0) return Math.floor(cfg);
+    // 总结设置存在 config.summaryOpts（不是 config.summary —— 那个是总结模型的槽位）
+    return summaryOpts(s).every || SUMMARY_EVERY;
+  }
+
+  /**
+   * 最近 N 轮的原文（逐轮）。
+   *
+   * 为什么需要：正文模型平时只看得到「前情总结 + 检索挑中的状态」，看不到历史对话 ——
+   * 「上一轮到底说了什么、结尾停在哪儿、语气什么样」它并不知道，衔接就容易脱节。
+   * 这几轮正好补上总结还没覆盖的那一段：总结管更早的，这里管最近的，首尾相接。
+   *
+   * 只带「玩家输入」与「叙事正文」，**不带每一轮的状态注入快照**（t.ctx）——
+   * 那是当时的档案，里头的值与当前状态不一致，塞进来只会跟【本轮相关状态】打架。
+   */
+  function recentSection(s, n) {
+    const rounds = Math.max(0, Math.floor(Number(n) || 0));
+    if (!rounds) return '';
+    const list = Array.isArray(s.transcript) ? s.transcript : [];
+    // 一轮 = 同一个 seq 下的「玩家行动 + 叙事」两条
+    const seqs = [];
+    list.forEach((t) => {
+      if (t && t.seq != null && seqs.indexOf(t.seq) < 0) seqs.push(t.seq);
+    });
+    // 最后一轮就是本轮（它的玩家输入会单独给），所以多取一轮再砍掉
+    const take = seqs.slice(-(rounds + 1)).slice(0, -1);
+    if (!take.length) return '';
+    const out = ['【最近剧情（逐轮原文）】'];
+    take.forEach((sq) => {
+      const inRound = list.filter((t) => t && t.seq === sq);
+      const user = inRound.filter((t) => t.role === 'user').map((t) => String(t.body || '').trim()).filter(Boolean);
+      const narr = inRound.filter((t) => t.role !== 'user').map((t) => String(t.body || '').trim()).filter(Boolean);
+      if (user.length) out.push('【第' + sq + '轮·玩家】' + user.join('\n'));
+      if (narr.length) out.push('【第' + sq + '轮·叙事】' + narr.join('\n'));
+    });
+    return out.length > 1 ? out.join('\n') : '';
   }
 
   // ────────────────────────────── handle ──────────────────────────────
