@@ -2538,6 +2538,7 @@ window.__ModuleLoader__.load({
           const [logOpen, setLogOpen] = React.useState(false); // 日志弹窗
           const [logKey, setLogKey] = React.useState(0); // 点「刷新」时加一，触发重新读取
           const bodyRef = React.useRef(null); // 正文滚动容器
+          const playScrollRef = React.useRef(0); // 离开正文时读到哪儿（切回来还原用）
           const keepScrollRef = React.useRef(0); // 用户看到的滚动位置（生成期间用它把位置钉住）
           const pinTsRef = React.useRef(0); // 最近一次由我们写回 scrollTop 的时间（区分用户滚动）
           const pinValueRef = React.useRef(-1); // 我们刚写回的那个值（它引起的 scroll 事件不算用户滚动）
@@ -2546,10 +2547,31 @@ window.__ModuleLoader__.load({
 
           currentGameId = gameId;
 
-          // 切页签时回到顶部（正文页除外）
+          /**
+           * 切页签时的滚动位置处理。
+           * 离开正文 → 记住读到哪儿；回到正文 → 还原到那儿。
+           * （原来这里是「切走就把 scrollTop 清零」，于是切回来只能停在顶部。）
+           * 还原要等一帧：正文内容是刚渲染出来的，容器高度还没算准。
+           */
           React.useEffect(() => {
             const el = bodyRef.current;
-            if (el && tab !== 'play') el.scrollTop = 0;
+            if (!el) return;
+            if (tab !== 'play') {
+              playScrollRef.current = el.scrollTop;
+              return;
+            }
+            const want = playScrollRef.current;
+            if (!(want > 0)) return;
+            const put = () => {
+              const e2 = bodyRef.current;
+              if (!e2) return;
+              e2.scrollTop = Math.min(want, Math.max(0, e2.scrollHeight - e2.clientHeight));
+            };
+            put();
+            const raf = window.requestAnimationFrame ? window.requestAnimationFrame(put) : 0;
+            return () => {
+              if (raf && window.cancelAnimationFrame) window.cancelAnimationFrame(raf);
+            };
           }, [tab]);
 
           const txLen = (state && Array.isArray(state.transcript) ? state.transcript.length : 0);
@@ -2585,7 +2607,10 @@ window.__ModuleLoader__.load({
             return () => {
               if (raf && window.cancelAnimationFrame) window.cancelAnimationFrame(raf);
             };
-          }, [gameId, !!state, tab, txLen, txStamp]);
+            // 注意依赖里**没有 tab** —— 从别的页签切回正文时不要跳，
+            // 位置由上面那个 effect 还原。只有正文内容真的变了（txStamp）或
+            // 刚打开这一局（!!state 由 false 变 true）才跳最新。
+          }, [gameId, !!state, txLen, txStamp]);
 
           /**
            * 生成期间把滚动位置钉住。
