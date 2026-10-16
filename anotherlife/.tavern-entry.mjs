@@ -7,7 +7,7 @@ try {
   plugin = typeof value === 'function' ? { apply: value } : value && typeof value.apply === 'function' ? value : null
   if (!plugin) report('加载', new Error('入口没有导出 apply 函数'))
 } catch (error) { report('加载', error) }
-export const name = plugin && typeof plugin.name === 'string' && plugin.name ? plugin.name : "dsh-tavern-simulator"
+export const name = plugin && typeof plugin.name === 'string' && plugin.name ? plugin.name : "anotherlife"
 export const inject = plugin ? plugin.inject : undefined
 export const Config = plugin ? plugin.Config : undefined
 export function apply(ctx, config) {

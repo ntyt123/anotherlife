@@ -10,7 +10,7 @@
  * 不注册 turnSection / worldbookEntries / settlementTask：模拟器自己管自己的正文，
  * 不参与 Tavern 的轮次流程，因此也不会影响普通对话。
  */
-export const name = 'dsh-tavern-simulator';
+export const name = 'anotherlife';
 export const inject = ['tavern'];
 
 import { fileURLToPath } from 'node:url';

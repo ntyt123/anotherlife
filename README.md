@@ -1,4 +1,4 @@
-﻿# 人生模拟器（DSH Tavern 插件）
+# anotherlife —— 人生模拟器（DSH Tavern 插件）
 
 一个「自己写、自己跑」的人生模拟：填好世界观与主角，插件替你生成每轮正文与 8 条行动路线，并在后台结算全部变量。
 
@@ -6,14 +6,14 @@
 
 | 部分 | 作用 |
 |---|---|
-| `dsh-tavern-simulator/` | 插件本体：整个界面、开局流程、每轮正文、变量结算、行动选项规则 |
+| `anotherlife/` | 插件本体：整个界面、开局流程、每轮正文、变量结算、行动选项规则 |
 | `cards/人生模拟器.json` | 载体卡：提供 gameId（Tavern 用哪一局存状态）＋ 内置世界书里的写作参考资料 |
 
 **卡里不含逻辑，只装卡是没用的。**
 
 ## 安装
 
-1. `dsh-tavern-simulator/` 整个文件夹 → Tavern 数据目录的 `plugins/` 下
+1. `anotherlife/` 整个文件夹 → Tavern 数据目录的 `plugins/` 下
 2. `cards/人生模拟器.json` → `resources/cards/`（或在 Tavern 界面里导入）
 3. 重启 DSH
 4. 在 Tavern 里选这张卡新开一局 → 进入插件界面 → 填世界观与主角 → 点「进入正文 →」
