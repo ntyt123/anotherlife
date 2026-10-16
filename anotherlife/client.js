@@ -3463,7 +3463,7 @@ window.__ModuleLoader__.load({
             ),
             h('div', { className: 'sim-sec' }, '外貌（细描，100 字以内）'),
             h('div', { className: 'sim-field' }, h('label', null, '外貌'), h('textarea', { style: { minHeight: 132 }, value: draft.protagonist.外貌 || '', onChange: (e) => setProtag('外貌', e.target.value) })),
-            charSec('身份', ['身份', '种族', '货币名', '婚姻状况']),
+            charSec('身份', ['身份', '种族', '货币名', '婚姻状况', '配偶', '子女']),
             h('div', { className: 'sim-sec' }, '性格（仅面板，不发给模型）'),
             h(
               'div',
@@ -3996,7 +3996,7 @@ window.__ModuleLoader__.load({
             '微博账号', '全网粉丝数', '抖音粉丝', '小红书粉丝', '粉丝称呼', '商业价值',
             '当前代言', '商业报价',
             '当前舆论评价', '舆论来源', '舆论热度',
-            '团队', '团队评价', '行程', '隐患', '私人关系',
+            '团队', '团队评价', '行程',
           ];
           const PROT_GROUPS = [
             ['基础信息', ['姓名', '性别', '生日', '年龄']],
