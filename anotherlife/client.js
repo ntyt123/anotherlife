@@ -3876,24 +3876,43 @@ window.__ModuleLoader__.load({
               preferred: ['类型', '归属', '取得方式', '取得时间', '成本', '当前估值', '到期日', '收益方式', '状态', '风险与纠纷', '说明', '备注'],
             },
             {
-              // 居所存的是对象（{住所, 交通}）而不是数组：在这里构造成两条，
-              // 好让它复用资产条目的「点开查看」详情弹窗，不用另写一套。
-              key: '居所',
-              path: ['protagonist', '居所'],
+              // 住所与交通各自是数组（一个人可能有多处住处、多辆车），条目结构与实体资产一致，
+              // 于是卡片与「点开查看」详情弹窗全都能直接复用，不用另写一套。
+              // get 里兼容旧版：居所 曾经是 {住所, 交通} 这样的对象。
+              key: '住所',
+              path: ['protagonist', '住所'],
               get: (s) => {
-                const j = (s.protagonist && s.protagonist.居所) || {};
-                const a = String(j.住所 == null ? '' : j.住所).trim();
-                const b = String(j.交通 == null ? '' : j.交通).trim();
-                const out = [];
-                if (a) out.push({ 名称: '住所', 说明: a });
-                if (b) out.push({ 名称: '交通', 说明: b });
-                return out;
+                const p = (s && s.protagonist) || {};
+                if (Array.isArray(p.住所)) return p.住所;
+                const old = (p.居所 && p.居所.住所) || '';
+                return String(old).trim() ? [{ 名称: '住所', 简介: String(old).trim() }] : [];
               },
-              nameKeys: ['名称'],
-              tagKeys: [],
-              lineKeys: ['说明'],
-              empty: '还没有记住处与交通。',
-              preferred: ['说明'],
+              nameKeys: ['名称', '名字'],
+              tagKeys: ['类别', '产权'],
+              lineKeys: ['位置'],
+              empty: '还没有记住处。',
+              preferred: [
+                '类别', '位置', '总面积', '买入价格', '当前估值', '购入时间', '产权',
+                '每一层的设施', '安保与配套', '周边', '简介', '备注',
+              ],
+            },
+            {
+              key: '交通',
+              path: ['protagonist', '交通'],
+              get: (s) => {
+                const p = (s && s.protagonist) || {};
+                if (Array.isArray(p.交通)) return p.交通;
+                const old = (p.居所 && p.居所.交通) || '';
+                return String(old).trim() ? [{ 名称: '交通', 简介: String(old).trim() }] : [];
+              },
+              nameKeys: ['名称', '名字'],
+              tagKeys: ['类别', '状态'],
+              lineKeys: ['品牌型号', '车牌'],
+              empty: '还没有记交通工具。',
+              preferred: [
+                '类别', '品牌型号', '车牌', '购入价格', '当前估值', '购入时间',
+                '行驶里程', '状态', '简介', '备注',
+              ],
             },
             {
               key: '技能',
@@ -4017,7 +4036,7 @@ window.__ModuleLoader__.load({
             // 这几个各有专门的区块（货币一节、穿着胶囊、物品列表、身体折叠区），不进通用字段表
             const all = ['货币名', '金钱', '穿着', '物品', '身体', '疾病与伤病'];
             // 资产页那几块也单独渲染，不进主角页的通用字段表（否则同一份内容会两边各显示一遍）
-            ['收支', '债务', '凭证', '事业', '居所'].forEach((k) => all.push(k));
+            ['收支', '债务', '凭证', '事业', '住所', '交通', '居所'].forEach((k) => all.push(k));
             // 演艺资料整批由「星途模拟」页签显示，不再散在「其他字段」里
             STAR_KEYS.forEach((k) => all.push(k));
             PROT_GROUPS.forEach((g) => g[1].forEach((k) => all.push(k)));
@@ -4971,7 +4990,8 @@ window.__ModuleLoader__.load({
               box('债务与欠账', rowList(p.债务, ['对象', '内容', '分量', '到期', '状态'])),
               box('凭证与资格', rowList(p.凭证, ['名称', '取得', '效力'])),
               box('事业与投资', rowList(p.事业, ['名称', '性质', '状态', '收益'])),
-              h('div', { className: 'sim-card' }, sec('居所与出行'), objGrid('居所')),
+              h('div', { className: 'sim-card' }, sec('住所'), objGrid('住所')),
+              h('div', { className: 'sim-card' }, sec('交通'), objGrid('交通')),
               h(
                 'div',
                 { style: { marginTop: 10 } },
