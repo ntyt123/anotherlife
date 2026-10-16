@@ -3951,7 +3951,7 @@ window.__ModuleLoader__.load({
               lineKeys: ['买入价格', '当前估值'],
               empty: '还没有记住处。',
               preferred: [
-                '名称', '类别', '位置', '总面积', '买入价格', '当前估值', '购入时间', '产权',
+                '名称', '类别', '位置', '买入价格', '总面积', '当前估值', '购入时间', '产权',
                 '每一层的设施', '安保与配套', '周边', '简介', '备注',
               ],
             },
@@ -4048,7 +4048,10 @@ window.__ModuleLoader__.load({
                     'div',
                     { className: 'sim-panel' },
                     h('div', { className: 'sim-panel-h' }, '📋 详情'),
-                    h(KVView, { obj: it, skip: L.nameKeys.concat(ancientAsset ? MODERN_ONLY_KEYS : []), preferred: L.preferred, twoCol: true })
+                    // skip 只排除「名称」本身，不要用 L.nameKeys —— 那张表为了给卡片取标题
+                    // 收了一堆同义词（位置／型号…），照着排除会让详情里把这些内容也一起丢掉
+                    // （住所有一阵子只显示一个价格，就是这么来的）。
+                    h(KVView, { obj: it, skip: ['名称', '名字'].concat(ancientAsset ? MODERN_ONLY_KEYS : []), preferred: L.preferred, twoCol: true })
                   ),
                   h(
                     'div',
