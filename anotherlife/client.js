@@ -27,6 +27,21 @@ window.__ModuleLoader__.load({
       '.sim-rail-tab .ic{font-size:var(--sim-fs-6);line-height:1}',
       '.sim-rail-tab:hover{background:rgba(128,128,128,.10);color:var(--sim-t)}',
       '.sim-rail-tab.on{color:var(--sim-ac);border-left-color:var(--sim-ac);background:rgba(128,128,128,.08);font-weight:700}',
+      // ── 助手浮窗（模拟器把整页接管了，侧边对话点不到，所以自带一个）──
+      // 用 position:fixed：既能压在任意页上方，也不会被外层滚动/裁剪容器切掉
+      '.sim-as{position:fixed;right:22px;bottom:22px;width:min(420px,42vw);height:min(600px,78vh);display:flex;flex-direction:column;background:var(--sim-bg2);border:1px solid var(--sim-bd);border-radius:12px;box-shadow:0 14px 44px rgba(0,0,0,.24);z-index:70;overflow:hidden}',
+      '.sim-as-top{display:flex;align-items:center;gap:8px;padding:10px 12px;min-height:44px;border-bottom:1px solid var(--sim-bd)}',
+      '.sim-as-title{flex:1 1 auto;font-weight:600;font-size:var(--sim-fs-4)}',
+      '.sim-as-body{flex:1 1 auto;min-height:0;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:10px}',
+      '.sim-as-empty{color:var(--sim-mut);font-size:var(--sim-fs-3);text-align:center;padding:30px 8px;line-height:1.7}',
+      '.sim-as-m{max-width:88%;align-self:flex-start;padding:9px 12px;border-radius:10px;background:var(--sim-bg);border:1px solid var(--sim-bd)}',
+      '.sim-as-m.me{align-self:flex-end;background:var(--sim-ac);border-color:transparent}',
+      '.sim-as-txt{font-size:var(--sim-fs-3);line-height:1.68;white-space:pre-wrap;word-break:break-word}',
+      '.sim-as-m.me .sim-as-txt{color:#fff}',
+      '.sim-as-err{margin-top:5px;font-size:var(--sim-fs-2);color:var(--sim-err)}',
+      '.sim-as-foot{display:flex;gap:8px;align-items:flex-end;padding:10px 12px;border-top:1px solid var(--sim-bd)}',
+      '.sim-as-in{flex:1 1 auto;min-height:54px;max-height:130px;resize:none;padding:9px 10px;border:1px solid var(--sim-bd);border-radius:10px;background:var(--sim-bg);color:var(--sim-t);font-size:var(--sim-fs-3);line-height:1.55;font-family:inherit}',
+      '.sim-as-in:focus{outline:none;border-color:var(--sim-ac)}',
       '.sim-status{flex:none;background:var(--sim-bg2);border-bottom:1px solid var(--sim-bd);padding:8px 12px}',
       '.sim-status-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}',
       '.sim-status-row.sub{margin-top:4px;font-size:var(--sim-fs-2);color:var(--sim-t2)}',
@@ -2321,6 +2336,11 @@ window.__ModuleLoader__.load({
           const [assetOpen, setAssetOpen] = React.useState(null); // 打开的资产卡：{key,i}
           const [uiPrevOpen, setUiPrevOpen] = React.useState(false); // 设定页的「界面预览」弹窗
           const [avatarEdit, setAvatarEdit] = React.useState(null); // 换头像弹窗：{key,name,emoji}
+          const [asOpen, setAsOpen] = React.useState(false); // 助手浮窗
+          const [asLog, setAsLog] = React.useState([]); // 助手的对话记录
+          const [asIn, setAsIn] = React.useState(''); // 助手输入框
+          const [asBusy, setAsBusy] = React.useState(false); // 助手正在等回复
+          const asBodyRef = React.useRef(null); // 助手消息区（新消息来了滚到底）
           const lastAssistRef = React.useRef(null); // 上一轮已提示过的正文序号（提示音用）
           const dingRef = React.useRef(false); // 这一轮生成完成后要响一声（重新生成这种「序号没变但正文换了」的情况靠它）
           const [editingKey, setEditingKey] = React.useState(''); // 正在编辑哪一段：role-seq
@@ -2930,6 +2950,34 @@ window.__ModuleLoader__.load({
             setTab(name);
           }
 
+          /**
+           * 助手：把这一句发给模型，回复追加进对话。
+           * history 以前端这份为准（它才是这段对话的真源），宿主只负责拼上下文与调用。
+           */
+          function sendAssistant() {
+            const text = String(asIn || '').trim();
+            if (!text || asBusy) return;
+            const past = asLog.slice();
+            setAsLog(past.concat([{ role: 'user', content: text }]));
+            setAsIn('');
+            setAsBusy(true);
+            const done = (reply, e) => {
+              setAsBusy(false);
+              setAsLog(past.concat([{ role: 'user', content: text }, { role: 'assistant', content: reply || '', err: e || '' }]));
+            };
+            call('assistantChat', { text: text, history: past }, gameId)
+              .then((r) => {
+                if (r && r.ok) done(String(r.reply || ''));
+                else done('', (r && r.msg) || '助手没有回复');
+              })
+              .catch((e) => done('', msg(e)));
+          }
+          // 有新消息就滚到底
+          React.useEffect(() => {
+            const el = asBodyRef.current;
+            if (el) el.scrollTop = el.scrollHeight;
+          }, [asLog, asBusy, asOpen]);
+
           function setProtag(k, v) {
             const p = Object.assign({}, draft.protagonist);
             p[k] = v;
@@ -3274,6 +3322,18 @@ window.__ModuleLoader__.load({
                   h('span', { className: 'ic' }, t[2]),
                   h('span', { className: 'lb' }, t[1])
                 )
+              ),
+              // 助手：不切换页面，只开关浮窗（它要盖在任意页上面用）
+              h(
+                'button',
+                {
+                  key: 'assistant',
+                  className: 'sim-rail-tab' + (asOpen ? ' on' : ''),
+                  title: '助手',
+                  onClick: () => setAsOpen((v) => !v),
+                },
+                h('span', { className: 'ic' }, '💬'),
+                h('span', { className: 'lb' }, '助手')
               )
             )
           );
@@ -5594,6 +5654,7 @@ window.__ModuleLoader__.load({
             ModelCfg({ slot: 'retrieve', title: '检索模型（上下文筛选）', sub: '挑选本轮需要哪些条目的“选择题模型”。留空则直接用当前主模型。可填便宜的快速模型。' }),
             ModelCfg({ slot: 'settle', title: '结算模型（变量 + 小总结）', sub: '留空则跳过每轮变量结算。' }),
             ModelCfg({ slot: 'summary', title: '总结模型' }),
+            ModelCfg({ slot: 'assistant', title: '助手模型', sub: '左侧「助手」浮窗用的模型。留空则用当前主模型。' }),
             h(
               'div',
               { className: 'sim-card' },
@@ -5955,7 +6016,56 @@ window.__ModuleLoader__.load({
               load: (which) => call('readLogs', { which: which }, gameId),
               reload: () => setLogKey((k) => k + 1),
               onClose: () => setLogOpen(false),
-            })
+            }),
+            /**
+             * 助手浮窗。
+             * 模拟器把整个页面接管了，Tavern 自带的侧边对话点不到，所以自己开一个。
+             * 挂在这里（.sim-root 的子树里）是为了能取到皮肤变量；用 position:fixed 定位，
+             * 这样不会被外层的滚动/裁剪容器切掉（挂 body 试过，皮肤变量会丢）。
+             */
+            asOpen
+              ? h(
+                  'div',
+                  { className: 'sim-as' },
+                  h(
+                    'div',
+                    { className: 'sim-as-top' },
+                    h('span', { className: 'sim-as-title' }, '助手'),
+                    h(Btn, { onClick: () => { setAsOpen(false); if (close) close(); } }, '切换到普通聊天')
+                  ),
+                  h(
+                    'div',
+                    { className: 'sim-as-body', ref: asBodyRef },
+                    asLog.length
+                      ? asLog.map((m, i) =>
+                          h(
+                            'div',
+                            { key: i, className: 'sim-as-m' + (m.role === 'user' ? ' me' : '') },
+                            h('div', { className: 'sim-as-txt' }, m.content),
+                            m.err ? h('div', { className: 'sim-as-err' }, m.err) : null
+                          )
+                        )
+                      : h('div', { className: 'sim-as-empty' }, '剧情、设定、下一步怎么走 —— 问点什么吧。')
+                  ),
+                  h(
+                    'div',
+                    { className: 'sim-as-foot' },
+                    h('textarea', {
+                      className: 'sim-as-in',
+                      value: asIn,
+                      placeholder: '就当前剧情提问…（Enter 发送，Shift+Enter 换行）',
+                      onChange: (e) => setAsIn(e.target.value),
+                      onKeyDown: (e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault();
+                          sendAssistant();
+                        }
+                      },
+                    }),
+                    h(Btn, { primary: true, disabled: asBusy || !String(asIn).trim(), onClick: () => sendAssistant() }, asBusy ? '思考中…' : '发送')
+                  )
+                )
+              : null
           );
         }
 

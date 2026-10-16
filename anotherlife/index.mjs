@@ -19,10 +19,10 @@ import { existsSync, cpSync, mkdirSync, readdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 
 const P = 'dsh-tavern-simulator/';
-const KEY_SLOTS = ['retrieve', 'settle', 'summary'];
+const KEY_SLOTS = ['retrieve', 'settle', 'summary', 'assistant'];
 
 /** 每次改动宿主侧都改一下这个版本号：ping 会回报它，用来确认 Tavern 到底加载的是哪一版 */
-const REV = 'host-v23-settle-one-call-20261014r';
+const REV = 'host-v24-assistant-20261016r';
 
 /**
  * 只有这一局用的是这些卡时，插件才出现在界面上（其余卡片游玩时完全不打扰）。
@@ -3385,6 +3385,66 @@ export function apply(ctx) {
     setByPath(s, path || [], value);
     await saveState(s);
     return withKeyStatus(s);
+  });
+
+  /**
+   * 助手：让玩家随时和模型讨论这一局的剧情、设定与走向。
+   *
+   * 为什么放在插件里而不是用 Tavern 的侧边对话：模拟器是把整个页面接管掉的，
+   * 侧边栏和输入框都被盖住，玩家在游玩时没法提问。所以自己开一个浮窗。
+   *
+   * 模型取自「助手」槽位；那一栏留空就退回当前主模型（和检索槽位的惯例一致）。
+   * 对话记在存档的 s.assistant 里（最多留 40 条），这样刷新、重开都还在。
+   */
+  function buildAssistantSystem(s) {
+    const w = s.world || {};
+    const p = s.protagonist || {};
+    const recent = (s.transcript || [])
+      .slice(-6)
+      .map((x) => (x.role === 'user' ? '【玩家】' : '【正文】') + String(x.body || '').slice(0, 600))
+      .join('\n\n');
+    const who = [p.姓名, p.年龄 ? p.年龄 + '岁' : '', p.身份].filter(Boolean).join(' · ');
+    return [
+      '你在陪玩家讨论他正在玩的一局「人生模拟」。他是这局的主角，你是坐在旁边的顾问。',
+      '回答短、直接、口语化，两三句说清；不写正文、不写行动选项、不替他做决定。',
+      '他问设定或变量就照实解释，问走向就给判断和依据，让你编一段就编一段。',
+      '',
+      '【世界观】' + String(w.世界名称 || w.时代与年份 || w.描述 || '').slice(0, 400),
+      '【主角】' + (who || '（未设定）'),
+      '【当前时间】' + String(w.当前日期时间 || '（未设定）').slice(0, 40),
+      '【最近剧情】',
+      recent || '（还没开始）',
+    ].join('\n');
+  }
+
+  reg('assistantChat', async ({ gameId, text, history }) => {
+    const s = await loadState(gameId);
+    const say = String(text || '').trim();
+    if (!say) return { ok: false, msg: '没有内容' };
+    // 历史以前端传来的为准（前端是这段对话的真源），只取最近若干轮，别把上下文撑爆
+    const past = Array.isArray(history) ? history.slice(-16) : [];
+    const msgs = [{ role: 'system', content: buildAssistantSystem(s) }];
+    past.forEach((m) => {
+      if (!m) return;
+      const role = m.role === 'assistant' ? 'assistant' : 'user';
+      const content = String(m.content == null ? '' : m.content).trim();
+      if (content) msgs.push({ role, content });
+    });
+    msgs.push({ role: 'user', content: say });
+
+    const cfg = (s.config && s.config.assistant) || {};
+    const opts = { temperature: 0.7, maxTokens: 2000, tag: '助手' };
+    const out = cfg.baseURL && cfg.model
+      ? await callSlot(s, 'assistant', msgs, Object.assign({ timeoutMs: 120000 }, opts))
+      : await callMainModel(msgs, Object.assign({ stallMs: 120000, purpose: '助手' }, opts));
+
+    // 顺手在存档里留一份，重开这一局还能翻到
+    s.assistant = Array.isArray(s.assistant) ? s.assistant : [];
+    s.assistant.push({ role: 'user', content: say, at: Date.now() });
+    s.assistant.push({ role: 'assistant', content: String(out || ''), at: Date.now() });
+    if (s.assistant.length > 40) s.assistant = s.assistant.slice(-40);
+    await saveState(s);
+    return { ok: true, reply: String(out || '') };
   });
 
   /**
