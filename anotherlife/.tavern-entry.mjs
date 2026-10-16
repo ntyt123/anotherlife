@@ -1,5 +1,5 @@
 // Tavern 自动生成，请勿修改：插件加载或启动出错时只记日志，不影响 DSH 启动。
-const report = (stage, error) => console.warn("[Tavern 插件] plugins/dsh-tavern-simulator" + ' ' + stage + '失败：' + (error && error.stack || error))
+const report = (stage, error) => console.warn("[Tavern 插件] plugins/anotherlife" + ' ' + stage + '失败：' + (error && error.stack || error))
 let plugin = null
 try {
   const mod = await import(new URL("./index.mjs", import.meta.url).href)

@@ -4722,6 +4722,173 @@ window.__ModuleLoader__.load({
           if (o.vol === 0.6) o.vol = 1;
           return o;
         }
+        /**
+         * 设定页的「更新与提交」卡片。
+         * 手机浏览器上用：按钮整行、结果多行可滚、出错时把 git 的原话摆出来。
+         */
+        function GitCfg() {
+          const [info, setInfo] = React.useState(null);
+          const [chk, setChk] = React.useState(null);
+          const [busy, setBusy] = React.useState('');
+          const [out, setOut] = React.useState('');
+          const [repo, setRepo] = React.useState('');
+
+          function pull() {
+            Promise.resolve(call('gitStatus'))
+              .then((r) => {
+                setInfo(r);
+                if (r && r.repo) setRepo((v) => v || r.repo);
+              })
+              .catch((e) => setOut('读取版本失败：' + String((e && e.message) || e)));
+          }
+          React.useEffect(() => {
+            pull();
+          }, []);
+
+          function act(name, args, label, ask) {
+            if (ask && !window.confirm(ask)) return;
+            setBusy(label);
+            setOut('');
+            Promise.resolve(call(name, args))
+              .then((r) => {
+                setBusy('');
+                if (!r || !r.ok) {
+                  setOut('✗ ' + ((r && r.error) || '失败'));
+                  return;
+                }
+                if (name === 'checkUpdate') {
+                  setChk(r);
+                  setOut(r.behind ? '有 ' + r.behind + ' 个新提交' : '已是最新');
+                  return;
+                }
+                if (name === 'pullUpdate') {
+                  setChk(null);
+                  setOut('已更新到 ' + (r.head || '') + '（' + (r.copied || '') + '）\n重启 DSH 后生效。');
+                  pull();
+                  return;
+                }
+                if (name === 'commitPush') {
+                  setOut('已上传：' + (r.head || '') + '\n' + (r.committed || ''));
+                  pull();
+                  return;
+                }
+                setOut('完成');
+              })
+              .catch((e) => {
+                setBusy('');
+                setOut('✗ ' + String((e && e.message) || e));
+              });
+          }
+
+          const row = (label, v) =>
+            h(
+              'div',
+              { style: { display: 'flex', gap: 8, marginTop: 6, fontSize: 'var(--sim-fs-2)' } },
+              h('span', { style: { flex: '0 0 58px', color: 'var(--sim-t2)' } }, label),
+              h('span', { style: { flex: '1 1 auto', minWidth: 0, wordBreak: 'break-all' } }, v || '—')
+            );
+
+          return h(
+            'div',
+            { className: 'sim-card' },
+            h('div', { style: { fontWeight: 600, marginBottom: 4 } }, '更新与提交'),
+            h('div', { className: 'sim-hint' }, '仓库与插件目录不是同一份文件，提交和更新都会在两边各拷一次。'),
+            row('当前', info && info.ok ? (info.head || '') + (info.date ? ' · ' + info.date : '') : ''),
+            row('远端', info && info.ok ? info.remote : ''),
+            h(
+              'div',
+              { className: 'sim-field' },
+              h('label', null, '仓库目录'),
+              h('input', {
+                value: repo,
+                placeholder: '默认 workspace/_repo/anotherlife',
+                onChange: (e) => setRepo(e.target.value),
+              }),
+              h(
+                Btn,
+                {
+                  disabled: !!busy,
+                  onClick: () =>
+                    Promise.resolve(call('setRepoDir', { repoDir: repo }))
+                      .then(() => {
+                        setOut('仓库目录已记住');
+                        pull();
+                      })
+                      .catch((e) => setOut('✗ ' + String((e && e.message) || e))),
+                },
+                '记住'
+              )
+            ),
+            h(
+              'div',
+              { className: 'sim-acts', style: { marginTop: 10, flexWrap: 'wrap' } },
+              h(
+                Btn,
+                { big: true, disabled: !!busy, onClick: () => act('checkUpdate', {}, '检查', null) },
+                busy === '检查' ? '检查中…' : '检查更新'
+              )
+            ),
+            chk && chk.behind
+              ? h(
+                  'div',
+                  { className: 'sim-hint', style: { marginTop: 6, whiteSpace: 'pre-wrap' } },
+                  chk.log.join('\n')
+                )
+              : null,
+            h(
+              'div',
+              { className: 'sim-acts', style: { marginTop: 8, flexWrap: 'wrap' } },
+              h(
+                Btn,
+                {
+                  big: true,
+                  disabled: !!busy,
+                  onClick: () =>
+                    act(
+                      'pullUpdate',
+                      {},
+                      '更新',
+                      '更新会把仓库和插件目录都对齐到远端，本地未提交的改动会全部丢弃。\n\n确定继续？'
+                    ),
+                },
+                busy === '更新' ? '更新中…' : '更新到最新'
+              ),
+              h(
+                Btn,
+                {
+                  big: true,
+                  disabled: !!busy,
+                  onClick: () =>
+                    act(
+                      'commitPush',
+                      {},
+                      '提交',
+                      '会把插件目录和卡片拷进仓库，然后提交并上传。\n\n确定继续？'
+                    ),
+                },
+                busy === '提交' ? '上传中…' : '提交并上传'
+              )
+            ),
+            out
+              ? h(
+                  'div',
+                  {
+                    className: 'sim-hint',
+                    style: {
+                      marginTop: 8,
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-all',
+                      maxHeight: 160,
+                      overflow: 'auto',
+                      fontFamily: 'ui-monospace,Menlo,Consolas,monospace',
+                    },
+                  },
+                  out
+                )
+              : null,
+            h('div', { className: 'sim-hint', style: { marginTop: 6 } }, '更新完要重启 DSH，宿主侧代码才会重新加载。')
+          );
+        }
         function SoundCfg() {
           const so = Object.assign({ on: true, vol: 1 }, liftOldVol((dcfg && dcfg.sound) || {}));
           const on = so.on !== false;
@@ -4949,6 +5116,7 @@ window.__ModuleLoader__.load({
               h('div', { className: 'sim-acts', style: { marginTop: 8 } }, h(Btn, { onClick: resetFs }, '微调归零')),
               h('div', { className: 'sim-hint', style: { marginTop: 6 } }, '预览：角色扮演这件事，写下来才算数。')
             ),
+            GitCfg(),
             h(
               'div',
               { className: 'sim-card' },

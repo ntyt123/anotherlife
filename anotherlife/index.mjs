@@ -15,7 +15,8 @@ export const inject = ['tavern'];
 
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { existsSync } from 'node:fs';
+import { existsSync, cpSync, mkdirSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 
 const P = 'dsh-tavern-simulator/';
 const KEY_SLOTS = ['retrieve', 'settle', 'summary'];
@@ -2467,6 +2468,173 @@ export function apply(ctx) {
       console.error('[dsh-tavern-simulator] 全局设置写入失败', e);
     }
     return withKeyStatus(s);
+  });
+
+  // ────────────────────────── 更新与提交（git 同步）──────────────────────────
+  //
+  // 为什么要"双向拷贝"：Tavern 实际加载的是 plugins/<插件名>/ 那一份，
+  // 而 git 仓库在别的地方（默认 workspace/_repo/anotherlife —— 那里才有 .git、
+  // 插件的副本和卡片）。两边都不是对方的工作区，所以：
+  //   [提交] 插件目录 + 卡  → 拷进仓库 → git add / commit / push
+  //   [更新] git fetch + reset --hard → 把仓库里的插件与卡拷回原位
+  // 拷回原位后必须重启 DSH，宿主侧代码才会重新加载。
+
+  const PLUGIN_DIRNAME = 'anotherlife';
+  const CARD_FILENAME = '人生模拟器.json';
+
+  /** 仓库位置：设定页里可改，默认 workspace/_repo/anotherlife */
+  async function gitRepoDir() {
+    try {
+      const g = (await readJson(SETTINGS_FILE)) || {};
+      const v = String(g.repoDir || '').trim();
+      if (v) return noTailSlash(v);
+    } catch (e) {
+      /* 读不到就用默认 */
+    }
+    return noTailSlash(path.join(STORE_DIR, '_repo', PLUGIN_DIRNAME));
+  }
+  const repoPluginDir = (r) => path.join(r, PLUGIN_DIRNAME);
+  const repoCardFile = (r) => path.join(r, 'cards', CARD_FILENAME);
+  const liveCardFile = () => path.join(TAVERN_DATA_DIR, 'resources', 'cards', CARD_FILENAME);
+
+  /** 跑一条 git；GIT_TERMINAL_PROMPT=0 免得在等凭据时挂住不返回 */
+  function gitRun(cwd, args, timeoutMs) {
+    try {
+      const out = execFileSync('git', args, {
+        cwd,
+        encoding: 'utf8',
+        timeout: timeoutMs || 90000,
+        windowsHide: true,
+        env: Object.assign({}, process.env, { GIT_TERMINAL_PROMPT: '0' }),
+      });
+      return { ok: true, out: String(out || '').trim(), err: '' };
+    } catch (e) {
+      return {
+        ok: false,
+        out: String((e && e.stdout) || '').trim(),
+        err: String((e && e.stderr) || (e && e.message) || '').trim(),
+      };
+    }
+  }
+
+  /** 覆盖式拷贝：不先删目标 —— 插件目录正在被运行，删掉风险更大 */
+  function copyOver(from, to) {
+    if (!existsSync(from)) throw new Error('找不到：' + from);
+    mkdirSync(path.dirname(to), { recursive: true });
+    cpSync(from, to, { recursive: true, force: true });
+  }
+
+  /** 仓库与当前版本概况 */
+  reg('gitStatus', async () => {
+    const r = await gitRepoDir();
+    if (!existsSync(path.join(r, '.git'))) return { ok: false, error: '这里不是 git 仓库：' + r, repo: r };
+    const head = gitRun(r, ['rev-parse', '--short', 'HEAD']);
+    const when = gitRun(r, ['log', '-1', '--format=%ci']);
+    const br = gitRun(r, ['rev-parse', '--abbrev-ref', 'HEAD']);
+    const remote = gitRun(r, ['remote', 'get-url', 'origin']);
+    return {
+      ok: true,
+      repo: r,
+      head: head.ok ? head.out : '',
+      date: when.ok ? String(when.out).slice(0, 16) : '',
+      branch: br.ok ? br.out : '',
+      remote: remote.ok ? remote.out : '',
+    };
+  });
+
+  /** 只查不改：落后几个提交、分别是哪些 */
+  reg('checkUpdate', async () => {
+    const r = await gitRepoDir();
+    if (!existsSync(path.join(r, '.git'))) return { ok: false, error: '这里不是 git 仓库：' + r };
+    const f = gitRun(r, ['fetch', '--quiet', 'origin', 'main']);
+    if (!f.ok) return { ok: false, error: '读取远端失败：' + (f.err || f.out || '未知原因') };
+    const n = gitRun(r, ['rev-list', '--count', 'HEAD..origin/main']);
+    const log = gitRun(r, ['log', '--oneline', '--no-decorate', 'HEAD..origin/main']);
+    const head = gitRun(r, ['rev-parse', '--short', 'HEAD']);
+    return {
+      ok: true,
+      behind: n.ok ? Number(n.out || 0) : 0,
+      log: log.ok ? log.out.split('\n').filter(Boolean).slice(0, 8) : [],
+      head: head.ok ? head.out : '',
+    };
+  });
+
+  /** 强制对齐远端（丢弃本地改动），并把插件与卡拷回原位 */
+  reg('pullUpdate', async () => {
+    const r = await gitRepoDir();
+    if (!existsSync(path.join(r, '.git'))) return { ok: false, error: '这里不是 git 仓库：' + r };
+    const f = gitRun(r, ['fetch', 'origin', 'main']);
+    if (!f.ok) return { ok: false, error: '读取远端失败：' + (f.err || f.out) };
+    const rs = gitRun(r, ['reset', '--hard', 'origin/main']);
+    if (!rs.ok) return { ok: false, error: '回退失败：' + (rs.err || rs.out) };
+    const done = [];
+    try {
+      copyOver(repoPluginDir(r), HERE_DIR);
+      done.push('插件');
+    } catch (e) {
+      return { ok: false, error: '插件拷贝失败：' + String((e && e.message) || e), reset: true };
+    }
+    try {
+      const cf = repoCardFile(r);
+      if (existsSync(cf)) {
+        copyOver(cf, liveCardFile());
+        done.push('卡片');
+      }
+    } catch (e) {
+      done.push('卡片拷贝失败（' + String((e && e.message) || e) + '）');
+    }
+    const head = gitRun(r, ['rev-parse', '--short', 'HEAD']);
+    return { ok: true, head: head.ok ? head.out : '', copied: done.join('、'), restart: true };
+  });
+
+  /** 把本地插件与卡拷进仓库，然后 add / commit / push */
+  reg('commitPush', async ({ message }) => {
+    const r = await gitRepoDir();
+    if (!existsSync(path.join(r, '.git'))) return { ok: false, error: '这里不是 git 仓库：' + r };
+    const done = [];
+    try {
+      copyOver(HERE_DIR, repoPluginDir(r));
+      done.push('插件');
+      const cf = liveCardFile();
+      if (existsSync(cf)) {
+        copyOver(cf, repoCardFile(r));
+        done.push('卡片');
+      }
+    } catch (e) {
+      return { ok: false, error: '拷贝失败：' + String((e && e.message) || e) };
+    }
+    const add = gitRun(r, ['add', '-A']);
+    if (!add.ok) return { ok: false, error: 'git add 失败：' + (add.err || add.out) };
+    const st = gitRun(r, ['status', '--porcelain']);
+    const msg =
+      String(message || '').trim() ||
+      '更新（' + new Date().toISOString().slice(0, 16).replace('T', ' ') + '）';
+    let committed = '';
+    if (st.ok && st.out) {
+      const c = gitRun(r, ['commit', '-m', msg]);
+      if (!c.ok) return { ok: false, error: 'commit 失败：' + (c.err || c.out) };
+      committed = String(c.out.split('\n')[0] || '').trim();
+    }
+    const p = gitRun(r, ['push', 'origin', 'main'], 120000);
+    if (!p.ok) {
+      return { ok: false, error: '上传失败：' + (p.err || p.out), committed: committed || '（本次没有改动）' };
+    }
+    const head = gitRun(r, ['rev-parse', '--short', 'HEAD']);
+    return {
+      ok: true,
+      copied: done.join('、'),
+      committed: committed || '（本次没有改动）',
+      head: head.ok ? head.out : '',
+    };
+  });
+
+  /** 记住仓库位置（全局设置，跨局共用） */
+  reg('setRepoDir', async ({ repoDir }) => {
+    const g = (await readJson(SETTINGS_FILE)) || {};
+    g.repoDir = String(repoDir || '').trim();
+    g.updatedAt = Date.now();
+    await writeJson(SETTINGS_FILE, g);
+    return { ok: true, repoDir: g.repoDir };
   });
 
   reg('setSkin', async ({ gameId, skin }) => {
