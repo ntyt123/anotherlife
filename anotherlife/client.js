@@ -241,7 +241,9 @@ window.__ModuleLoader__.load({
       '.sim-ibtn:hover{opacity:1;background:rgba(128,128,128,.16)}',
       '.sim-ibtn.danger:hover{background:rgba(200,60,60,.18)}',
       '.sim-edit{display:flex;flex-direction:column;gap:8px;margin:6px 0 8px}',
-      '.sim-edit textarea{min-height:120px;background:var(--sim-bg);border:1px solid var(--sim-bd);border-radius:8px;color:var(--sim-t);padding:9px;font-size:var(--sim-fs-3);font-family:inherit;line-height:1.7}',
+      // 编辑框：正文动辄上千字，太矮没法用。给到半屏以上，还能手动往下拖。
+      // 字号与行高跟正文一致（按 --sim-read-fs），改的时候看着跟读的时候一样。
+      '.sim-edit textarea{min-height:52vh;max-height:80vh;resize:vertical;background:var(--sim-bg);border:1px solid var(--sim-bd);border-radius:8px;color:var(--sim-t);padding:12px 14px;font-size:var(--sim-read-fs,15.5px);font-family:inherit;line-height:1.9}',
       '.sim-edit textarea:focus{outline:none;border-color:var(--sim-ac)}',
       '.sim-role{font-size:var(--sim-fs-1);color:var(--sim-t2);margin-bottom:4px}',
       '.sim-body-text{white-space:pre-wrap;font-size:var(--sim-fs-3)}',
@@ -3941,11 +3943,19 @@ window.__ModuleLoader__.load({
           const more = all.length - list.length;
           const hasAssistant = all.some((t) => t.role === 'assistant');
 
-          function EntryView({ t, av }) {
+          /**
+           * 一段正文（含编辑框、思考过程、折叠区）。
+           * **必须直呼 EntryView({...})，不能写成 h(EntryView, {key})。**
+           * 它定义在 App 内部，用组件语法挂载时每次 App 重渲染都会生成新的函数引用，
+           * React 视为组件类型变了 → 整棵子树卸载重挂 → 正文里那个编辑框被重建，
+           * 表现就是「打一个字就跳回开头」。它不含 hooks（已核对），直呼安全；
+           * key 由函数内部挂到最外层元素上（数组子元素需要 key）。
+           */
+          function EntryView({ t, av, key }) {
             const editing = editingKey === t.role + '-' + t.seq;
             return h(
               'div',
-              { className: 'sim-msg ' + t.role, 'data-seq': t.seq },
+              { key: key, className: 'sim-msg ' + t.role, 'data-seq': t.seq },
               h(
                 'div',
                 { className: 'sim-role' },
@@ -4034,7 +4044,7 @@ window.__ModuleLoader__.load({
             more > 0 ? h('div', { style: { marginBottom: 8 } }, h(Btn, { onClick: () => setShown(shown + 14) }, '加载更早（还有 ' + more + ' 段）')) : null,
             list.length === 0
               ? h('div', { className: 'sim-card' }, '正文从这里开始。在下方输入你的行动，或点击行动选项。')
-              : list.map((t) => h(EntryView, { key: t.seq + '-' + t.role, t, av: avatarsMap() })),
+              : list.map((t) => EntryView({ key: t.seq + '-' + t.role, t: t, av: avatarsMap() })),
             hasAssistant ? h('div', { style: { marginTop: 4 } }, h(Btn, { disabled: busy, onClick: () => run(call('regenerateLatestVars', {}, gameId)) }, '重算最新一段变量')) : null,
             // 剧情总结（长期记忆）：每 6 轮自动整理一段，攒多了自动合并
             (function () {
