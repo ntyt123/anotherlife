@@ -3796,8 +3796,19 @@ window.__ModuleLoader__.load({
 
           // ── 表单化编辑器（主角 / 世界 / 角色 / 资产与物品） ──
 
-          /** 高级通道：原始 JSON，默认折叠着收在底部 */
-          function jsonEditor(key, title) {
+          /**
+           * 高级通道：原始 JSON，默认折叠着收在底部。
+           * path 可选：不传就是 state[key]；传了就按嵌套路径读写
+           * （星途页签要编辑的是 protagonist 下的 作品履历／团队／行程 这些子字段）。
+           */
+          function jsonEditor(key, title, path) {
+            const p = Array.isArray(path) && path.length ? path : [key];
+            const id = 'sim-json-' + key;
+            const read = () => {
+              let v = state;
+              for (let i = 0; i < p.length; i++) v = v == null ? undefined : v[p[i]];
+              return v;
+            };
             return h(
               'details',
               { className: 'sim-fold', key: key + '-adv' },
@@ -3805,15 +3816,15 @@ window.__ModuleLoader__.load({
               h('div', { className: 'sim-fold-body' },
                 h('textarea', {
                   key: key + '-' + jsonKey,
-                  defaultValue: JSON.stringify(state[key], null, 2),
+                  defaultValue: JSON.stringify(read(), null, 2),
                   className: 'sim-json',
-                  id: 'sim-json-' + key,
+                  id,
                 }),
                 h(Btn, { disabled: busy, onClick: () => {
-                  const el = document.getElementById('sim-json-' + key);
+                  const el = document.getElementById(id);
                   let v;
                   try { v = JSON.parse(el.value); } catch (e) { setErr('JSON 解析失败：' + e.message); return; }
-                  run(call('editState', { path: [key], value: v }, gameId), true).then(() => setJsonKey((n) => n + 1));
+                  run(call('editState', { path: p, value: v }, gameId), true).then(() => setJsonKey((n) => n + 1));
                 } }, '保存这份 JSON')
               )
             );
@@ -4300,6 +4311,17 @@ window.__ModuleLoader__.load({
                 )
               ),
               block('私人关系', h('div', null, rowList(p.私人关系, ['对象', '性质', '公开', '状态']))),
+              // 高级通道：各块的原始 JSON（这几块结构最活，出问题时能直接改）
+              h(
+                'div',
+                { style: { marginTop: 10 } },
+                jsonEditor('star-pf', '演艺资料（主角上的那些字段）', ['protagonist']),
+                jsonEditor('star-works', '作品履历', ['protagonist', '作品履历']),
+                jsonEditor('star-team', '团队', ['protagonist', '团队']),
+                jsonEditor('star-sched', '行程', ['protagonist', '行程']),
+                jsonEditor('star-risk', '隐患', ['protagonist', '隐患']),
+                jsonEditor('star-private', '私人关系', ['protagonist', '私人关系'])
+              ),
             );
           })();
 
