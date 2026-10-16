@@ -3996,6 +3996,8 @@ window.__ModuleLoader__.load({
           const PROT_KNOWN = (function () {
             // 这几个各有专门的区块（货币一节、穿着胶囊、物品列表、身体折叠区），不进通用字段表
             const all = ['货币名', '金钱', '穿着', '物品', '身体', '疾病与伤病'];
+            // 资产页那几块也单独渲染，不进主角页的通用字段表（否则同一份内容会两边各显示一遍）
+            ['收支', '债务', '凭证', '事业', '居所'].forEach((k) => all.push(k));
             // 演艺资料整批由「星途模拟」页签显示，不再散在「其他字段」里
             STAR_KEYS.forEach((k) => all.push(k));
             PROT_GROUPS.forEach((g) => g[1].forEach((k) => all.push(k)));
@@ -4877,28 +4879,101 @@ window.__ModuleLoader__.load({
             );
           }
 
-                    const assetEditor = h(
-            'div',
-            { className: 'sim-fz2' },
-            h(
+                    /**
+           * 资产页：顶部是现金流摘要（月入 · 月出 · 结余），下面是原有资产与新增的
+           * 债务／凭证／事业／居所。空的一律整块不显示。
+           */
+          const assetEditor = (function () {
+            const p = (state && state.protagonist) || {};
+            const sh = p.收支 || {};
+            const toN = (v) => Number(String(v == null ? '' : v).replace(/[^\d.-]/g, '')) || 0;
+            const inc = toN(sh.月收入);
+            const exp = toN(sh.月支出);
+            const net = inc - exp;
+            const fm = (n) => Number(n || 0).toLocaleString('en-US');
+            const rowList = (v, keys) =>
+              Array.isArray(v) && v.length
+                ? h(
+                    'div',
+                    { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
+                    v.map((it, i) =>
+                      h(
+                        'div',
+                        { key: i, style: { fontSize: 'var(--sim-fs-2)', lineHeight: 1.5, wordBreak: 'break-word' } },
+                        typeof it === 'string'
+                          ? it
+                          : (keys || Object.keys(it))
+                              .map((k) => String(it[k] == null ? '' : it[k]).trim())
+                              .filter(Boolean)
+                              .join(' · ')
+                      )
+                    )
+                  )
+                : null;
+            const box = (title, node) =>
+              node
+                ? h(
+                    'div',
+                    { className: 'sim-card' },
+                    h('div', { className: 'sim-block-h' }, title),
+                    h('div', { className: 'sim-block-b' }, node)
+                  )
+                : null;
+            const live = p.居所 || {};
+            const liveRows = [
+              ['住所', live.住所],
+              ['交通', live.交通],
+            ].filter((x) => String(x[1] == null ? '' : x[1]).trim());
+            return h(
               'div',
-              { className: 'sim-card' },
-              sec('实体资产'),
-              objGrid('实体资产')
-            ),
-            h(
-              'div',
-              { className: 'sim-card' },
-              sec('虚拟资产'),
-              objGrid('虚拟资产')
-            ),
-            h(
-              'div',
-              { style: { marginTop: 10 } },
-              jsonEditor('实体资产', '实体资产'),
-              jsonEditor('虚拟资产', '虚拟资产')
-            )
-          );
+              { className: 'sim-fz2' },
+              inc || exp
+                ? h(
+                    'div',
+                    { className: 'sim-card' },
+                    h(
+                      'div',
+                      { style: { display: 'flex', flexWrap: 'wrap', gap: '4px 16px', alignItems: 'baseline' } },
+                      h(
+                        'span',
+                        {
+                          style: {
+                            fontSize: 'var(--sim-fs-6)',
+                            fontWeight: 800,
+                            letterSpacing: '.5px',
+                            color: net >= 0 ? 'var(--sim-good)' : 'var(--sim-err)',
+                          },
+                        },
+                        (net >= 0 ? '+' : '−') + fm(Math.abs(net))
+                      ),
+                      h('span', { className: 'sim-hint' }, '每月 收入 ' + fm(inc) + ' · 支出 ' + fm(exp))
+                    ),
+                    rowList(sh.明细, ['名目', '金额', '周期'])
+                  )
+                : null,
+              h('div', { className: 'sim-card' }, sec('实体资产'), objGrid('实体资产')),
+              h('div', { className: 'sim-card' }, sec('虚拟资产'), objGrid('虚拟资产')),
+              box('债务与欠账', rowList(p.债务, ['对象', '内容', '分量', '到期', '状态'])),
+              box('凭证与资格', rowList(p.凭证, ['名称', '取得', '效力'])),
+              box('事业与投资', rowList(p.事业, ['名称', '性质', '状态', '收益'])),
+              box(
+                '居所与出行',
+                liveRows.length
+                  ? h(
+                      'div',
+                      { style: { display: 'flex', flexDirection: 'column', gap: 6, fontSize: 'var(--sim-fs-2)', lineHeight: 1.5 } },
+                      liveRows.map((r, i) => h('div', { key: i }, r[0] + '：' + String(r[1]).trim()))
+                    )
+                  : null
+              ),
+              h(
+                'div',
+                { style: { marginTop: 10 } },
+                jsonEditor('实体资产', '实体资产'),
+                jsonEditor('虚拟资产', '虚拟资产')
+              )
+            );
+          })();
 
           // ── 设定 ──
           /** 剧情总结设置：轮数阈值 / 合并阈值 / 保留段数 / 破限提示词（改完立即落盘） */
