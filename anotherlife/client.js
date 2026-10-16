@@ -40,7 +40,15 @@ window.__ModuleLoader__.load({
       '.sim-md-p{margin:0 0 6px}',
       '.sim-md-p:last-child{margin-bottom:0}',
       '.sim-md-h{font-weight:700;margin:8px 0 4px}',
+      '.sim-md-h.lv1{font-size:var(--sim-fs-6);margin:12px 0 6px}',
+      '.sim-md-h.lv2{font-size:var(--sim-fs-5)}',
+      '.sim-md-h.lv3{font-size:var(--sim-fs-4)}',
       '.sim-md-h:first-child{margin-top:0}',
+      '.sim-md-hr{border:0;border-top:1px solid var(--sim-bd);margin:10px 0}',
+      // 正文里的段落块：段落之间留一点空隙（原来是 pre-wrap 靠换行撑开）
+      '.sim-md-block{padding:0}',
+      '.sim-md-block .sim-md-p{margin:0 0 8px}',
+      '.sim-md-block .sim-md-p:last-child{margin-bottom:0}',
       '.sim-md-list{margin:4px 0 6px;padding-left:20px}',
       '.sim-md-list:last-child{margin-bottom:0}',
       '.sim-md-list li{margin:2px 0}',
@@ -1750,6 +1758,87 @@ window.__ModuleLoader__.load({
          *   · 漏写收尾围栏（吃到下一个围栏或文本结尾）
          * 白名单外的类型一律当普通文字，绝不吞正文。
          */
+        /**
+         * 极简 Markdown 行内与块级渲染。
+         * 正文段与助手回复共用（原来只给助手用，所以放在 App 内部，正文拿不到）。
+         */
+        function mdNodes(text) {
+          const lines = String(text == null ? '' : text).split(/\r?\n/);
+          const out = [];
+          let list = null; // { ordered, items: [] }
+          const flush = () => {
+            if (!list) return;
+            const items = list.items.map((it, i) => h('li', { key: i }, mdInline(it)));
+            out.push(
+              h(list.ordered ? 'ol' : 'ul', { key: 'l' + out.length, className: 'sim-md-list' }, items)
+            );
+            list = null;
+          };
+          lines.forEach((raw, i) => {
+            const t = String(raw).replace(/\s+$/, '').trim();
+            if (!t) {
+              flush();
+              return;
+            }
+            const ol = /^(\d+)\s*[.、)]\s+(.*)$/.exec(t);
+            const ul = /^[-*•]\s+(.*)$/.exec(t);
+            if (ol) {
+              if (!list || !list.ordered) {
+                flush();
+                list = { ordered: true, items: [] };
+              }
+              list.items.push(ol[2]);
+              return;
+            }
+            if (ul) {
+              if (!list || list.ordered) {
+                flush();
+                list = { ordered: false, items: [] };
+              }
+              list.items.push(ul[1]);
+              return;
+            }
+            flush();
+            // 分隔线：--- / *** / ___（要排在列表判断之外，这里已经 flush 过）
+            if (/^(?:-{3,}|\*{3,}|_{3,})$/.test(t)) {
+              out.push(h('hr', { key: i, className: 'sim-md-hr' }));
+              return;
+            }
+            const hd = /^(#{1,4})\s+(.*)$/.exec(t);
+            if (hd) {
+              // 记下层级，好让字号分档次（# 比 ### 大）
+              out.push(h('div', { key: i, className: 'sim-md-h lv' + hd[1].length }, mdInline(hd[2])));
+              return;
+            }
+            const qt = /^>\s?(.*)$/.exec(t);
+            if (qt) {
+              if (qt[1]) out.push(h('div', { key: i, className: 'sim-md-q' }, mdInline(qt[1])));
+              return;
+            }
+            out.push(h('div', { key: i, className: 'sim-md-p' }, mdInline(t)));
+          });
+          flush();
+          return out;
+        }
+        /** 行内：**粗**、*斜*、`代码` */
+        function mdInline(s) {
+          const str = String(s == null ? '' : s);
+          const parts = [];
+          const re = /\*\*([^*]+)\*\*|`([^`]+)`|\*([^*\s][^*]*)\*/g;
+          let last = 0;
+          let m;
+          let k = 0;
+          while ((m = re.exec(str))) {
+            if (m.index > last) parts.push(str.slice(last, m.index));
+            if (m[1] != null) parts.push(h('strong', { key: 'b' + k++ }, m[1]));
+            else if (m[2] != null) parts.push(h('code', { key: 'c' + k++ }, m[2]));
+            else parts.push(h('em', { key: 'i' + k++ }, m[3]));
+            last = m.index + m[0].length;
+          }
+          if (last < str.length) parts.push(str.slice(last));
+          return parts;
+        }
+
         function renderBody(text, av) {
           const src = String(text == null ? '' : text);
           const lines = src.split(/\r?\n/);
@@ -1763,8 +1852,11 @@ window.__ModuleLoader__.load({
           const textBuf = [];
           const flushText = () => {
             if (!textBuf.length) return;
-            out.push(h('span', { key: 't' + out.length }, textBuf.join('\n')));
+            const buf = textBuf.join('\n');
             textBuf.length = 0;
+            // 正文段落也走 Markdown —— 模型会写 ### 小标题、--- 分隔线、加粗，
+            // 不渲染的话在界面上就是一堆字面符号。
+            out.push(h('div', { className: 'sim-md-block', key: 't' + out.length }, mdNodes(buf)));
           };
           for (let i = 0; i < lines.length; i++) {
             const L = lines[i];
@@ -3047,76 +3139,6 @@ window.__ModuleLoader__.load({
            * 自己写：插件是单文件、不引第三方库；返回 React 节点，也不走
            * dangerouslySetInnerHTML（模型输出不可信）。
            */
-          function mdNodes(text) {
-            const lines = String(text == null ? '' : text).split(/\r?\n/);
-            const out = [];
-            let list = null; // { ordered, items: [] }
-            const flush = () => {
-              if (!list) return;
-              const items = list.items.map((it, i) => h('li', { key: i }, mdInline(it)));
-              out.push(
-                h(list.ordered ? 'ol' : 'ul', { key: 'l' + out.length, className: 'sim-md-list' }, items)
-              );
-              list = null;
-            };
-            lines.forEach((raw, i) => {
-              const t = String(raw).replace(/\s+$/, '').trim();
-              if (!t) {
-                flush();
-                return;
-              }
-              const ol = /^(\d+)\s*[.、)]\s+(.*)$/.exec(t);
-              const ul = /^[-*•]\s+(.*)$/.exec(t);
-              if (ol) {
-                if (!list || !list.ordered) {
-                  flush();
-                  list = { ordered: true, items: [] };
-                }
-                list.items.push(ol[2]);
-                return;
-              }
-              if (ul) {
-                if (!list || list.ordered) {
-                  flush();
-                  list = { ordered: false, items: [] };
-                }
-                list.items.push(ul[1]);
-                return;
-              }
-              flush();
-              const hd = /^(#{1,4})\s+(.*)$/.exec(t);
-              if (hd) {
-                out.push(h('div', { key: i, className: 'sim-md-h' }, mdInline(hd[2])));
-                return;
-              }
-              const qt = /^>\s?(.*)$/.exec(t);
-              if (qt) {
-                if (qt[1]) out.push(h('div', { key: i, className: 'sim-md-q' }, mdInline(qt[1])));
-                return;
-              }
-              out.push(h('div', { key: i, className: 'sim-md-p' }, mdInline(t)));
-            });
-            flush();
-            return out;
-          }
-          /** 行内：**粗**、*斜*、`代码` */
-          function mdInline(s) {
-            const str = String(s == null ? '' : s);
-            const parts = [];
-            const re = /\*\*([^*]+)\*\*|`([^`]+)`|\*([^*\s][^*]*)\*/g;
-            let last = 0;
-            let m;
-            let k = 0;
-            while ((m = re.exec(str))) {
-              if (m.index > last) parts.push(str.slice(last, m.index));
-              if (m[1] != null) parts.push(h('strong', { key: 'b' + k++ }, m[1]));
-              else if (m[2] != null) parts.push(h('code', { key: 'c' + k++ }, m[2]));
-              else parts.push(h('em', { key: 'i' + k++ }, m[3]));
-              last = m.index + m[0].length;
-            }
-            if (last < str.length) parts.push(str.slice(last));
-            return parts;
-          }
           /**
            * 助手：把这一句发给模型，回复追加进对话。
            * history 以前端这份为准（它才是这段对话的真源），宿主只负责拼上下文与调用。
