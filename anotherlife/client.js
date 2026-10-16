@@ -5126,7 +5126,7 @@ window.__ModuleLoader__.load({
               h('div', { className: 'sim-hint' }, '正文里出现 :::类型 块时会渲染成真实界面。'),
               h('div', { className: 'sim-acts', style: { marginTop: 8 } }, h(Btn, { disabled: busy, onClick: () => setUiPrevOpen(true) }, '👁 界面预览'))
             ),
-            SummaryCfg(),
+            h(SummaryCfg, { key: 'sumcfg' }),
             h(SoundCfg, { key: 'sound' }),
             h('div', { className: 'sim-card' },
               h('div', { style: { fontWeight: 600, marginBottom: 8 } }, '注入规则'),
@@ -5405,8 +5405,8 @@ window.__ModuleLoader__.load({
               ),
               inputBar
             ),
-            npcModalView(),
-            assetModalView(),
+            h(npcModalView, { key: 'npcmodal' }),
+            h(assetModalView, { key: 'assetmodal' }),
             UiPreviewModal(uiPrevOpen, () => setUiPrevOpen(false)),
             h(AvatarModal, {
               cfg: avatarEdit,
