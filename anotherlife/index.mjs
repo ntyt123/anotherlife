@@ -22,7 +22,7 @@ const P = 'dsh-tavern-simulator/';
 const KEY_SLOTS = ['retrieve', 'settle', 'summary', 'assistant'];
 
 /** 每次改动宿主侧都改一下这个版本号：ping 会回报它，用来确认 Tavern 到底加载的是哪一版 */
-const REV = 'host-v30-birthplace-20261016r';
+const REV = 'host-v31-birthplace-baseline-20261016r';
 
 /**
  * 只有这一局用的是这些卡时，插件才出现在界面上（其余卡片游玩时完全不打扰）。
@@ -265,6 +265,9 @@ export function apply(ctx) {
     ['事业', ['生意', '投资', '股份', '副业', '分红', '经营', '入股']],
     ['住所', ['住处', '搬家', '房租', '房子', '租的', '买的']],
     ['交通', ['开车', '通勤', '车牌', '座驾', '司机', '跑车']],
+    // 出生地本来就在基线里（每轮无条件注入）；这里再列一份，是为了万一玩家把基线清空了，
+    // 剧情聊到家乡、口音时还能把它捞回来。
+    ['出生地', ['老家', '家乡', '故乡', '籍贯', '祖籍', '出生', '口音', '方言', '同乡', '那儿的人']],
   ];
   const BIO_KW_MAP = {};
   BIO_KW.forEach((p) => {
@@ -281,7 +284,10 @@ export function apply(ctx) {
         retrieve: { baseURL: '', model: '' },
         settle: { baseURL: '', model: '' },
         summary: { baseURL: '', model: '' },
-        baseline: '姓名,性别',
+        // 基线：无论检索结果如何都会注入的字段。
+        // 出生地放在这里 —— 它是「随时可能被聊到」的常识性信息（口音、老家、过节去哪儿），
+        // 靠检索挑的话，玩家这轮没提家乡就永远轮不到它，AI 等于不知道。
+        baseline: '姓名,性别,出生地',
         retrieveMax: 24,
       },
       world: EMPTY_WORLD(),
@@ -311,6 +317,10 @@ export function apply(ctx) {
         baseURL: (src[k] && src[k].baseURL) || '',
       };
     });
+    // 基线补上「出生地」：老存档的基线里没有它，而它是随时可能被聊到的常识信息
+    // （口音、老家、过节去哪儿），只靠检索挑的话玩家不提就永远轮不到，AI 等于不知道。
+    const bl = String(out.baseline == null ? '' : out.baseline);
+    if (bl.indexOf('出生地') < 0) out.baseline = bl ? bl + ',出生地' : '出生地';
     return out;
   }
 
