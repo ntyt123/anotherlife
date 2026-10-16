@@ -3779,8 +3779,6 @@ window.__ModuleLoader__.load({
             worldSec('规则', ['文明与技术水平', '超自然与力量体系', '种族与物种']),
             worldSec('环境', ['势力与组织', '危险与生存压力', '信息与传播']),
             worldSec('文化', ['风俗禁忌与礼节', '叙事基调']),
-            h('div', { className: 'sim-sec' }, '补充'),
-            h('div', { className: 'sim-field' }, h('label', null, '补充信息'), h('textarea', { style: { minHeight: 64 }, value: draft.extraInfo || '', onChange: (e) => upd({ extraInfo: e.target.value }) })),
             h(
               'div',
               { className: 'sim-foot' },
@@ -3928,6 +3926,20 @@ window.__ModuleLoader__.load({
               h(Field, { key: 'ft', label: '特点', value: Array.isArray(draft.protagonist.特点) ? draft.protagonist.特点.join('、') : String(draft.protagonist.特点 || ''), onChange: (v) => setProtag('特点', String(v || '')) })
             ),
             h('div', { style: hint }, '物品每项：{"名字","品质":"N/R/SR/SSR/UR","获取时间","简介","属性提升":{}}。'),
+            h('div', { className: 'sim-sec' }, '备注'),
+            h(
+              'div',
+              { className: 'sim-hint' },
+              '原样发给 AI 的一段补充，不受上面字段的限制 —— 写不下、或想额外交代的都可以放这里（例如「妹妹叫罗小满，父母在北京」）。'
+            ),
+            h('div', { className: 'sim-field' },
+              h('textarea', {
+                style: { minHeight: 96 },
+                value: draft.extraInfo || '',
+                placeholder: '可留空。这里是额外补充，会连同上面的设定一起交给 AI。',
+                onChange: (e) => upd({ extraInfo: e.target.value }),
+              })
+            ),
             h(
               'div',
               { className: 'sim-foot' },
