@@ -22,7 +22,7 @@ const P = 'dsh-tavern-simulator/';
 const KEY_SLOTS = ['retrieve', 'settle', 'summary', 'assistant'];
 
 /** 每次改动宿主侧都改一下这个版本号：ping 会回报它，用来确认 Tavern 到底加载的是哪一版 */
-const REV = 'host-v38-opening-offstage-20261017r';
+const REV = 'host-v39-slot-model-check-20261017r';
 
 /**
  * 只有这一局用的是这些卡时，插件才出现在界面上（其余卡片游玩时完全不打扰）。
@@ -1312,7 +1312,8 @@ export function apply(ctx) {
   async function aiPick(s, E, input) {
     if (!E.length) return { picked: [], via: 'main' };
     const cfg = (s.config && s.config.retrieve) || {};
-    const useMain = !cfg.model || !cfg.baseURL;
+    // 只判 model：走 DSH 凭据那套时 baseURL 本来就是空的（老写法会让人永远用不了槽位）
+    const useMain = !cfg.model;
     const maxN = Number(s.config.retrieveMax) || 24;
     const cat = E.slice(0, 160)
       .map((e) => e.id + ' | ' + e.hint)
@@ -2224,7 +2225,7 @@ export function apply(ctx) {
     let summary = '';
     let settleOptions = [];
     const settleCfg = (s.config && s.config.settle) || {};
-    if (settleCfg.model && settleCfg.baseURL) {
+    if (settleCfg.model) {
       setProg(gid, 'settle', '结算中 · 变量变化 + 小总结');
       try {
         const msgs = [
@@ -2388,7 +2389,9 @@ export function apply(ctx) {
 
   async function makeSummary(s, from, to) {
     const cfg = (s.config && s.config.summary) || {};
-    if (!cfg.model || !cfg.baseURL) throw new Error('请先在设定页配置总结模型');
+    // 判据只留 model：现在走 DSH 凭据那套（只填服务 + 模型），baseURL 本来就是空的。
+    // 早先「必须有 baseURL」的写法会让切好的模型永远被判成「未配置」（踩过）。
+    if (!cfg.model) throw new Error('请先在设定页配置总结模型');
     const src = summarySource(s, from, to);
     if (!src.trim()) throw new Error('该范围内没有内容');
     const so = summaryOpts(s);
@@ -2418,7 +2421,9 @@ export function apply(ctx) {
     const head = list.slice(0, Math.max(1, list.length - so.keepTail));
     const tail = list.slice(Math.max(1, list.length - so.keepTail));
     const cfg = (s.config && s.config.summary) || {};
-    if (!cfg.model || !cfg.baseURL) throw new Error('请先在设定页配置总结模型');
+    // 判据只留 model：现在走 DSH 凭据那套（只填服务 + 模型），baseURL 本来就是空的。
+    // 早先「必须有 baseURL」的写法会让切好的模型永远被判成「未配置」（踩过）。
+    if (!cfg.model) throw new Error('请先在设定页配置总结模型');
     const text = await callSlot(
       s,
       'summary',
@@ -2442,7 +2447,7 @@ export function apply(ctx) {
   /** 每一轮结算之后调用：够轮数就总结，攒太多了就合并 —— 全程失败不抛出 */
   async function autoSummarize(s, gameId) {
     const cfg = (s.config && s.config.summary) || {};
-    if (!cfg.model || !cfg.baseURL) return; // 没配总结模型就整块功能停用
+    if (!cfg.model) return; // 没配总结模型就整块功能停用
     const so = summaryOpts(s);
     const covered = Number(s.story.summarised_through == null ? -1 : s.story.summarised_through);
     const latest = s.story.current_message_index - 1;
@@ -3390,7 +3395,7 @@ export function apply(ctx) {
       s = null;
     }
     const scfg = (s && s.config && s.config.settle) || {};
-    if (scfg.baseURL && scfg.model) {
+    if (scfg.model) {
       const raw = await callSlot(s, 'settle', msgs, { temperature: 0.2, maxTokens: 6000, timeoutMs: 180000, tag: '变量解析' });
       const out = String(raw == null ? '' : raw).trim();
       if (!out) throw new Error('「变量解析」模型没有返回内容');
@@ -3509,7 +3514,7 @@ export function apply(ctx) {
     const latest = s.transcript.slice().reverse().find((t) => t.role === 'assistant');
     if (!latest) throw new Error('没有可重算的对话');
     const cfg = (s.config && s.config.settle) || {};
-    if (!cfg.model || !cfg.baseURL) throw new Error('请先在设定页配置结算模型');
+    if (!cfg.model) throw new Error('请先在设定页配置结算模型');
     const msgs = [
       { role: 'system', content: await settleSystemPrompt(s, gameId, latest.body) },
       { role: 'user', content: '本轮正文：\n' + latest.body },
@@ -3596,7 +3601,7 @@ export function apply(ctx) {
     const cfg = (s.config && s.config.assistant) || {};
     const opts = { temperature: 0.7, maxTokens: 2000, tag: '助手' };
     let out;
-    if (cfg.baseURL && cfg.model) {
+    if (cfg.model) {
       out = await callSlot(s, 'assistant', msgs, Object.assign({ timeoutMs: 120000 }, opts));
     } else {
       // callMainModel 返回的是 { text, reasoning, finish }，不是字符串 ——
@@ -3650,7 +3655,9 @@ export function apply(ctx) {
   reg('runSummary', async ({ gameId, start, end }) => {
     const s = await loadState(gameId);
     const cfg = (s.config && s.config.summary) || {};
-    if (!cfg.model || !cfg.baseURL) throw new Error('请先在设定页配置总结模型');
+    // 判据只留 model：现在走 DSH 凭据那套（只填服务 + 模型），baseURL 本来就是空的。
+    // 早先「必须有 baseURL」的写法会让切好的模型永远被判成「未配置」（踩过）。
+    if (!cfg.model) throw new Error('请先在设定页配置总结模型');
     const covered = Number(s.story.summarised_through == null ? -1 : s.story.summarised_through);
     // 默认只总结「还没总结过」的那一段（手动按钮点一下不会把全部重算一遍）
     const from = start != null ? start : covered + 1;
@@ -3668,7 +3675,9 @@ export function apply(ctx) {
   reg('mergeSummaries', async ({ gameId }) => {
     const s = await loadState(gameId);
     const cfg = (s.config && s.config.summary) || {};
-    if (!cfg.model || !cfg.baseURL) throw new Error('请先在设定页配置总结模型');
+    // 判据只留 model：现在走 DSH 凭据那套（只填服务 + 模型），baseURL 本来就是空的。
+    // 早先「必须有 baseURL」的写法会让切好的模型永远被判成「未配置」（踩过）。
+    if (!cfg.model) throw new Error('请先在设定页配置总结模型');
     const merged = await mergeOldSummaries(s);
     if (!merged) throw new Error('还不够多，不用合并');
     await saveState(s);

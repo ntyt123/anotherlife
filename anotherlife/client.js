@@ -5906,7 +5906,10 @@ window.__ModuleLoader__.load({
                 baseURL: '',
               });
               upd({ config: cfg });
-              return call('saveConfig', { config: cfg }, gameId)
+              // 用 run 而不是 call：saveConfig 会把完整状态返回，
+              // run 会把它吸收进 state —— 界面各处（比如正文里那句
+              // 「没配结算模型」的提示）读的是 state.config，不吸收就永远是旧的。
+              return run(call('saveConfig', { config: cfg }, gameId))
                 .then(() => {
                   setSlotBusy('');
                   // 切换成功后，把这个槽位的临时选择清掉 —— 之后一律以已保存的为准
