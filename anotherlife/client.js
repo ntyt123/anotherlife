@@ -2539,6 +2539,8 @@ window.__ModuleLoader__.load({
           const [logKey, setLogKey] = React.useState(0); // 点「刷新」时加一，触发重新读取
           const bodyRef = React.useRef(null); // 正文滚动容器
           const playScrollRef = React.useRef(0); // 离开正文时读到哪儿（切回来还原用）
+          const prevTabRef = React.useRef('play'); // 上一个页签（认得出「刚离开正文」）
+          const lastPlayTopRef = React.useRef(0); // 在正文页时持续记下的滚动位置
           const keepScrollRef = React.useRef(0); // 用户看到的滚动位置（生成期间用它把位置钉住）
           const pinTsRef = React.useRef(0); // 最近一次由我们写回 scrollTop 的时间（区分用户滚动）
           const pinValueRef = React.useRef(-1); // 我们刚写回的那个值（它引起的 scroll 事件不算用户滚动）
@@ -2555,10 +2557,27 @@ window.__ModuleLoader__.load({
            */
           React.useEffect(() => {
             const el = bodyRef.current;
-            if (!el) return;
+            const prev = prevTabRef.current;
+            prevTabRef.current = tab;
+            if (!el || tab === prev) return;
+            if (prev === 'play') {
+              // 正要离开正文：取"上一次在正文页时记下的位置"。
+              // 不能在这里读 el.scrollTop —— 这个 effect 在 tab 变化后才跑，
+              // 容器里已经是新页签的内容了，读到的位置没有意义。
+              playScrollRef.current = lastPlayTopRef.current || 0;
+            }
             if (tab !== 'play') {
-              playScrollRef.current = el.scrollTop;
-              return;
+              // 其他页签一律从顶部开始。它们和正文**共用同一个滚动容器**，
+              // 不清零就会继承正文的位置，看着像"停在中间"（踩过）。
+              const zero = () => {
+                const e0 = bodyRef.current;
+                if (e0) e0.scrollTop = 0;
+              };
+              el.scrollTop = 0;
+              const raf0 = window.requestAnimationFrame ? window.requestAnimationFrame(zero) : 0;
+              return () => {
+                if (raf0 && window.cancelAnimationFrame) window.cancelAnimationFrame(raf0);
+              };
             }
             const want = playScrollRef.current;
             if (!(want > 0)) return;
@@ -2573,6 +2592,15 @@ window.__ModuleLoader__.load({
               if (raf && window.cancelAnimationFrame) window.cancelAnimationFrame(raf);
             };
           }, [tab]);
+
+          // 在正文页时持续记下滚动位置（无依赖 → 每次渲染后跑一次）。
+          // 为什么需要：切页签的 effect 在 tab 变化后才执行，那时容器里已经是新页签的内容，
+          // 读 el.scrollTop 已经晚了；所以位置得趁"还在正文页"的时候攒着。
+          React.useEffect(() => {
+            if (tab !== 'play') return;
+            const el = bodyRef.current;
+            if (el) lastPlayTopRef.current = el.scrollTop;
+          });
 
           const txLen = (state && Array.isArray(state.transcript) ? state.transcript.length : 0);
           /**
