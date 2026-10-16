@@ -2521,6 +2521,12 @@ window.__ModuleLoader__.load({
           const [npcOpen, setNpcOpen] = React.useState(null); // 打开的角色卡：{kind,i}
           const [editText, setEditText] = React.useState('');
           const [stage, setStage] = React.useState(null); // 当前进行到哪一步：{stage,text}
+          // 四个模型槽位（检索/结算/总结/助手）的「选好但还没点切换」的临时选择。
+          // ModelCfg 是无钩子的直呼组件，所以状态放这里，它靠闭包读。
+          const [slotPick, setSlotPick] = React.useState({}); // { [slot]: {provider, model} }
+          const [slotBusy, setSlotBusy] = React.useState(''); // 正在切换哪个槽位
+          const [slotOk, setSlotOk] = React.useState({}); // { [slot]: '✓ 已切换' }
+          const [slotErr, setSlotErr] = React.useState({}); // { [slot]: 错误文字 }
           const stageAtRef = React.useRef(''); // 最近一次已知的阶段名（出错时用来标是哪一步挂的）
           const [warnSteps, setWarnSteps] = React.useState([]); // 降级过的步骤：标黄灯（检索兜底、结算没成）
           // 注意：hook 必须全部放在下面那个「state 还没加载好就 return」之前，否则各次渲染的 hook 数量会变（React #310）
@@ -5877,31 +5883,58 @@ window.__ModuleLoader__.load({
            * 老配置里若还留着 baseURL，继续按老路走（下面给一句提示 + 一键清掉）。
            */
           function ModelCfg({ slot, title, sub }) {
-            const c = (dcfg && dcfg[slot]) || { provider: '', model: '' };
+            const saved = (dcfg && dcfg[slot]) || { provider: '', model: '' };
+            // 正在编辑的选择（还没点「切换」）。没有就用已保存的。
+            const pick = slotPick[slot] || { provider: saved.provider || '', model: saved.model || '' };
             const mm = models[slot] || { loading: false, list: [], error: '' };
-            function set(patch) {
-              // 一次改一批字段，而不是「每次改一个」。
-              // 原来是 set(f, v)，里面用渲染时的 c 快照重建对象 ——
-              // 连着调两次（先设 provider、再清空 model）时，第二次会用旧快照
-              // 把第一次的改动盖掉，表现为「服务选完立刻弹回原样」（踩过）。
-              const cfg = Object.assign({}, dcfg);
-              cfg[slot] = Object.assign({}, c, patch || {});
-              upd({ config: cfg });
+            const dirty = String(pick.provider || '') !== String(saved.provider || '') || String(pick.model || '') !== String(saved.model || '');
+            function setPick(patch) {
+              setSlotPick((all) => Object.assign({}, all, { [slot]: Object.assign({}, pick, patch) }));
             }
-            function dropLegacy() {
+            /**
+             * 「切换」= 把这个槽位的服务与模型写进配置并立即落盘。
+             * 和主模型那一块一致：选完要按一下，才知道到底成没成。
+             */
+            function applySlot() {
+              setSlotBusy(slot);
+              setSlotErr((o) => Object.assign({}, o, { [slot]: '' }));
+              setSlotOk((o) => Object.assign({}, o, { [slot]: '' }));
               const cfg = Object.assign({}, dcfg);
-              cfg[slot] = Object.assign({}, c, { baseURL: '' });
+              cfg[slot] = Object.assign({}, saved, {
+                provider: String(pick.provider || ''),
+                model: String(pick.model || ''),
+                baseURL: '',
+              });
               upd({ config: cfg });
-              run(call('saveConfig', { config: cfg }, gameId));
+              return call('saveConfig', { config: cfg }, gameId)
+                .then(() => {
+                  setSlotBusy('');
+                  // 切换成功后，把这个槽位的临时选择清掉 —— 之后一律以已保存的为准
+                  setSlotPick((all) => Object.assign({}, all, { [slot]: null }));
+                  setModels(Object.assign({}, models, { [slot]: { loading: false, list: mm.list || [], error: '' } }));
+                  setSlotOk((o) => Object.assign({}, o, { [slot]: '✓ 已切换' }));
+                  window.setTimeout(() => setSlotOk((o) => Object.assign({}, o, { [slot]: '' })), 2500);
+                })
+                .catch((e) => {
+                  setSlotBusy('');
+                  setSlotErr((o) => Object.assign({}, o, { [slot]: msg(e) }));
+                });
             }
             function pickProvider(pid) {
-              // 换服务时 provider 与 model 必须**一次写完**（分两次会互相覆盖）
-              set({ provider: pid, model: '' });
+              // 换服务：provider 与 model 必须**一次写完**（分两次会互相覆盖，踩过）
+              setPick({ provider: pid, model: '' });
               if (!pid) return;
               setModels(Object.assign({}, models, { [slot]: { loading: true, list: [], error: '' } }));
               return call('modelsOf', { provider: pid }, gameId)
                 .then((r) => setModels(Object.assign({}, models, { [slot]: { loading: false, list: (r && r.models) || [], error: '' } })))
                 .catch((e) => setModels(Object.assign({}, models, { [slot]: { loading: false, list: [], error: msg(e) } })));
+            }
+            /** 老配置里还留着自填地址：清掉它，改用 DSH 凭据那套（主模型同一份） */
+            function dropLegacy() {
+              const cfg = Object.assign({}, dcfg);
+              cfg[slot] = Object.assign({}, saved, { baseURL: '' });
+              upd({ config: cfg });
+              run(call('saveConfig', { config: cfg }, gameId));
             }
             return h(
               'div',
@@ -5914,7 +5947,7 @@ window.__ModuleLoader__.load({
                 h('label', null, '服务'),
                 h(
                   'select',
-                  { className: 'sim-select', value: c.provider || '', onChange: (e) => pickProvider(e.target.value) },
+                  { className: 'sim-select', value: pick.provider || '', onChange: (e) => pickProvider(e.target.value) },
                   h('option', { value: '' }, '— 用主模型 —'),
                   ((mmC && mmC.providers) || []).map((p) => h('option', { key: p.id, value: p.id }, p.name || p.id))
                 )
@@ -5925,9 +5958,9 @@ window.__ModuleLoader__.load({
                 h('label', null, '模型'),
                 h('input', {
                   list: 'sim-slot-' + slot,
-                  value: c.model || '',
+                  value: pick.model || '',
                   placeholder: '留空则用主模型',
-                  onChange: (e) => set({ model: e.target.value }),
+                  onChange: (e) => setPick({ model: e.target.value }),
                 }),
                 h(
                   'datalist',
@@ -5938,17 +5971,28 @@ window.__ModuleLoader__.load({
                   })
                 )
               ),
+              h(
+                'div',
+                { className: 'sim-acts', style: { marginTop: 8 } },
+                h(
+                  Btn,
+                  { primary: true, disabled: busy || slotBusy === slot || !dirty, onClick: applySlot },
+                  slotBusy === slot ? '切换中…' : dirty ? '切换' : '已同步'
+                )
+              ),
               mm.loading ? h('div', { className: 'sim-hint' }, '正在读取可选模型…') : null,
               mm.error ? h('div', { className: 'sim-err' }, mm.error) : null,
-              c.baseURL
+              slotErr[slot] ? h('div', { className: 'sim-err' }, slotErr[slot]) : null,
+              slotOk[slot] ? h('div', { className: 'sim-ok' }, slotOk[slot]) : null,
+              saved.baseURL
                 ? h(
                     'div',
                     { className: 'sim-field' },
-                    h('span', { className: 'sim-hint', style: { flex: '1 1 auto' } }, '这一栏还在用旧的自填地址：' + c.baseURL),
+                    h('span', { className: 'sim-hint', style: { flex: '1 1 auto' } }, '这一栏还在用旧的自填地址：' + saved.baseURL),
                     h(Btn, { disabled: busy, onClick: dropLegacy }, '同步主模型')
                   )
                 : null,
-              h('div', { className: 'sim-hint' }, '留空 = 用当前主模型。改完记得点下面的「保存设定」。')
+              h('div', { className: 'sim-hint' }, '留空 = 用当前主模型。选好按「切换」才生效。')
             );
           }
 
