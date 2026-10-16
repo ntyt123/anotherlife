@@ -22,7 +22,7 @@ const P = 'dsh-tavern-simulator/';
 const KEY_SLOTS = ['retrieve', 'settle', 'summary', 'assistant'];
 
 /** 每次改动宿主侧都改一下这个版本号：ping 会回报它，用来确认 Tavern 到底加载的是哪一版 */
-const REV = 'host-v39-slot-model-check-20261017r';
+const REV = 'host-v40-handler-progress-20261017r';
 
 /**
  * 只有这一局用的是这些卡时，插件才出现在界面上（其余卡片游玩时完全不打扰）。
@@ -3515,6 +3515,10 @@ export function apply(ctx) {
     if (!latest) throw new Error('没有可重算的对话');
     const cfg = (s.config && s.config.settle) || {};
     if (!cfg.model) throw new Error('请先在设定页配置结算模型');
+    // 上报进度：界面那排步骤指示靠它亮起来。不报的话点了按钮界面毫无反应，
+    // 看着像没点上（踩过）。
+    resetProg(gameId);
+    setProg(gameId, 'settle', '重算变量中 · 变量变化 + 小总结');
     const msgs = [
       { role: 'system', content: await settleSystemPrompt(s, gameId, latest.body) },
       { role: 'user', content: '本轮正文：\n' + latest.body },
@@ -3529,6 +3533,7 @@ export function apply(ctx) {
     latest.summary = String(sj.summary || '');
     latest.options = pickOptions(sj.options, latest.options);
     applyDiffs(s, diffs);
+    setProg(gameId, 'save', '写回存档');
     await saveState(s);
     return withKeyStatus(s);
   });
@@ -3663,7 +3668,11 @@ export function apply(ctx) {
     const from = start != null ? start : covered + 1;
     const to = end != null ? end : s.story.current_message_index - 1;
     if (to < from) throw new Error('没有新的内容需要总结');
+    // 上报进度：不然点了按钮界面不动，像没点上
+    resetProg(gameId);
+    setProg(gameId, 'summary', '整理剧情总结（第 ' + from + '-' + to + ' 轮）');
     await makeSummary(s, from, to);
+    setProg(gameId, 'save', '写回存档');
     await saveState(s);
     return withKeyStatus(s);
   });
@@ -3678,8 +3687,11 @@ export function apply(ctx) {
     // 判据只留 model：现在走 DSH 凭据那套（只填服务 + 模型），baseURL 本来就是空的。
     // 早先「必须有 baseURL」的写法会让切好的模型永远被判成「未配置」（踩过）。
     if (!cfg.model) throw new Error('请先在设定页配置总结模型');
+    resetProg(gameId);
+    setProg(gameId, 'summary', '合并旧总结为长期记录');
     const merged = await mergeOldSummaries(s);
     if (!merged) throw new Error('还不够多，不用合并');
+    setProg(gameId, 'save', '写回存档');
     await saveState(s);
     return withKeyStatus(s);
   });
