@@ -22,7 +22,7 @@ const P = 'dsh-tavern-simulator/';
 const KEY_SLOTS = ['retrieve', 'settle', 'summary', 'assistant'];
 
 /** 每次改动宿主侧都改一下这个版本号：ping 会回报它，用来确认 Tavern 到底加载的是哪一版 */
-const REV = 'host-v24-assistant-20261016r';
+const REV = 'host-v25-slot-uses-main-creds-20261016r';
 
 /**
  * 只有这一局用的是这些卡时，插件才出现在界面上（其余卡片游玩时完全不打扰）。
@@ -302,9 +302,12 @@ export function apply(ctx) {
     const src = saved && typeof saved === 'object' ? saved : {};
     const out = Object.assign({}, base, src);
     KEY_SLOTS.forEach((k) => {
+      // provider/model：走 DSH 凭据那套（和主模型一样，不必自填地址与密钥）
+      // baseURL：老配置遗留，还留着的继续按老路走
       out[k] = {
-        baseURL: (src[k] && src[k].baseURL) || '',
+        provider: (src[k] && src[k].provider) || '',
         model: (src[k] && src[k].model) || '',
+        baseURL: (src[k] && src[k].baseURL) || '',
       };
     });
     return out;
@@ -980,6 +983,11 @@ export function apply(ctx) {
     return line;
   }
 
+  /**
+   * 走 DSH 的 llm 服务调一次流式模型。
+   * 默认用当前主模型；opts.provider / opts.model 可以指定别的（槽位就用这条路，
+   * 这样它们和主模型共用同一套凭据，不必各自填 BaseURL 与密钥）。
+   */
   async function callMainModel(messages, opts) {
     opts = opts || {};
     if (!llm) throw new Error('当前运行时没有可用的 llm 服务');
@@ -989,8 +997,8 @@ export function apply(ctx) {
     } catch (e) {
       sel = null;
     }
-    const provider = sel && sel.provider;
-    const model = sel && sel.model;
+    const provider = String(opts.provider || (sel && sel.provider) || '');
+    const model = String(opts.model || (sel && sel.model) || '');
     const tag = String(opts.purpose || '主模型');
     const t0 = Date.now();
     const who = String(provider || '?') + '/' + String(model || '?');
@@ -1073,10 +1081,24 @@ export function apply(ctx) {
   async function callSlot(s, slot, messages, opts) {
     opts = opts || {};
     const cfg = (s.config && s.config[slot]) || {};
-    if (!cfg.baseURL || !cfg.model) {
-      throw new Error('「' + slot + '」模型未配置：请先在设定页填写它的 BaseURL 与 Model');
-    }
     const tag = String(opts.tag || slot);
+    // 新方式：只选了「服务 + 模型」，凭据走 DSH（和主模型同一套，不必自填 BaseURL / 密钥）。
+    if (cfg.provider && cfg.model) {
+      const t0 = Date.now();
+      const who = String(cfg.model) + ' @ ' + String(cfg.provider);
+      try {
+        const out = await callMainModel(messages, Object.assign({}, opts, { provider: cfg.provider, model: cfg.model }));
+        await apiLog('[槽位·' + tag + '] ' + who + ' → ' + String(out || '').length + ' 字', t0);
+        return out;
+      } catch (e) {
+        await apiLog('[槽位·' + tag + '] ' + who + ' → 失败：' + String((e && e.message) || e), t0);
+        throw e;
+      }
+    }
+    // 旧方式：自填 BaseURL + 密钥（老配置继续可用）
+    if (!cfg.baseURL || !cfg.model) {
+      throw new Error('「' + slot + '」模型未配置：请先在设定页选它的服务与模型');
+    }
     const who = String(cfg.model || '') + ' @ ' + String(cfg.baseURL || '');
     const t0 = Date.now();
     try {

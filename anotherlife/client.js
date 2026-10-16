@@ -5500,94 +5500,81 @@ window.__ModuleLoader__.load({
             )
           );
         }
+          /**
+           * 槽位模型：和主模型一样，只选「服务 + 模型」，凭据走 DSH ——
+           * 不必各填一份 BaseURL 与密钥。留空则用当前主模型。
+           * 老配置里若还留着 baseURL，继续按老路走（下面给一句提示 + 一键清掉）。
+           */
           function ModelCfg({ slot, title, sub }) {
-            const c = (dcfg && dcfg[slot]) || { baseURL: '', model: '' };
-            const info = ks[slot] || {};
-            const mm = models[slot] || { loading: false, list: [], error: '', url: '' };
+            const c = (dcfg && dcfg[slot]) || { provider: '', model: '' };
+            const mm = models[slot] || { loading: false, list: [], error: '' };
             function set(f, v) {
               const cfg = Object.assign({}, dcfg);
               cfg[slot] = Object.assign({}, c, {});
               cfg[slot][f] = v;
               upd({ config: cfg });
             }
+            function dropLegacy() {
+              const cfg = Object.assign({}, dcfg);
+              cfg[slot] = Object.assign({}, c, { baseURL: '' });
+              upd({ config: cfg });
+              run(call('saveConfig', { config: cfg }, gameId));
+            }
+            function pickProvider(pid) {
+              set('provider', pid);
+              set('model', '');
+              if (!pid) return;
+              setModels(Object.assign({}, models, { [slot]: { loading: true, list: [], error: '' } }));
+              return call('modelsOf', { provider: pid }, gameId)
+                .then((r) => setModels(Object.assign({}, models, { [slot]: { loading: false, list: (r && r.models) || [], error: '' } })))
+                .catch((e) => setModels(Object.assign({}, models, { [slot]: { loading: false, list: [], error: msg(e) } })));
+            }
             return h(
               'div',
               { className: 'sim-card' },
               h('div', { style: { fontWeight: 600, marginBottom: sub ? 4 : 8 } }, title),
               sub ? h('div', { className: 'sim-hint' }, sub) : null,
-              h(Field, { label: 'BaseURL', value: c.baseURL, ph: 'https://api.example.com/v1', onChange: (v) => set('baseURL', v) }),
-              // 密钥放在模型前面：先存密钥，才能拉模型列表
-              h('div', { className: 'sim-field' },
-                h('label', null, 'API Key'),
-                h('input', { type: 'password', value: keyDraft[slot] || '', placeholder: info.configured ? '已配置（留空表示不改）' : '未配置', onChange: (e) => setKeyDraft(Object.assign({}, keyDraft, { [slot]: e.target.value })) }),
+              h(
+                'div',
+                { className: 'sim-field' },
+                h('label', null, '服务'),
                 h(
-                  Btn,
-                  {
-                    disabled: busy,
-                    title: '保存密钥，并把这一栏的 BaseURL / 模型一起存下来',
-                    onClick: () => {
-                      const v = keyDraft[slot] || '';
-                      setKeyDraft(Object.assign({}, keyDraft, { [slot]: '' }));
-                      // 一起把 BaseURL / 模型写进配置：否则用户以为"保存了"，重开面板却还是空的
-                      const cfg = Object.assign({}, dcfg);
-                      cfg[slot] = Object.assign({}, c, {});
-                      return run(call('setKey', { slot, key: v }, gameId)).then(() => run(call('saveConfig', { config: cfg }, gameId)));
-                    },
-                  },
-                  '保存密钥'
-                ),
-                info.configured ? h(Btn, { danger: true, disabled: busy, onClick: () => { if (window.confirm('清除这个密钥？')) run(call('setKey', { slot, key: '' }, gameId)); } }, '清除') : null
+                  'select',
+                  { className: 'sim-select', value: c.provider || '', onChange: (e) => pickProvider(e.target.value) },
+                  h('option', { value: '' }, '— 用主模型 —'),
+                  ((mmC && mmC.providers) || []).map((p) => h('option', { key: p.id, value: p.id }, p.name || p.id))
+                )
               ),
               h(
                 'div',
                 { className: 'sim-field' },
                 h('label', null, '模型'),
-                h('input', { value: c.model || '', placeholder: '模型名（可手填，也可点右边获取）', onChange: (e) => set('model', e.target.value) }),
-                h('span', { className: 'sim-hint', style: { flex: '0 0 auto' } }, '手填的要点下面「保存设定」'),
+                h('input', {
+                  list: 'sim-slot-' + slot,
+                  value: c.model || '',
+                  placeholder: '留空则用主模型',
+                  onChange: (e) => set('model', e.target.value),
+                }),
                 h(
-                  'button',
-                  {
-                    className: 'sim-btn mini',
-                    disabled: busy || mm.loading,
-                    title: '用 BaseURL + 密钥向接口要模型列表（GET {BaseURL}/models）',
-                    onClick: () => fetchModels(slot),
-                  },
-                  mm.loading ? '获取中…' : '获取模型列表'
+                  'datalist',
+                  { id: 'sim-slot-' + slot },
+                  (mm.list || []).map((m) => {
+                    const id = m && m.id != null ? m.id : String(m);
+                    return h('option', { key: id, value: id });
+                  })
                 )
               ),
-              mm.list.length
+              mm.loading ? h('div', { className: 'sim-hint' }, '正在读取可选模型…') : null,
+              mm.error ? h('div', { className: 'sim-err' }, mm.error) : null,
+              c.baseURL
                 ? h(
                     'div',
                     { className: 'sim-field' },
-                    h('label', null, '从列表选'),
-                    h(
-                      'select',
-                      {
-                        className: 'sim-select',
-                        value: mm.list.indexOf(c.model) >= 0 ? c.model : '',
-                        title: mm.url || '',
-                        onChange: (e) => {
-                          const v = e.target.value;
-                          if (!v) return;
-                          // 下拉是「点一下就定了」，所以直接落盘：
-                          // 只改草稿的话，关掉界面重进就变回空的（踩过一次）
-                          const cfg = Object.assign({}, dcfg);
-                          cfg[slot] = Object.assign({}, c, { model: v });
-                          upd({ config: cfg });
-                          setModels(Object.assign({}, models, { [slot]: Object.assign({}, mm, { saved: false }) }));
-                          return run(call('saveConfig', { config: cfg }, gameId)).then(() =>
-                            setModels(Object.assign({}, models, { [slot]: Object.assign({}, mm, { saved: true }) }))
-                          );
-                        },
-                      },
-                      h('option', { value: '' }, '— 选择模型（共 ' + mm.list.length + ' 个）—'),
-                      mm.list.map((id) => h('option', { key: id, value: id }, id))
-                    ),
-                    mm.saved ? h('span', { className: 'sim-ok' }, '✓ 已保存') : null
+                    h('span', { className: 'sim-hint', style: { flex: '1 1 auto' } }, '这一栏还在用旧的自填地址：' + c.baseURL),
+                    h(Btn, { disabled: busy, onClick: dropLegacy }, '改走主模型同一套凭据')
                   )
                 : null,
-              mm.error ? h('div', { className: 'sim-err' }, mm.error) : null,
-              h('div', { className: 'sim-hint' }, '密钥存在 DSH 凭据服务里（引用名 ' + (info.ref || '—') + '），不写进任何配置文件；当前状态：' + (info.configured ? '已配置' : '未配置'))
+              h('div', { className: 'sim-hint' }, '留空 = 用当前主模型。改完记得点下面的「保存设定」。')
             );
           }
 
