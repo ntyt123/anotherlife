@@ -3285,10 +3285,15 @@ window.__ModuleLoader__.load({
             if (m) return { time: m[1].trim(), extra: m[2].trim() };
             return { time: s, extra: '' };
           }
-          const when = splitWhen(draft.world['当前日期时间']);
-          const place = String(draft.world['起始地点'] || '').trim();
-          const money = draft.protagonist.金钱;
-          const curName = String(draft.protagonist.货币名 || '').trim() || '货币';
+          // 顶栏是只读展示，一律读 state（真相），不要读 draft ——
+          // draft 只在初始化时从 state 同步一次，宿主侧改了 state 它不会跟着变
+          // （手动结算把钱加上去了，顶栏却还显示旧数字，就是这么来的）。
+          const sw = (state && state.world) || {};
+          const sp = (state && state.protagonist) || {};
+          const when = splitWhen(sw['当前日期时间']);
+          const place = String(sw['起始地点'] || '').trim();
+          const money = sp.金钱;
+          const curName = String(sp.货币名 || '').trim() || '货币';
 
           const top = h(
             'div',
