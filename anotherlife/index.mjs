@@ -15,7 +15,7 @@ export const inject = ['tavern'];
 
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { existsSync, cpSync, mkdirSync } from 'node:fs';
+import { existsSync, cpSync, mkdirSync, readdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 
 const P = 'dsh-tavern-simulator/';
@@ -2669,6 +2669,34 @@ export function apply(ctx) {
     g.updatedAt = Date.now();
     await writeJson(SETTINGS_FILE, g);
     return { ok: true, repoDir: g.repoDir };
+  });
+
+  /**
+   * 把远端仓库克隆到指定目录 —— 给「服务器上只解压了插件、没有仓库」的情况用，
+   * 免得对方要去敲命令行。目标目录必须不存在或是空的（不动已有文件）。
+   */
+  reg('cloneRepo', async ({ url, dir }) => {
+    const u = String(url || '').trim();
+    const d = String(dir || '').trim();
+    if (!u) return { ok: false, error: '先填远端地址' };
+    if (!d) return { ok: false, error: '先填仓库目录' };
+    if (existsSync(path.join(d, '.git'))) {
+      const head = gitRun(d, ['rev-parse', '--short', 'HEAD']);
+      return { ok: true, already: true, head: head.ok ? head.out : '' };
+    }
+    if (existsSync(d)) {
+      let n = 0;
+      try {
+        n = readdirSync(d).filter((f) => f !== '.git').length;
+      } catch (e) {
+        n = 0;
+      }
+      if (n > 0) return { ok: false, error: '这个目录里已经有东西了，换一个空目录：' + d };
+    }
+    const g = gitRun(path.dirname(d) || '.', ['clone', u, d], 240000);
+    if (!g.ok) return { ok: false, error: '克隆失败：' + (g.err || g.out || '未知原因') };
+    const head = gitRun(d, ['rev-parse', '--short', 'HEAD']);
+    return { ok: true, head: head.ok ? head.out : '' };
   });
 
   reg('setSkin', async ({ gameId, skin }) => {

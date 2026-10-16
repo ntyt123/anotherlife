@@ -4940,6 +4940,7 @@ window.__ModuleLoader__.load({
           const [busy, setBusy] = React.useState('');
           const [out, setOut] = React.useState('');
           const [repo, setRepo] = React.useState('');
+          const [url, setUrl] = React.useState('');
 
           function pull() {
             Promise.resolve(call('gitStatus'))
@@ -4967,6 +4968,11 @@ window.__ModuleLoader__.load({
                 if (name === 'checkUpdate') {
                   setChk(r);
                   setOut(r.behind ? '有 ' + r.behind + ' 个新提交' : '已是最新');
+                  return;
+                }
+                if (name === 'cloneRepo') {
+                  setOut('已克隆到 ' + (r.head || '') + '\n现在可以点「更新到最新」了。');
+                  pull();
                   return;
                 }
                 if (name === 'pullUpdate') {
@@ -5027,6 +5033,31 @@ window.__ModuleLoader__.load({
                 '记住'
               )
             ),
+            h(
+              'div',
+              { className: 'sim-field' },
+              h('label', null, '远端地址'),
+              h('input', {
+                value: url,
+                placeholder: 'https://github.com/ntyt123/anotherlife.git',
+                onChange: (e) => setUrl(e.target.value),
+              }),
+              h(
+                Btn,
+                {
+                  disabled: !!busy,
+                  onClick: () =>
+                    act(
+                      'cloneRepo',
+                      { url: url, dir: repo },
+                      '克隆',
+                      '把远端仓库克隆到上面的「仓库目录」。\n该目录必须是空的或不存在。\n\n确定继续？'
+                    ),
+                },
+                busy === '克隆' ? '克隆中…' : '克隆到这里'
+              )
+            ),
+            h('div', { className: 'sim-hint', style: { marginTop: 4 } }, '仓库目录要填一个空目录，不是插件目录。'),
             h(
               'div',
               { className: 'sim-acts', style: { marginTop: 10, flexWrap: 'wrap' } },
