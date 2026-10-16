@@ -21,16 +21,53 @@
 
 ## 更新
 
-    git pull
-    重启 DSH
+插件界面「设定」页最下面有「更新与提交」：
 
-插件与卡在同一个 commit 里，两边版本永远对得上。
+    检查更新      看远端有没有新版本（列出了哪些提交）
+    更新到最新    把插件与卡对齐到远端；本地未提交的改动会丢弃（有二次确认）
+    提交并上传    把本地的插件与卡提交到远端 —— 给改过代码的人用
+
+改完之后：宿主侧代码（`index.mjs`）要**重启 DSH**；只改界面（`client.js`）重开面板就够。
+
+## 部署到服务器（给一起玩的人）
+
+把它放在云服务器上、用手机浏览器玩的话，第一次要准备三件事：
+
+**1. 克隆到一个稳定的目录**（别放在 Tavern 的 `plugins/` 里面）
+
+    git clone https://github.com/ntyt123/anotherlife.git /opt/anotherlife
+
+**2. 配拉取凭据** —— 私有仓库必须做，否则「更新」会报 Authentication failed
+
+> **Deploy Key（推荐，只读，最安全）**
+> ```
+> ssh-keygen -t ed25519 -f ~/.ssh/anotherlife -N ''
+> ```
+> 把 `~/.ssh/anotherlife.pub` 的内容加到 GitHub 仓库的
+> Settings → Deploy keys（**不要**勾 Allow write access），
+> 再让 github.com 走这个 key（写进 `~/.ssh/config`）：
+> ```
+> Host github.com
+>   IdentityFile ~/.ssh/anotherlife
+> ```
+
+> **Personal Access Token（备选）**
+> ```
+> git config --global credential.helper store
+> ```
+> 第一次 pull 时输用户名 + token，之后会记住。
+
+**3. 在插件里指认仓库目录**
+
+「设定」页 →「更新与提交」→ 把「仓库目录」填成第 1 步那个路径 → 点「记住」。
+
+之后每次更新就是：**点[检查更新] → 点[更新到最新] → 重启 DSH**。
 
 ## 插件界面
 
 七个页签：正文 / 主角 / 角色 / 资产 / 世界观 / 卡片 / 设定。
 
-「设定」页里可以调界面字体与字号（字体统一，字号分 7 档、可整体调也可分区微调），以及提示音。
+「设定」页里可以调界面字体与字号（字体统一；字号分 7 档，可整体调也可按区域微调），以及提示音、模型槽位、更新与提交。
 
 ## 数据存在哪
 
