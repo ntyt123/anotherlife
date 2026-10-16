@@ -3387,6 +3387,38 @@ export function apply(ctx) {
     return withKeyStatus(s);
   });
 
+  /**
+   * 手动结一次固定收支：不管剧情日期走到哪，就按当前这个月结一笔。
+   * 自动那条（settleMonthly）看的是剧情月份 —— 那取决于模型怎么推进日期，
+   * 剧情几天内走完几十轮就永远不跨月。这个按钮用来兜底。
+   */
+  reg('settleNow', async ({ gameId }) => {
+    const s = await loadState(gameId);
+    const p = s.protagonist || {};
+    const sh = p.收支 || {};
+    const toN = (v) => {
+      const n = Number(String(v == null ? '' : v).replace(/[^\d.\-]/g, ''));
+      return Number.isFinite(n) ? n : 0;
+    };
+    const inc = toN(sh.月收入);
+    const exp = toN(sh.月支出);
+    if (!inc && !exp) return { ok: false, msg: '收支还是空的' };
+    const money = toN(p.金钱);
+    const delta = inc - exp;
+    const next = Math.round((money + delta) * 100) / 100;
+    // 记成一条带 from/to 的 diff：与自动结算一致，重算那一轮时能正确回滚
+    const d = { path: ['protagonist', '金钱'], from: money, to: next, byMonthly: true };
+    applyDiffs(s, [d]);
+    // 基准推到当前剧情月，免得手动结过之后自动那条又补一次
+    const m = String((s.world || {}).当前日期时间 || '').match(/(\d{4})\s*年\s*(\d{1,2})\s*月/);
+    if (m) s._收支结算月 = Number(m[1]) * 12 + (Number(m[2]) - 1);
+    const t = s.transcript || [];
+    if (t.length && Array.isArray(t[t.length - 1].diffs)) t[t.length - 1].diffs.push(d);
+    await saveState(s);
+    await turnLog('[settle] gameId=' + gameId + ' 手动结算 delta=' + delta + ' 余额=' + next);
+    return { ok: true, delta, money: next, months: 1 };
+  });
+
   reg('runSummary', async ({ gameId, start, end }) => {
     const s = await loadState(gameId);
     const cfg = (s.config && s.config.summary) || {};

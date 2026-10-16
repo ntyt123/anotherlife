@@ -5051,6 +5051,12 @@ window.__ModuleLoader__.load({
             const exp = toN(sh.月支出);
             const net = inc - exp;
             const fm = (n) => Number(n || 0).toLocaleString('en-US');
+            /** 私有键 _收支结算月 是「年 × 12 + 月序」的整数，转回给人看 */
+            const monthLabel = (v) => {
+              const n = Number(v);
+              if (!Number.isFinite(n) || n <= 0) return '还没记';
+              return Math.floor(n / 12) + '年' + ((n % 12) + 1) + '月';
+            };
             const rowList = (v, keys) =>
               Array.isArray(v) && v.length
                 ? h(
@@ -5101,7 +5107,9 @@ window.__ModuleLoader__.load({
                         },
                         (net >= 0 ? '+' : '−') + fm(Math.abs(net))
                       ),
-                      h('span', { className: 'sim-hint' }, '每月 收入 ' + fm(inc) + ' · 支出 ' + fm(exp))
+                      h('span', { className: 'sim-hint' }, '每月 收入 ' + fm(inc) + ' · 支出 ' + fm(exp)),
+                      h('span', { className: 'sim-hint' }, '上次结算 ' + monthLabel(state && state._收支结算月)),
+                      h(Btn, { disabled: busy, onClick: () => run(call('settleNow', {}, gameId), true) }, '按当前月结一次')
                     ),
                     rowList(sh.明细, ['名目', '金额', '周期'])
                   )
