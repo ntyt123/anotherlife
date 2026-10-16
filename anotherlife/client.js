@@ -3827,7 +3827,7 @@ window.__ModuleLoader__.load({
               h('textarea', { className: 'sim-ta', value: nl, placeholder: '例如：19 岁的练习生，五官清秀、小鹿眼、黑长直，个子不高，怕被淘汰……', onChange: (e) => setNl(e.target.value) }),
               h('div', { style: { marginTop: 8 } }, h(Btn, { primary: true, disabled: busy, onClick: () => aiParse('character') }, busy ? '解析中… ' + parseSec + 's' : '✨ AI 解析填入'))
             ),
-            charSec('基础', ['姓名', '性别', '生日', '年龄']),
+            charSec('基础', ['姓名', '性别', '生日', '出生地', '年龄']),
             h('div', { className: 'sim-sec' }, '演艺身份'),
             h(
               'div',
@@ -4456,7 +4456,7 @@ window.__ModuleLoader__.load({
             '团队', '团队评价', '行程',
           ];
           const PROT_GROUPS = [
-            ['基础信息', ['姓名', '性别', '生日', '年龄']],
+            ['基础信息', ['姓名', '性别', '生日', '出生地', '年龄']],
             ['外貌', ['外貌']],
             ['身份', ['身份', '种族', '婚姻状况', '配偶', '子女']],
             ['当前状态', ['当前状态']],
