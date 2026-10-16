@@ -6022,6 +6022,37 @@ window.__ModuleLoader__.load({
             ),
             SummaryCfg(),
             h(SoundCfg, { key: 'sound' }),
+            h(
+              'div',
+              { className: 'sim-card' },
+              h('div', { style: { fontWeight: 600, marginBottom: 8 } }, '正文生成'),
+              h(
+                'div',
+                { className: 'sim-grid' },
+                h(Field, {
+                  label: '最少字数',
+                  value: dcfg.bodyMinWords,
+                  onChange: (v) => {
+                    const c = Object.assign({}, dcfg);
+                    c.bodyMinWords = Math.max(200, Math.min(20000, Math.floor(Number(v) || 1000)));
+                    upd({ config: c });
+                    run(call('saveConfig', { config: c }, gameId));
+                  },
+                }),
+                h(Field, {
+                  label: '最多字数（0=不限）',
+                  value: dcfg.bodyMaxWords,
+                  onChange: (v) => {
+                    const c = Object.assign({}, dcfg);
+                    c.bodyMaxWords = Math.max(0, Math.min(50000, Math.floor(Number(v) || 0)));
+                    upd({ config: c });
+                    run(call('saveConfig', { config: c }, gameId));
+                  },
+                })
+              ),
+              h('div', { className: 'sim-hint' }, '最少字数是硬要求，写不够算不合格；最多字数填 0 表示不设上限。段落数按字数自动换算。'),
+              h('div', { className: 'sim-hint' }, '这一项和上面的模型配置一样是全局的，新开一局会带上。')
+            ),
             h('div', { className: 'sim-card' },
               h('div', { style: { fontWeight: 600, marginBottom: 8 } }, '注入规则'),
               h(Field, { label: '最小基线字段', value: dcfg.baseline, ph: '姓名,性别', onChange: (v) => { const c = Object.assign({}, dcfg); c.baseline = v; upd({ config: c }); } }),

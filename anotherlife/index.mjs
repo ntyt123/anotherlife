@@ -22,7 +22,7 @@ const P = 'dsh-tavern-simulator/';
 const KEY_SLOTS = ['retrieve', 'settle', 'summary', 'assistant'];
 
 /** 每次改动宿主侧都改一下这个版本号：ping 会回报它，用来确认 Tavern 到底加载的是哪一版 */
-const REV = 'host-v32-recent-rounds-20261016r';
+const REV = 'host-v33-body-length-20261016r';
 
 /**
  * 只有这一局用的是这些卡时，插件才出现在界面上（其余卡片游玩时完全不打扰）。
@@ -291,6 +291,9 @@ export function apply(ctx) {
         retrieveMax: 24,
         // 给正文附带最近几轮原文。0 = 跟着总结频率走（总结每 N 轮一次，原文就接最近 N 轮）。
         recentRounds: 0,
+        // 正文长度：下限是硬要求（写不够就算不合格），上限 0 表示不设上限
+        bodyMinWords: 1000,
+        bodyMaxWords: 0,
       },
       world: EMPTY_WORLD(),
       protagonist: EMPTY_PROTAG(),
@@ -1511,7 +1514,16 @@ export function apply(ctx) {
     head.push('3) 最后以 [行动选项] 开头，按下面的规则给出行动选项。');
     head.push('');
     head.push(
-      '【正文长度】每轮正文**不少于 1000 字**（中文字符，约 6~10 个自然段）：写足场景、对话、动作、心理与环境细节，把这一轮的因果走完。禁止用「……」「（略）」「几天后」这类方式跳过大段内容，禁止把一件事压缩成一句概述，不要为了收尾而草草结束 —— 写到 1000 字以下就算不合格。'
+      '【正文长度】' +
+        (function () {
+          const lo = Math.max(200, Math.floor(Number(s.config && s.config.bodyMinWords) || 1000));
+          const hi = Math.max(0, Math.floor(Number(s.config && s.config.bodyMaxWords) || 0));
+          const para = (n) => Math.max(2, Math.round(n / 160)) + '~' + Math.max(3, Math.round(n / 100)) + ' 个自然段';
+          const loTxt = '每轮正文**不少于 ' + lo + ' 字**（中文字符，' + para(lo) + '）';
+          const hiTxt = hi > lo ? '，**最多 ' + hi + ' 字**（到量就收，别硬凑）' : '';
+          return loTxt + hiTxt;
+        })() +
+        '：写足场景、对话、动作、心理与环境细节，把这一轮的因果走完。禁止用「……」「（略）」「几天后」这类方式跳过大段内容，禁止把一件事压缩成一句概述，不要为了收尾而草草结束 —— 写不够就算不合格。'
     );
     head.push('');
     head.push(OPTION_RULES);
