@@ -22,7 +22,7 @@ const P = 'dsh-tavern-simulator/';
 const KEY_SLOTS = ['retrieve', 'settle', 'summary', 'assistant'];
 
 /** 每次改动宿主侧都改一下这个版本号：ping 会回报它，用来确认 Tavern 到底加载的是哪一版 */
-const REV = 'host-v25-slot-uses-main-creds-20261016r';
+const REV = 'host-v26-slot-text-20261016r';
 
 /**
  * 只有这一局用的是这些卡时，插件才出现在界面上（其余卡片游玩时完全不打扰）。
@@ -1087,8 +1087,11 @@ export function apply(ctx) {
       const t0 = Date.now();
       const who = String(cfg.model) + ' @ ' + String(cfg.provider);
       try {
-        const out = await callMainModel(messages, Object.assign({}, opts, { provider: cfg.provider, model: cfg.model }));
-        await apiLog('[槽位·' + tag + '] ' + who + ' → ' + String(out || '').length + ' 字', t0);
+        // 注意 callMainModel 返回的是 { text, reasoning, finish }，不是字符串 ——
+        // 直接往外抛会一路走到界面上显示成 [object Object]（助手上踩过）。
+        const r = await callMainModel(messages, Object.assign({}, opts, { provider: cfg.provider, model: cfg.model }));
+        const out = r && typeof r === 'object' && r.text != null ? String(r.text) : String(r == null ? '' : r);
+        await apiLog('[槽位·' + tag + '] ' + who + ' → ' + out.length + ' 字', t0);
         return out;
       } catch (e) {
         await apiLog('[槽位·' + tag + '] ' + who + ' → 失败：' + String((e && e.message) || e), t0);

@@ -2959,6 +2959,25 @@ window.__ModuleLoader__.load({
           }
 
           /**
+           * 把接口/模型返回的东西转成人看的文字。
+           * 它可能是字符串，也可能是 { text } / 别的对象 —— 直接 String() 会显示成
+           * [object Object]（助手第一版就是这样）。
+           */
+          function asText(v) {
+            if (v == null) return '';
+            if (typeof v === 'string') return v;
+            if (typeof v === 'object') {
+              if (typeof v.text === 'string') return v.text;
+              if (typeof v.message === 'string') return v.message;
+              try {
+                return JSON.stringify(v, null, 2);
+              } catch (e) {
+                return String(v);
+              }
+            }
+            return String(v);
+          }
+          /**
            * 助手：把这一句发给模型，回复追加进对话。
            * history 以前端这份为准（它才是这段对话的真源），宿主只负责拼上下文与调用。
            */
@@ -2971,11 +2990,11 @@ window.__ModuleLoader__.load({
             setAsBusy(true);
             const done = (reply, e) => {
               setAsBusy(false);
-              setAsLog(past.concat([{ role: 'user', content: text }, { role: 'assistant', content: reply || '', err: e || '' }]));
+              setAsLog(past.concat([{ role: 'user', content: text }, { role: 'assistant', content: asText(reply), err: asText(e) }]));
             };
             call('assistantChat', { text: text, history: past }, gameId)
               .then((r) => {
-                if (r && r.ok) done(String(r.reply || ''));
+                if (r && r.ok) done(r.reply);
                 else done('', (r && r.msg) || '助手没有回复');
               })
               .catch((e) => done('', msg(e)));
