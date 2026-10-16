@@ -22,7 +22,7 @@ const P = 'dsh-tavern-simulator/';
 const KEY_SLOTS = ['retrieve', 'settle', 'summary', 'assistant'];
 
 /** 每次改动宿主侧都改一下这个版本号：ping 会回报它，用来确认 Tavern 到底加载的是哪一版 */
-const REV = 'host-v27-assistant-history-20261016r';
+const REV = 'host-v28-assistant-text-20261016r';
 
 /**
  * 只有这一局用的是这些卡时，插件才出现在界面上（其余卡片游玩时完全不打扰）。
@@ -3467,9 +3467,16 @@ export function apply(ctx) {
 
     const cfg = (s.config && s.config.assistant) || {};
     const opts = { temperature: 0.7, maxTokens: 2000, tag: '助手' };
-    const out = cfg.baseURL && cfg.model
-      ? await callSlot(s, 'assistant', msgs, Object.assign({ timeoutMs: 120000 }, opts))
-      : await callMainModel(msgs, Object.assign({ stallMs: 120000, purpose: '助手' }, opts));
+    let out;
+    if (cfg.baseURL && cfg.model) {
+      out = await callSlot(s, 'assistant', msgs, Object.assign({ timeoutMs: 120000 }, opts));
+    } else {
+      // callMainModel 返回的是 { text, reasoning, finish }，不是字符串 ——
+      // 忘了取 .text 就会一路变成 [object Object] 存进存档（这里踩过）。
+      const r = await callMainModel(msgs, Object.assign({ stallMs: 120000, purpose: '助手' }, opts));
+      out = r && typeof r === 'object' && r.text != null ? String(r.text) : String(r == null ? '' : r);
+    }
+    out = String(out == null ? '' : out);
 
     // 顺手在存档里留一份，重开这一局还能翻到
     s.assistant = Array.isArray(s.assistant) ? s.assistant : [];
