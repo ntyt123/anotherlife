@@ -36,7 +36,16 @@ window.__ModuleLoader__.load({
       '.sim-as-empty{color:var(--sim-mut);font-size:var(--sim-fs-3);text-align:center;padding:30px 8px;line-height:1.7}',
       '.sim-as-m{max-width:88%;align-self:flex-start;padding:9px 12px;border-radius:10px;background:var(--sim-bg);border:1px solid var(--sim-bd)}',
       '.sim-as-m.me{align-self:flex-end;background:var(--sim-ac);border-color:transparent}',
-      '.sim-as-txt{font-size:var(--sim-fs-3);line-height:1.68;white-space:pre-wrap;word-break:break-word}',
+      '.sim-as-txt{font-size:var(--sim-fs-3);line-height:1.68;word-break:break-word}',
+      '.sim-md-p{margin:0 0 6px}',
+      '.sim-md-p:last-child{margin-bottom:0}',
+      '.sim-md-h{font-weight:700;margin:8px 0 4px}',
+      '.sim-md-h:first-child{margin-top:0}',
+      '.sim-md-list{margin:4px 0 6px;padding-left:20px}',
+      '.sim-md-list:last-child{margin-bottom:0}',
+      '.sim-md-list li{margin:2px 0}',
+      '.sim-md-q{margin:4px 0;padding-left:10px;border-left:3px solid var(--sim-bd);color:var(--sim-t2)}',
+      '.sim-as-txt code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.92em;background:rgba(128,128,128,.16);padding:1px 4px;border-radius:4px}',
       '.sim-as-m.me .sim-as-txt{color:#fff}',
       '.sim-as-err{margin-top:5px;font-size:var(--sim-fs-2);color:var(--sim-err)}',
       '.sim-as-acts{margin-top:6px;display:flex;gap:6px;opacity:0;transition:opacity .12s}',
@@ -2989,6 +2998,82 @@ window.__ModuleLoader__.load({
               }
             }
             return String(v);
+          }
+          /**
+           * 极简 Markdown 渲染（只给助手回复用）。
+           * 处理：**粗体**、*斜体*、`代码`、# 标题、- / 1. 列表、> 引用、空行分段。
+           * 自己写：插件是单文件、不引第三方库；返回 React 节点，也不走
+           * dangerouslySetInnerHTML（模型输出不可信）。
+           */
+          function mdNodes(text) {
+            const lines = String(text == null ? '' : text).split(/\r?\n/);
+            const out = [];
+            let list = null; // { ordered, items: [] }
+            const flush = () => {
+              if (!list) return;
+              const items = list.items.map((it, i) => h('li', { key: i }, mdInline(it)));
+              out.push(
+                h(list.ordered ? 'ol' : 'ul', { key: 'l' + out.length, className: 'sim-md-list' }, items)
+              );
+              list = null;
+            };
+            lines.forEach((raw, i) => {
+              const t = String(raw).replace(/\s+$/, '').trim();
+              if (!t) {
+                flush();
+                return;
+              }
+              const ol = /^(\d+)\s*[.、)]\s+(.*)$/.exec(t);
+              const ul = /^[-*•]\s+(.*)$/.exec(t);
+              if (ol) {
+                if (!list || !list.ordered) {
+                  flush();
+                  list = { ordered: true, items: [] };
+                }
+                list.items.push(ol[2]);
+                return;
+              }
+              if (ul) {
+                if (!list || list.ordered) {
+                  flush();
+                  list = { ordered: false, items: [] };
+                }
+                list.items.push(ul[1]);
+                return;
+              }
+              flush();
+              const hd = /^(#{1,4})\s+(.*)$/.exec(t);
+              if (hd) {
+                out.push(h('div', { key: i, className: 'sim-md-h' }, mdInline(hd[2])));
+                return;
+              }
+              const qt = /^>\s?(.*)$/.exec(t);
+              if (qt) {
+                if (qt[1]) out.push(h('div', { key: i, className: 'sim-md-q' }, mdInline(qt[1])));
+                return;
+              }
+              out.push(h('div', { key: i, className: 'sim-md-p' }, mdInline(t)));
+            });
+            flush();
+            return out;
+          }
+          /** 行内：**粗**、*斜*、`代码` */
+          function mdInline(s) {
+            const str = String(s == null ? '' : s);
+            const parts = [];
+            const re = /\*\*([^*]+)\*\*|`([^`]+)`|\*([^*\s][^*]*)\*/g;
+            let last = 0;
+            let m;
+            let k = 0;
+            while ((m = re.exec(str))) {
+              if (m.index > last) parts.push(str.slice(last, m.index));
+              if (m[1] != null) parts.push(h('strong', { key: 'b' + k++ }, m[1]));
+              else if (m[2] != null) parts.push(h('code', { key: 'c' + k++ }, m[2]));
+              else parts.push(h('em', { key: 'i' + k++ }, m[3]));
+              last = m.index + m[0].length;
+            }
+            if (last < str.length) parts.push(str.slice(last));
+            return parts;
           }
           /**
            * 助手：把这一句发给模型，回复追加进对话。
@@ -6100,7 +6185,7 @@ window.__ModuleLoader__.load({
                           h(
                             'div',
                             { key: i, className: 'sim-as-m' + (m.role === 'user' ? ' me' : '') },
-                            h('div', { className: 'sim-as-txt' }, m.content),
+                            h('div', { className: 'sim-as-txt' }, mdNodes(m.content)),
                             m.err ? h('div', { className: 'sim-as-err' }, m.err) : null,
                             m.role === 'user'
                               ? null
