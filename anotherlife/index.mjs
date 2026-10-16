@@ -2516,16 +2516,27 @@ export function apply(ctx) {
   const PLUGIN_DIRNAME = 'anotherlife';
   const CARD_FILENAME = '人生模拟器.json';
 
-  /** 仓库位置：设定页里可改，默认 workspace/_repo/anotherlife */
+  /**
+   * 仓库位置。设定页里可改；填错（最常见：填成了插件目录）或没填时自动探测 ——
+   * 从插件目录往上找带 .git、并且**里面确实有 anotherlife/ 子目录**的那一层
+   * （后者是关键：Tavern 自己的 plugins/ 目录也可能有 .git，不能误认成仓库）。
+   */
+  const looksLikeRepo = (d) =>
+    !!d && existsSync(path.join(d, '.git')) && existsSync(path.join(d, PLUGIN_DIRNAME)) && existsSync(path.join(d, 'cards'));
   async function gitRepoDir() {
+    let guess = '';
     try {
       const g = (await readJson(SETTINGS_FILE)) || {};
-      const v = String(g.repoDir || '').trim();
-      if (v) return noTailSlash(v);
+      guess = noTailSlash(String(g.repoDir || '').trim());
     } catch (e) {
       /* 读不到就用默认 */
     }
-    return noTailSlash(path.join(STORE_DIR, '_repo', PLUGIN_DIRNAME));
+    if (looksLikeRepo(guess)) return guess;
+    const near = upFind(HERE_DIR, (d) => looksLikeRepo(d), 6);
+    if (near) return near;
+    const dflt = noTailSlash(path.join(STORE_DIR, '_repo', PLUGIN_DIRNAME));
+    if (looksLikeRepo(dflt)) return dflt;
+    return guess || dflt;
   }
   const repoPluginDir = (r) => path.join(r, PLUGIN_DIRNAME);
   const repoCardFile = (r) => path.join(r, 'cards', CARD_FILENAME);
@@ -2561,7 +2572,7 @@ export function apply(ctx) {
   /** 仓库与当前版本概况 */
   reg('gitStatus', async () => {
     const r = await gitRepoDir();
-    if (!existsSync(path.join(r, '.git'))) return { ok: false, error: '这里不是 git 仓库：' + r, repo: r };
+    if (!existsSync(path.join(r, '.git'))) return { ok: false, error: '没找到 git 仓库（自动找也没有）：' + r, repo: r };
     const head = gitRun(r, ['rev-parse', '--short', 'HEAD']);
     const when = gitRun(r, ['log', '-1', '--format=%ci']);
     const br = gitRun(r, ['rev-parse', '--abbrev-ref', 'HEAD']);
@@ -2579,7 +2590,7 @@ export function apply(ctx) {
   /** 只查不改：落后几个提交、分别是哪些 */
   reg('checkUpdate', async () => {
     const r = await gitRepoDir();
-    if (!existsSync(path.join(r, '.git'))) return { ok: false, error: '这里不是 git 仓库：' + r };
+    if (!existsSync(path.join(r, '.git'))) return { ok: false, error: '没找到 git 仓库（自动找也没有）：' + r };
     const f = gitRun(r, ['fetch', '--quiet', 'origin', 'main']);
     if (!f.ok) return { ok: false, error: '读取远端失败：' + (f.err || f.out || '未知原因') };
     const n = gitRun(r, ['rev-list', '--count', 'HEAD..origin/main']);
@@ -2596,7 +2607,7 @@ export function apply(ctx) {
   /** 强制对齐远端（丢弃本地改动），并把插件与卡拷回原位 */
   reg('pullUpdate', async () => {
     const r = await gitRepoDir();
-    if (!existsSync(path.join(r, '.git'))) return { ok: false, error: '这里不是 git 仓库：' + r };
+    if (!existsSync(path.join(r, '.git'))) return { ok: false, error: '没找到 git 仓库（自动找也没有）：' + r };
     const f = gitRun(r, ['fetch', 'origin', 'main']);
     if (!f.ok) return { ok: false, error: '读取远端失败：' + (f.err || f.out) };
     const rs = gitRun(r, ['reset', '--hard', 'origin/main']);
@@ -2624,7 +2635,7 @@ export function apply(ctx) {
   /** 把本地插件与卡拷进仓库，然后 add / commit / push */
   reg('commitPush', async ({ message }) => {
     const r = await gitRepoDir();
-    if (!existsSync(path.join(r, '.git'))) return { ok: false, error: '这里不是 git 仓库：' + r };
+    if (!existsSync(path.join(r, '.git'))) return { ok: false, error: '没找到 git 仓库（自动找也没有）：' + r };
     const done = [];
     try {
       copyOver(HERE_DIR, repoPluginDir(r));
