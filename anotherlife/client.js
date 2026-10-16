@@ -3144,11 +3144,31 @@ window.__ModuleLoader__.load({
               );
             }
 
-          /** AI 解析：把自然语言交给模型拆成字段，只填空着的输入框 */
+          /** 按现有结构生成一份「全空」副本：数组→[]、对象→递归、其余→'' */
+          function blankLike(v) {
+            if (Array.isArray(v)) return [];
+            if (v && typeof v === 'object') {
+              const o = {};
+              Object.keys(v).forEach((k) => {
+                o[k] = blankLike(v[k]);
+              });
+              return o;
+            }
+            return '';
+          }
+          /**
+           * AI 解析：把自然语言交给模型拆成字段。
+           * 点下去先**整份清空**再填 —— 否则只是"补空位"，上一局的残值会留下来，
+           * 分不清哪些是这次解析出来的。解析失败时把清空前的原样恢复回去。
+           */
           function aiParse(target) {
             setBusy(true);
             setErr('');
             setParseSec(0);
+            const backup = target === 'world' ? draft.world : draft.protagonist;
+            // 点击即清空
+            if (target === 'world') upd({ world: blankLike(draft.world) });
+            else upd({ protagonist: blankLike(draft.protagonist) });
             const t0 = Date.now();
             if (parseTimer.current) window.clearInterval(parseTimer.current);
             parseTimer.current = window.setInterval(() => {
@@ -3159,7 +3179,9 @@ window.__ModuleLoader__.load({
                 if (parseTimer.current) window.clearInterval(parseTimer.current);
                 parseTimer.current = 0;
                 setBusy(false);
-                setErr('解析超过 5 分钟还没返回，已放开界面（模型可能在长时间思考或卡住了）。可以重试，或直接手填字段 —— 你已经填的内容没有被改动。');
+                setErr('解析超过 5 分钟还没返回，已放开界面（模型可能在长时间思考或卡住了）。可以重试，或直接手填字段 —— 清空前的原内容已经恢复。');
+                if (target === 'world') upd({ world: backup });
+                else upd({ protagonist: backup });
               }
             }, 1000);
             const stopTimer = () => {
@@ -3173,15 +3195,19 @@ window.__ModuleLoader__.load({
                 if (p && p._raw) {
                   const raw = String(p._raw);
                   setErr('解析失败（共 ' + raw.length + ' 字' + (p._finish ? '，finish=' + p._finish : '') + '）。开头：' + raw.slice(0, 150) + ' … 结尾：' + raw.slice(-150));
+                  if (target === 'world') upd({ world: backup });
+                  else upd({ protagonist: backup });
                   return;
                 }
-                if (target === 'world') upd({ world: fillEmpty(draft.world, p) });
-                else upd({ protagonist: fillEmpty(draft.protagonist, p) });
+                if (target === 'world') upd({ world: Object.assign(blankLike(draft.world), p) });
+                else upd({ protagonist: Object.assign(blankLike(draft.protagonist), p) });
               })
               .catch((e) => {
                 stopTimer();
                 setErr(msg(e));
                 setBusy(false);
+                if (target === 'world') upd({ world: backup });
+                else upd({ protagonist: backup });
               });
           }
 
