@@ -5879,10 +5879,13 @@ window.__ModuleLoader__.load({
           function ModelCfg({ slot, title, sub }) {
             const c = (dcfg && dcfg[slot]) || { provider: '', model: '' };
             const mm = models[slot] || { loading: false, list: [], error: '' };
-            function set(f, v) {
+            function set(patch) {
+              // 一次改一批字段，而不是「每次改一个」。
+              // 原来是 set(f, v)，里面用渲染时的 c 快照重建对象 ——
+              // 连着调两次（先设 provider、再清空 model）时，第二次会用旧快照
+              // 把第一次的改动盖掉，表现为「服务选完立刻弹回原样」（踩过）。
               const cfg = Object.assign({}, dcfg);
-              cfg[slot] = Object.assign({}, c, {});
-              cfg[slot][f] = v;
+              cfg[slot] = Object.assign({}, c, patch || {});
               upd({ config: cfg });
             }
             function dropLegacy() {
@@ -5892,8 +5895,8 @@ window.__ModuleLoader__.load({
               run(call('saveConfig', { config: cfg }, gameId));
             }
             function pickProvider(pid) {
-              set('provider', pid);
-              set('model', '');
+              // 换服务时 provider 与 model 必须**一次写完**（分两次会互相覆盖）
+              set({ provider: pid, model: '' });
               if (!pid) return;
               setModels(Object.assign({}, models, { [slot]: { loading: true, list: [], error: '' } }));
               return call('modelsOf', { provider: pid }, gameId)
@@ -5924,7 +5927,7 @@ window.__ModuleLoader__.load({
                   list: 'sim-slot-' + slot,
                   value: c.model || '',
                   placeholder: '留空则用主模型',
-                  onChange: (e) => set('model', e.target.value),
+                  onChange: (e) => set({ model: e.target.value }),
                 }),
                 h(
                   'datalist',
