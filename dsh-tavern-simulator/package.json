@@ -1,0 +1,16 @@
+{
+  "name": "dsh-tavern-simulator",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "exports": {
+    ".": "./index.mjs",
+    "./client": "./client.js"
+  },
+  "dsh": {
+    "client": {
+      "platform": "web",
+      "inject": ["dsh-tavern-plugin"]
+    }
+  }
+}

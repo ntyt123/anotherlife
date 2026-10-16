@@ -1,0 +1,9 @@
+﻿# 插件运行时写出的存档、日志与备份（正常情况下它们都在 Tavern 的数据目录里，不在本仓库内）
+simulator-session-*.json
+simulator-*.log
+simulator-*.json
+_backup/
+*.bak.json
+node_modules/
+.DS_Store
+Thumbs.db
