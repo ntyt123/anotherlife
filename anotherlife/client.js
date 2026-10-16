@@ -1106,7 +1106,7 @@ window.__ModuleLoader__.load({
          */
         const WIDE_KEYS = [
           '外貌', '外貌与特征', '健康状况', '表性格', '里性格', '性格', '当前状态', '当前状况', '当前想法',
-          '标签', '特点', '疾病与伤病', '备注', '简介', '描述', '人物简述', '背景',
+          '标签', '特点', '疾病与伤病', '备注', '简介', '描述', '人物简述', '背景', '人物关系',
         ];
         const UI_TYPE_MAP = UI_TYPES.reduce((a, x) => {
           a[x.key] = x;
@@ -2894,9 +2894,12 @@ window.__ModuleLoader__.load({
            * 在「游玩历史」里的名字改成「角色名·身份」。开局失败/中断就不改名。
            */
           function startGame() {
-            return run(call('openGame', { protagonist: draft.protagonist }, gameId)).then((s) =>
-              renamePlayTitle((s && s.protagonist) || draft.protagonist)
-            );
+            // 备注栏（补充信息）不在 protagonist 里，必须显式一起送过去 ——
+            // 原来只传了 protagonist，玩家在备注里写的东西就丢了
+            // （开局信息里不会出现【补充信息】那一段，AI 也就不知道）。
+            return run(
+              call('openGame', { protagonist: draft.protagonist, extraInfo: draft.extraInfo }, gameId)
+            ).then((s) => renamePlayTitle((s && s.protagonist) || draft.protagonist));
           }
 
           /**
@@ -3537,16 +3540,9 @@ window.__ModuleLoader__.load({
                   upd({ world: Object.assign(blankLike(draft.world), p) });
                 } else {
                   const merged = Object.assign(blankLike(draft.protagonist), p);
-                  // 「人物关系」不是主角的属性，它是解析阶段用来接住「描述里提到的人」的容器
-                  // （字段表里没有父母、兄弟姐妹的位置，不接住就丢了）。
-                  // 这里挪进备注栏 —— 第 0 轮的人物盘点会照着备注建角色。
-                  // 追加而不是覆盖，免得把玩家自己在备注里写的东西冲掉。
-                  const rel = String(merged.人物关系 == null ? '' : merged.人物关系).trim();
-                  delete merged.人物关系;
-                  if (rel) {
-                    const prev = String(draft.extraInfo || '').trim();
-                    upd({ extraInfo: prev ? prev + '\n' + rel : rel });
-                  }
+                  // 注：「人物关系」现在有正式字段了（主角的 人物关系），解析出来就留在那里 ——
+                  // 早期版本它只是解析阶段的临时容器，要挪去备注栏；现在不用挪了，
+                  // 手填与解析两条路都写同一个字段，界面上也看得见。
                   // 「是否艺人」是界面上的开关，玩家说了算 —— 不许模型自己判断：
                   // 它会因为「顶流小生」这类描述就把整批演艺字段填上，哪怕开关没开。
                   const star = !!(backup && backup.是否艺人);
@@ -3873,6 +3869,16 @@ window.__ModuleLoader__.load({
             h('div', { className: 'sim-sec' }, '外貌（细描，100 字以内）'),
             h('div', { className: 'sim-field' }, h('label', null, '外貌'), h('textarea', { style: { minHeight: 132 }, value: draft.protagonist.外貌 || '', onChange: (e) => setProtag('外貌', e.target.value) })),
             charSec('身份', ['身份', '种族', '婚姻状况', '配偶', '子女']),
+            h('div', { className: 'sim-sec' }, '人物关系（家人、熟人）'),
+            h('div', { className: 'sim-field' },
+              h('textarea', {
+                style: { minHeight: 68 },
+                value: draft.protagonist.人物关系 || '',
+                placeholder: '如：妹妹罗瑶，刚毕业；母亲徐惠芳，小学数学老师；父亲在老家开厂',
+                onChange: (e) => setProtag('人物关系', e.target.value),
+              })
+            ),
+            h('div', { className: 'sim-hint' }, '这里写过的人，开局那轮会逐个建成角色。名字请照写，AI 不会改。'),
             h('div', { className: 'sim-sec' }, '性格（仅面板，不发给模型）'),
             h(
               'div',
@@ -4469,6 +4475,9 @@ window.__ModuleLoader__.load({
             ['基础信息', ['姓名', '性别', '生日', '出生地', '年龄']],
             ['外貌', ['外貌']],
             ['身份', ['身份', '种族', '婚姻状况', '配偶', '子女']],
+            // 家人与熟人：字段表里只有「配偶」「子女」，父母、兄弟姐妹这些没处放，
+            // 不单列一项的话，玩家写了也没人知道（AI 建不出这些人）。
+            ['人物关系', ['人物关系']],
             ['当前状态', ['当前状态']],
             ['身体', ['身高', '体重', '三围', '罩杯']],
             // 生理周期 / 妊娠状态 / 身体状态 已经拼在图头那行摘要里了，这里不再重复列一遍
