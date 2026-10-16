@@ -298,6 +298,16 @@ window.__ModuleLoader__.load({
       '.sim-fz2 summary{font-size:var(--sim-fs-4)}',
       '.sim-fz2 .sim-kv-view .k{font-size:var(--sim-fs-4);flex:0 0 82px}',
       '.sim-fz2 .sim-kv-view .v{font-size:var(--sim-fs-5)}',
+      /**
+       * 星途模拟／资产页里的「内容」字号：统一由这一档控制。
+       * 这些页签的容器带 .sim-fz2（整体放大一档），此前只放大了 KV 键值对；
+       * 标签胶囊（.sim-tag）漏了、行列表（.sim-rows）用的是内联样式收不到覆盖 ——
+       * 结果同一个页签里出现 15.5 / 13 / 12 三种字号。这里补平成同一档。
+       */
+      '.sim-rows{display:flex;flex-direction:column;gap:6px}',
+      '.sim-rows>div{font-size:var(--sim-fs-3);line-height:1.6;word-break:break-word}',
+      '.sim-fz2 .sim-tag{font-size:var(--sim-fs-5)}',
+      '.sim-fz2 .sim-rows>div{font-size:var(--sim-fs-5)}',
       '.sim-fz2 .sim-kv-view .pill{font-size:var(--sim-fs-4)}',
       '.sim-fz2 .sim-chip{font-size:var(--sim-fs-4)}',
       '.sim-fz2 .sim-chip-b{font-size:var(--sim-fs-3)}',
@@ -4085,14 +4095,11 @@ window.__ModuleLoader__.load({
               arr(v).length
                 ? h(
                     'div',
-                    { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
+                    { className: 'sim-rows' },
                     arr(v).map((it, i) =>
                       h(
                         'div',
-                        {
-                          key: i,
-                          style: { fontSize: 'var(--sim-fs-2)', wordBreak: 'break-word', lineHeight: 1.5 },
-                        },
+                        { key: i },
                         typeof it === 'string'
                           ? it
                           : (keys || Object.keys(it)).map((k) => L(it[k])).filter(Boolean).join(' · ')
@@ -4166,11 +4173,11 @@ window.__ModuleLoader__.load({
                     return list.length
                       ? h(
                           'div',
-                          { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
+                          { className: 'sim-rows' },
                           list.map((it, i) =>
                             h(
                               'div',
-                              { key: i, style: { fontSize: 'var(--sim-fs-2)' } },
+                              { key: i },
                               typeof it === 'string'
                                 ? it
                                 : [it.品牌, it.头衔, it.到期].filter(Boolean).join(' · ')
@@ -4200,11 +4207,11 @@ window.__ModuleLoader__.load({
                   arr(p.隐患).length
                     ? h(
                         'div',
-                        { style: { display: 'flex', flexDirection: 'column', gap: 8 } },
+                        { className: 'sim-rows' },
                         arr(p.隐患).map((it, i) =>
                           h(
                             'div',
-                            { key: i, style: { fontSize: 'var(--sim-fs-2)', lineHeight: 1.5, wordBreak: 'break-word' } },
+                            { key: i },
                             typeof it === 'string'
                               ? it
                               : [
@@ -4934,11 +4941,11 @@ window.__ModuleLoader__.load({
               Array.isArray(v) && v.length
                 ? h(
                     'div',
-                    { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
+                    { className: 'sim-rows' },
                     v.map((it, i) =>
                       h(
                         'div',
-                        { key: i, style: { fontSize: 'var(--sim-fs-2)', lineHeight: 1.5, wordBreak: 'break-word' } },
+                        { key: i },
                         typeof it === 'string'
                           ? it
                           : (keys || Object.keys(it))
