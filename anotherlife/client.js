@@ -1360,6 +1360,14 @@ window.__ModuleLoader__.load({
                 cur.time = s;
                 return;
               }
+              // 还有一种是写成 `0|09:19`、`班|09:19` —— 把头像字当成了说话人。
+              // 说话人很短、内容又是纯时间时，同样按时间行处理。
+              if (m && k.length <= 2 && /^\d{1,2}[:：]\d{2}$/.test(v)) {
+                cur.time = v;
+                return;
+              }
+              // 内容为空的行丢掉：它会渲染成一个空气泡（头像旁边一片空白）
+              if (m && !v) return;
               if (m && k === '时间') {
                 cur.time = v;
                 return;
