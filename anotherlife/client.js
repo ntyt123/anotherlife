@@ -3499,7 +3499,7 @@ window.__ModuleLoader__.load({
             ),
             h('div', { className: 'sim-sec' }, '外貌（细描，100 字以内）'),
             h('div', { className: 'sim-field' }, h('label', null, '外貌'), h('textarea', { style: { minHeight: 132 }, value: draft.protagonist.外貌 || '', onChange: (e) => setProtag('外貌', e.target.value) })),
-            charSec('身份', ['身份', '种族', '货币名', '婚姻状况', '配偶', '子女']),
+            charSec('身份', ['身份', '种族', '婚姻状况', '配偶', '子女']),
             h('div', { className: 'sim-sec' }, '性格（仅面板，不发给模型）'),
             h(
               'div',
@@ -3582,6 +3582,7 @@ window.__ModuleLoader__.load({
             h(
               'div',
               { className: 'sim-grid' },
+              h(Field, { key: 'cur', label: '货币名', ph: '如 人民币 / 银两', value: draft.protagonist.货币名, onChange: (v) => setProtag('货币名', v) }),
               h(Field, { key: 'mn', label: '金钱', ph: '按身份给，如 3000000', value: draft.protagonist.金钱, onChange: (v) => setProtag('金钱', Number(v) || 0) }),
               h(Field, { key: 'it', label: '物品(JSON数组)', value: JSON.stringify(draft.protagonist.物品 || []), onChange: (v) => { try { setProtag('物品', JSON.parse(v)); } catch (e) {} } }),
               h(Field, { key: 'ft', label: '特点', value: Array.isArray(draft.protagonist.特点) ? draft.protagonist.特点.join('、') : String(draft.protagonist.特点 || ''), onChange: (v) => setProtag('特点', String(v || '')) })
