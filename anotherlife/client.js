@@ -5067,9 +5067,9 @@ window.__ModuleLoader__.load({
               h('div', { style: { fontWeight: 600, marginBottom: 4 } }, '这里的设置是全局的'),
               h('div', { className: 'sim-hint' }, '下面的模型地址／模型名和注入规则**跨故事共用**，新开一局会自动带上；密钥存在 DSH 凭据服务里，同样全局有效。每局独立的只有剧情本身（世界观／主角／正文）。')
             ),
-            ModelCfg({ slot: 'retrieve', title: '检索模型（上下文筛选）', sub: '挑选本轮需要哪些条目的“选择题模型”。留空则直接用当前主模型。可填便宜的快速模型。' }),
-            ModelCfg({ slot: 'settle', title: '结算模型（变量 + 小总结）', sub: '留空则跳过每轮变量结算。' }),
-            ModelCfg({ slot: 'summary', title: '总结模型' }),
+            h(ModelCfg, { key: 'm-retrieve', slot: 'retrieve', title: '检索模型（上下文筛选）', sub: '挑选本轮需要哪些条目的“选择题模型”。留空则直接用当前主模型。可填便宜的快速模型。' }),
+            h(ModelCfg, { key: 'm-settle', slot: 'settle', title: '结算模型（变量 + 小总结）', sub: '留空则跳过每轮变量结算。' }),
+            h(ModelCfg, { key: 'm-summary', slot: 'summary', title: '总结模型' }),
             h(
               'div',
               { className: 'sim-card' },
@@ -5116,7 +5116,9 @@ window.__ModuleLoader__.load({
               h('div', { className: 'sim-acts', style: { marginTop: 8 } }, h(Btn, { onClick: resetFs }, '微调归零')),
               h('div', { className: 'sim-hint', style: { marginTop: 6 } }, '预览：角色扮演这件事，写下来才算数。')
             ),
-            GitCfg(),
+            // 必须用 h(GitCfg) 而不是 GitCfg()：它有 useState/useEffect，
+            // 直接当函数调用会把 hooks 挂到 App 自己的链上（React #310）
+            h(GitCfg, { key: 'gitcfg' }),
             h(
               'div',
               { className: 'sim-card' },
@@ -5125,7 +5127,7 @@ window.__ModuleLoader__.load({
               h('div', { className: 'sim-acts', style: { marginTop: 8 } }, h(Btn, { disabled: busy, onClick: () => setUiPrevOpen(true) }, '👁 界面预览'))
             ),
             SummaryCfg(),
-            SoundCfg(),
+            h(SoundCfg, { key: 'sound' }),
             h('div', { className: 'sim-card' },
               h('div', { style: { fontWeight: 600, marginBottom: 8 } }, '注入规则'),
               h(Field, { label: '最小基线字段', value: dcfg.baseline, ph: '姓名,性别', onChange: (v) => { const c = Object.assign({}, dcfg); c.baseline = v; upd({ config: c }); } }),
