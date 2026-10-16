@@ -2,6 +2,13 @@ window.__ModuleLoader__.load({
   id: 'anotherlife',
   factory: (require) => {
     const React = require('react');
+    // 浮窗要挂到 body，所以想要 react-dom；拿不到就退回原地渲染（下面的 portalTip 会兜底）
+    let ReactDOM = null;
+    try {
+      ReactDOM = require('react-dom');
+    } catch (e) {
+      ReactDOM = null;
+    }
     const h = React.createElement;
 
     const CSS = [
@@ -251,6 +258,13 @@ window.__ModuleLoader__.load({
       '.sim-modal-x{flex:0 0 auto;background:rgba(255,255,255,.18);border:none;color:#fff;width:30px;height:30px;border-radius:9px;cursor:pointer;font-size:var(--sim-fs-4);font-family:inherit}',
       '.sim-modal-x:hover{background:rgba(255,255,255,.32)}',
       '.sim-modal-b{flex:1;min-height:0;overflow:auto;padding:14px 16px;display:flex;flex-direction:column;gap:12px}',
+      /**
+       * 关掉滚动锚定：悬浮胶囊里会插入详情浮窗（.sim-tip），它虽是 fixed 不占位，
+       * 但插入那一刻 chip 与 .sim-chips 仍要重算布局，Chromium 的 scroll anchoring
+       * 会顺势调整滚动位置 —— 表现就是「鼠标一悬停，角色页滚回顶端」。
+       * 这几个是全部可滚动容器，一起关掉。
+       */
+      '.sim-modal-b,.sim-body,.sim-optbar-list,.sim-chips.tall,.sim-pre,.sim-json{overflow-anchor:none}',
       '.sim-panel{background:var(--sim-bg2);border:1px solid var(--sim-bd);border-radius:12px;padding:12px;min-width:0}',
       '.sim-panel-h{display:block;padding:6px 13px;margin:-4px 0 10px;background:#5f83ab;color:#fff;font-size:var(--sim-fs-4);font-weight:700;border-radius:9px;letter-spacing:.5px}',
       '.sim-modal-f{flex:none;display:flex;gap:10px;padding:12px 16px;border-top:1px solid var(--sim-bd)}',
@@ -2986,6 +3000,14 @@ window.__ModuleLoader__.load({
             return st;
           }
 
+          /**
+           * 悬浮详情浮窗。**暂时不用 portal**（原样渲染在胶囊内）：
+           * 试过挂到 body / .sim-root，既没修好「悬停跳顶」，挂 body 还会因为拿不到皮肤变量而变透明。
+           * 保留这个函数是为了以后要用 portal 时只改这里。
+           */
+          function portalTip(node) {
+            return node;
+          }
           function chip(o) {
             const open = openTip === o.id;
             const r = rarityOf(o.rarity);
@@ -3025,9 +3047,10 @@ window.__ModuleLoader__.load({
                 '✕'
               ),
               open && o.tip && o.tip.length
-                ? h(
-                    'span',
-                    { className: 'sim-tip', style: tipStyle() },
+                ? portalTip(
+                    h(
+                      'span',
+                      { className: 'sim-tip', style: tipStyle() },
                     h(
                       'span',
                       { className: 'sim-tip-h' },
@@ -3056,6 +3079,7 @@ window.__ModuleLoader__.load({
                         );
                       })
                     )
+                  )
                   )
                 : null
             );
@@ -5645,8 +5669,15 @@ window.__ModuleLoader__.load({
               ),
               inputBar
             ),
-            h(npcModalView, { key: 'npcmodal' }),
-            h(assetModalView, { key: 'assetmodal' }),
+            /**
+             * 这两个要**直呼**、不能写成 h(Comp)。
+             * 它们定义在 App 内部，用组件写法时 App 每次重渲染（例如鼠标悬停改 tip state）
+             * 都会创建"新的函数"，React 视为组件类型变了 → 卸载重挂整个弹窗 →
+             * 表现就是「鼠标一悬停在衣物上，角色详情滚回顶端」。
+             * 它们都不含 hooks（已核对），直呼安全 —— 与主角页 protEditor 同一套写法。
+             */
+            npcModalView(),
+            assetModalView(),
             UiPreviewModal(uiPrevOpen, () => setUiPrevOpen(false)),
             h(AvatarModal, {
               cfg: avatarEdit,
