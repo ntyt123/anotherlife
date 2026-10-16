@@ -37,7 +37,7 @@ window.__ModuleLoader__.load({
       '.sim-as-m{max-width:88%;align-self:flex-start;padding:9px 12px;border-radius:10px;background:var(--sim-bg);border:1px solid var(--sim-bd)}',
       '.sim-as-m.me{align-self:flex-end;background:var(--sim-ac);border-color:transparent}',
       '.sim-as-txt{font-size:var(--sim-fs-3);line-height:1.68;word-break:break-word}',
-      '.sim-md-p{margin:0 0 14px;line-height:1.9}',
+      '.sim-md-p{margin:0 0 14px;line-height:1.9;text-indent:2em}',
       '.sim-md-p:last-child{margin-bottom:0}',
       // 对白：整段以引号开头 → 单独配色，和叙述一眼分开（取自界面里的蓝）
       '.sim-md-p.say{color:var(--sim-say)}',
@@ -49,9 +49,9 @@ window.__ModuleLoader__.load({
       '.sim-md-h.lv4{font-size:var(--sim-fs-4)}',
       '.sim-md-h:first-child{margin-top:0}',
       '.sim-md-hr{border:0;border-top:1px solid var(--sim-bd);margin:14px 0}',
-      // 正文块：限宽居中（一行太长，眼睛回行容易串行）+ 正文字号可单独调
-      '.sim-md-block{max-width:40em;margin:0 auto;font-size:var(--sim-read-fs,15.5px)}',
-      '.sim-md-block .sim-md-p{margin:0 0 14px;line-height:1.9}',
+      // 正文块：铺满左右（不再限宽居中）+ 正文字号可单独调
+      '.sim-md-block{font-size:var(--sim-read-fs,15.5px)}',
+      '.sim-md-block .sim-md-p{margin:0 0 14px;line-height:1.9;text-indent:2em}',
       '.sim-md-block .sim-md-p:last-child{margin-bottom:0}',
       '.sim-md-block .sim-md-h{margin:16px 0 9px;line-height:1.45}',
       '.sim-md-block .sim-md-h.lv1{font-size:calc(var(--sim-read-fs,15.5px) + 6px)}',
