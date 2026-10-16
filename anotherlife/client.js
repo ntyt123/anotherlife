@@ -2710,6 +2710,14 @@ window.__ModuleLoader__.load({
             if (hist.length) setAsLog(hist);
           }, [asOpen, state]);
 
+          // 解析词（创角时那段自由描述）也存进了存档 —— 回到界面时把它填回输入框，
+          // 免得切页签回来变空、又得重打一遍。只在输入框还空着时填，别覆盖正在编辑的内容。
+          React.useEffect(() => {
+            if (!state || !state.parseInput) return;
+            if (!nl && state.parseInput.character) setNl(String(state.parseInput.character));
+            if (!nlw && state.parseInput.world) setNlw(String(state.parseInput.world));
+          }, [state]);
+
           React.useEffect(() => {
             let alive = true;
             setBusy(true);
@@ -3543,6 +3551,15 @@ window.__ModuleLoader__.load({
                   // 注：「人物关系」现在有正式字段了（主角的 人物关系），解析出来就留在那里 ——
                   // 早期版本它只是解析阶段的临时容器，要挪去备注栏；现在不用挪了，
                   // 手填与解析两条路都写同一个字段，界面上也看得见。
+                  // 「额外信息」是解析时接住「装不进任何字段的交代」的容器
+                  // （家里情况、特殊经历之类），挪进备注栏 —— 那里本来就会注入开局提示词。
+                  // 追加而不是覆盖，免得冲掉玩家自己写在备注里的东西。
+                  const extra = String(merged.额外信息 == null ? '' : merged.额外信息).trim();
+                  delete merged.额外信息;
+                  if (extra) {
+                    const prev = String(draft.extraInfo || '').trim();
+                    upd({ extraInfo: prev ? prev + '\n' + extra : extra });
+                  }
                   // 「是否艺人」是界面上的开关，玩家说了算 —— 不许模型自己判断：
                   // 它会因为「顶流小生」这类描述就把整批演艺字段填上，哪怕开关没开。
                   const star = !!(backup && backup.是否艺人);
