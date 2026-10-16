@@ -3144,7 +3144,7 @@ window.__ModuleLoader__.load({
               );
             }
 
-          /** 按现有结构生成一份「全空」副本：数组→[]、对象→递归、其余→'' */
+          /** 按现有结构生成一份「全空」副本：数组→[]、对象→递归、布尔原样、其余→'' */
           function blankLike(v) {
             if (Array.isArray(v)) return [];
             if (v && typeof v === 'object') {
@@ -3154,6 +3154,8 @@ window.__ModuleLoader__.load({
               });
               return o;
             }
+            // 布尔必须原样保留：是否艺人 这类开关被清成 '' 会变成「半开不开」的状态
+            if (typeof v === 'boolean') return v;
             return '';
           }
           /**
@@ -3199,8 +3201,22 @@ window.__ModuleLoader__.load({
                   else upd({ protagonist: backup });
                   return;
                 }
-                if (target === 'world') upd({ world: Object.assign(blankLike(draft.world), p) });
-                else upd({ protagonist: Object.assign(blankLike(draft.protagonist), p) });
+                if (target === 'world') {
+                  upd({ world: Object.assign(blankLike(draft.world), p) });
+                } else {
+                  const merged = Object.assign(blankLike(draft.protagonist), p);
+                  // 「是否艺人」是界面上的开关，玩家说了算 —— 不许模型自己判断：
+                  // 它会因为「顶流小生」这类描述就把整批演艺字段填上，哪怕开关没开。
+                  const star = !!(backup && backup.是否艺人);
+                  merged.是否艺人 = star;
+                  // 开关没开就把整批演艺资料清掉，免得界面上藏着一页看不见的数据
+                  if (!star) {
+                    STAR_KEYS.forEach((k) => {
+                      if (k !== '是否艺人') delete merged[k];
+                    });
+                  }
+                  upd({ protagonist: merged });
+                }
               })
               .catch((e) => {
                 stopTimer();
