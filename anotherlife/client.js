@@ -344,8 +344,10 @@ window.__ModuleLoader__.load({
       '.sim-hero .t{font-size:var(--sim-fs-6);font-weight:700}',
       '.sim-hero .s{font-size:var(--sim-fs-2);color:var(--sim-t2);margin-top:2px}',
       // 分区标题：浅冷底 + 左侧色条（与字段块的「实心通铺条」区分开 —— 一个管「这一节叫什么」，一个管「这块叫什么」）
-      '.sim-sec{display:inline-block;margin:20px 0 6px;padding:3px 12px 3px 9px;border-radius:6px;background:rgba(122,152,186,.18);border-left:3px solid #5f83ab;color:#3f5d7d;font-size:var(--sim-fs-3);font-weight:700;letter-spacing:.6px}',
-      '.sim-sec::before{content:"";width:3px;height:13px;border-radius:2px;background:var(--sim-ac);flex:0 0 auto}',
+      // 组标题：和角色页签同一种实心通铺冷色条（世界观表单、创角表单、主角页的穿着/物品…
+      // 全都走这里，不再各自一套）
+      '.sim-sec{display:block;margin:20px 0 10px;padding:6px 13px;border-radius:9px;background:#5f83ab;color:#fff;font-size:var(--sim-fs-5);font-weight:700;letter-spacing:.5px}',
+      '.sim-sec::before{content:none}',
       '.sim-sec::after{content:"";flex:1;height:1px;background:var(--sim-bd)}',
       '.sim-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 18px;margin-bottom:4px}',
       '.sim-grid .sim-field{flex-direction:column;align-items:stretch;gap:4px;margin-bottom:0}',
@@ -3150,11 +3152,14 @@ window.__ModuleLoader__.load({
           }
 
           // ── 左侧页签栏 ──
+          // 演艺资料只在主角勾过「是艺人」时出现，页签排在「主角」下面
+          const isStar = !!(state && state.protagonist && state.protagonist.是否艺人);
           const tabs =
             phase === 'play'
               ? [
                   ['play', '正文', '📖'],
                   ['protagonist', '主角', '👤'],
+                  ...(isStar ? [['star', '星途模拟', '🌟']] : []),
                   ['world', '世界', '🌍'],
                   ['npcs', '角色', '👥'],
                   ['skills', '资产', '🎒'],
@@ -3400,6 +3405,29 @@ window.__ModuleLoader__.load({
               h('div', { style: { marginTop: 8 } }, h(Btn, { primary: true, disabled: busy, onClick: () => aiParse('character') }, busy ? '解析中… ' + parseSec + 's' : '✨ AI 解析填入'))
             ),
             charSec('基础', ['姓名', '性别', '生日', '年龄']),
+            h('div', { className: 'sim-sec' }, '演艺身份'),
+            h(
+              'div',
+              { className: 'sim-grid' },
+              h(
+                'label',
+                {
+                  style: {
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    cursor: 'pointer',
+                    fontSize: 'var(--sim-fs-3)',
+                  },
+                },
+                h('input', {
+                  type: 'checkbox',
+                  checked: !!draft.protagonist.是否艺人,
+                  onChange: (e) => setProtag('是否艺人', e.target.checked),
+                }),
+                h('span', null, '星途模拟')
+              )
+            ),
             h('div', { className: 'sim-sec' }, isMale ? '身体' : '身体（三围/罩杯仅女性）'),
             h(
               'div',
@@ -3913,6 +3941,19 @@ window.__ModuleLoader__.load({
 
 
           const ancientProto = isAncientWorld(state); // 古风局：主角页不显示微博/粉丝数这类字段
+          /**
+           * 演艺资料：整批交给「星途模拟」页签渲染，不进主角页的通用字段表。
+           * 前一批（艺人咖位…合约到期）是为现实艺人建的老字段，这次直接复用、不另存一份。
+           */
+          const STAR_KEYS = [
+            '是否艺人',
+            '艺人咖位', '定位', '资源级别', '经纪公司', '所属组合', '出道时间', '合约到期',
+            '代表作品', '作品履历', '主要奖项',
+            '微博账号', '全网粉丝数', '抖音粉丝', '小红书粉丝', '粉丝称呼', '商业价值',
+            '当前代言', '商业报价',
+            '当前舆论评价', '舆论来源', '舆论热度',
+            '团队', '团队评价', '行程', '隐患', '私人关系',
+          ];
           const PROT_GROUPS = [
             ['基础信息', ['姓名', '性别', '生日', '年龄']],
             ['外貌', ['外貌']],
@@ -3931,6 +3972,8 @@ window.__ModuleLoader__.load({
           const PROT_KNOWN = (function () {
             // 这几个各有专门的区块（货币一节、穿着胶囊、物品列表、身体折叠区），不进通用字段表
             const all = ['货币名', '金钱', '穿着', '物品', '身体', '疾病与伤病'];
+            // 演艺资料整批由「星途模拟」页签显示，不再散在「其他字段」里
+            STAR_KEYS.forEach((k) => all.push(k));
             PROT_GROUPS.forEach((g) => g[1].forEach((k) => all.push(k)));
             return all;
           })();
@@ -3956,6 +3999,171 @@ window.__ModuleLoader__.load({
             // 分组之外的字段（AI 自己加的）补在最后
             .concat(Object.keys(draft.protagonist).filter((k) => PROT_KNOWN.indexOf(k) < 0 && hasVal(draft.protagonist[k])));
           const protWide = protVisible.filter((k) => WIDE_KEYS.indexOf(k) >= 0);
+
+          /**
+           * 星途模拟页签：只有主角（创角时勾过「是艺人」）才出现。
+           * 老字段（艺人咖位／经纪公司／代表作品／当前代言…）直接复用，不另存一份。
+           */
+          const starEditor = (function () {
+            const p = (state && state.protagonist) || {};
+            const L = (v) => String(v == null ? '' : v).trim();
+            const arr = (v) => (Array.isArray(v) ? v : []);
+            const kv = (o) => {
+              const clean = {};
+              Object.keys(o).forEach((k) => {
+                if (hasVal(o[k])) clean[k] = o[k];
+              });
+              return Object.keys(clean).length ? h(KVView, { obj: clean, twoCol: true }) : null;
+            };
+            /** 数组 → 每项一行：兼容「纯字符串」和「对象」两种写法（AI 给哪种都能显示） */
+            const rowList = (v, keys, colorOf) =>
+              arr(v).length
+                ? h(
+                    'div',
+                    { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
+                    arr(v).map((it, i) =>
+                      h(
+                        'div',
+                        {
+                          key: i,
+                          style: { fontSize: 'var(--sim-fs-2)', wordBreak: 'break-word', lineHeight: 1.5 },
+                        },
+                        typeof it === 'string'
+                          ? it
+                          : (keys || Object.keys(it)).map((k) => L(it[k])).filter(Boolean).join(' · ')
+                      )
+                    )
+                  )
+                : null;
+            /** 危险度上色：高→红、中→黄、其余→灰 */
+            const dangerColor = (s) => {
+              const t = String(s || '');
+              if (/高|严重|致命|塌房/.test(t)) return 'var(--sim-err)';
+              if (/中|注意|警/.test(t)) return '#c08a12';
+              return 'var(--sim-t2)';
+            };
+            return h(
+              'div',
+              { className: 'sim-prot' },
+              h(
+                'div',
+                { className: 'sim-card' },
+                h(
+                  'div',
+                  { className: 'sim-hero' },
+                  h('div', { className: 'ic' }, '🎬'),
+                  h(
+                    'div',
+                    null,
+                    h('div', { className: 't' }, L(p.姓名) || '未命名'),
+                    h('div', { className: 's' }, [L(p.艺人咖位), L(p.定位)].filter(Boolean).join(' · ') || '演艺资料')
+                  )
+                )
+              ),
+              block(
+                '番位与档位',
+                h(
+                  'div',
+                  null,
+                  kv({
+                    档位: p.艺人咖位,
+                    定位: p.定位,
+                    资源级别: p.资源级别,
+                    经纪公司: p.经纪公司,
+                    所属组合: p.所属组合,
+                    出道时间: p.出道时间,
+                    合约到期: p.合约到期,
+                  })
+                )
+              ),
+              block(
+                '数据热度',
+                h(
+                  'div',
+                  null,
+                  kv({
+                    微博: p.微博账号,
+                    全网粉丝: p.全网粉丝数,
+                    抖音: p.抖音粉丝,
+                    小红书: p.小红书粉丝,
+                    粉丝称呼: p.粉丝称呼,
+                    商业价值: p.商业价值,
+                  })
+                )
+              ),
+              block(
+                '商务代言',
+                h(
+                  'div',
+                  null,
+                  (function () {
+                    const list = arr(p.当前代言);
+                    return list.length
+                      ? h(
+                          'div',
+                          { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
+                          list.map((it, i) =>
+                            h(
+                              'div',
+                              { key: i, style: { fontSize: 'var(--sim-fs-2)' } },
+                              typeof it === 'string'
+                                ? it
+                                : [it.品牌, it.头衔, it.到期].filter(Boolean).join(' · ')
+                            )
+                          )
+                        )
+                      : null;
+                  })(),
+                  kv({ 报价: p.商业报价 })
+                )
+              ),
+              block('作品履历', h('div', null, tagRow(p.代表作品), tagRow(p.主要奖项))),
+              block(
+                '团队',
+                h('div', null, rowList(p.团队, ['姓名', '职位', '状态']), kv({ 团队评价: p.团队评价 }))
+              ),
+              block(
+                '舆论风向',
+                h('div', null, kv({ 当前评价: p.当前舆论评价, 主要来源: p.舆论来源, 热度: p.舆论热度 }))
+              ),
+              block('行程', h('div', null, rowList(p.行程, ['时间', '名称', '类型']))),
+              block(
+                '隐患清单',
+                h(
+                  'div',
+                  null,
+                  arr(p.隐患).length
+                    ? h(
+                        'div',
+                        { style: { display: 'flex', flexDirection: 'column', gap: 8 } },
+                        arr(p.隐患).map((it, i) =>
+                          h(
+                            'div',
+                            { key: i, style: { fontSize: 'var(--sim-fs-2)', lineHeight: 1.5, wordBreak: 'break-word' } },
+                            typeof it === 'string'
+                              ? it
+                              : [
+                                  h(
+                                    'span',
+                                    { key: 'd', style: { color: dangerColor(it.危险度), fontWeight: 600 } },
+                                    L(it.危险度) || '隐患'
+                                  ),
+                                  L(it.事情),
+                                  L(it.知情者) ? '（' + L(it.知情者) + '知道）' : '',
+                                  L(it.状态),
+                                ]
+                                  .filter(Boolean)
+                                  .filter((x) => !(typeof x === 'string' && !x))
+                                  .map((x, j) => h('span', { key: j }, j ? ' · ' + (typeof x === 'string' ? x : '') : x))
+                          )
+                        )
+                      )
+                    : null
+                )
+              ),
+              block('私人关系', h('div', null, rowList(p.私人关系, ['对象', '性质', '公开', '状态']))),
+            );
+          })();
 
           const protEditor = h(
             'div',
@@ -5207,6 +5415,7 @@ window.__ModuleLoader__.load({
           else if (phase === 'character') view = charForm;
           else if (tab === 'play') view = playView;
           else if (tab === 'protagonist') view = protEditor;
+          else if (tab === 'star') view = starEditor;
           else if (tab === 'world') view = worldEditor;
           else if (tab === 'npcs') view = npcEditor;
           else if (tab === 'skills') view = assetEditor;
