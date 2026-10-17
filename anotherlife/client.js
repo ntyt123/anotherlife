@@ -4495,17 +4495,29 @@ window.__ModuleLoader__.load({
                 parseNote ? h('div', { className: 'sim-hint' }, parseNote) : null
               ),
               charSec('基础', ['姓名', '性别', '生日', '出生地', '年龄']),
-              // 「星途模拟」开关：决定要不要显示演艺资料那一页。属于基础信息，默认勾上。
-              h(
-                'div',
-                { className: 'sim-field' },
+                // 「星途模拟」开关。这里不用 sim-field：它给 label 定了 104px 宽，
+                // 稍长的文案会被挤成竖排（截图里就是这样）。自己写一行，勾选框和文字同一行。
                 h(
-                  'label',
-                  { style: { display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' } },
-                  h('input', { type: 'checkbox', checked: !!draft.protagonist.是否艺人, onChange: (e) => setProtag('是否艺人', e.target.checked) }),
-                  h('span', null, '星途模拟（演艺资料）')
-                )
-              ),
+                  'div',
+                  {
+                    style: {
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      marginBottom: 8,
+                      fontSize: 'var(--sim-fs-3)',
+                      color: 'var(--sim-t2)',
+                      whiteSpace: 'nowrap',
+                    },
+                  },
+                  h('input', {
+                    type: 'checkbox',
+                    checked: !!draft.protagonist.是否艺人,
+                    onChange: (e) => setProtag('是否艺人', e.target.checked),
+                    style: { flex: 'none' },
+                  }),
+                  h('span', null, '星途模拟')
+                ),
               charSec('身份', ['身份', '种族', '婚姻状况', '配偶', '子女']),
               charSec('外貌与性格', ['外貌', '表性格', '里性格']),
               charSec('身体', ['身高', '体重', '三围', '罩杯', '健康状况', '疾病与伤病']),
