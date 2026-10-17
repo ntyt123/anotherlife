@@ -126,6 +126,9 @@ window.__ModuleLoader__.load({
       '.sim-chips{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 10px}',
       '.sim-chip{position:relative;display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:8px;border:1.5px solid var(--sim-bd);background:var(--sim-bg);font-size:var(--sim-fs-2);cursor:pointer;user-select:none;line-height:1.4}',
       '.sim-chip-t{font-weight:600;word-break:break-word}',
+      // 胶囊列表末尾那个「+」：虚线框，一眼看出是可添加
+      '.sim-chip-add{border-style:dashed;border-color:var(--sim-bd);color:var(--sim-t2);cursor:pointer;font-weight:700;padding:5px 12px}',
+      '.sim-chip-add:hover{border-color:var(--sim-ac);color:var(--sim-ac)}',
       '.sim-chip-b{font-size:var(--sim-fs-1);opacity:.8}',
       // 气味浓度格：按程度给颜色 —— 新鲜=绿、整日=黄、多日=红
       '.sim-chip-b.dots{opacity:1;letter-spacing:1px;font-size:var(--sim-fs-1)}',
@@ -2561,6 +2564,9 @@ window.__ModuleLoader__.load({
           const [itemEdit, setItemEdit] = React.useState(false);
           // 物品编辑弹窗里的临时列表（打开时从草稿拷一份，保存才写回）
           const [itemEditList, setItemEditList] = React.useState([]);
+          // 九类对象块（技能/住所/交通/事业/债务/凭证/隐患/私人关系）的单条编辑弹窗：
+          // { key: 字段名, fields: 字段清单, i: 第几条, buf: 编辑中的副本 }
+          const [objEdit, setObjEdit] = React.useState(null);
           // 创角页最下面那份「完整数据」JSON 的编辑态（null = 还没打开/内容已同步）
           const [preJson, setPreJson] = React.useState(null);
           const [preJsonErr, setPreJsonErr] = React.useState('');
@@ -4236,52 +4242,104 @@ window.__ModuleLoader__.load({
            * 「一个数组，每项若干短字段」—— 用同一套卡片 + 输入框渲染，不写七份几乎一样的代码。
            * 游玩阶段这些内容由结算模型维护，那里不给手改入口。
            */
-          function objListEditor(title, key, fields, addLabel) {
-            const list = Array.isArray(draft.protagonist[key]) ? draft.protagonist[key] : [];
-            const put = (arr) => setProtag(key, arr);
-            const setOne = (i, k, v) => put(list.map((x, j) => (j === i ? Object.assign({}, x, { [k]: v }) : x)));
-            const empty = () => {
+
+          /**
+           * 胶囊列表 + 单条编辑弹窗（创角页专用）。
+           *
+           * 界面上只看到一排胶囊（用第一字段当名字），点一个打开那一条的编辑窗，
+           * 保存后关窗、列表刷新。这样九个对象块不会把创角页撑成一条长龙。
+           *
+           * 编辑内容进临时 state，点「保存」才写回草稿；中途关窗不留半截改动。
+           */
+          function capsuleList(title, fields) {
+            const list = Array.isArray(draft.protagonist[title]) ? draft.protagonist[title] : [];
+            const labelOf = (it) => {
+              if (!it || typeof it !== 'object') return '（空）';
+              const v = fields.map((f) => it[f]).find((x) => x != null && String(x).trim());
+              return v ? String(v).trim() : '（未命名）';
+            };
+            const openNew = () => {
               const o = {};
               fields.forEach((f) => (o[f] = ''));
-              return o;
+              const next = list.concat([o]);
+              setProtag(title, next);
+              setObjEdit({ key: title, fields, i: next.length - 1, buf: o });
             };
             return h(
               'div',
-              { key: key + '-editor' },
-              h('div', { className: 'sim-sec' }, title),
-              list.length
-                ? list.map((it, i) =>
-                    h(
-                      'div',
-                      { className: 'sim-panel', key: i, style: { marginBottom: 8 } },
-                      h(
-                        'div',
-                        { style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 } },
-                        h('div', { className: 'sim-panel-h', style: { flex: 1, margin: 0 } }, '第 ' + (i + 1) + ' 条'),
-                        h('button', { className: 'sim-close', onClick: () => put(list.filter((_, j) => j !== i)) }, '删除')
-                      ),
-                      h(
-                        'div',
-                        { className: 'sim-grid' },
-                        fields.map((f) =>
-                          h(Field, {
-                            key: f,
-                            label: f,
-                            value: it && it[f] != null ? String(it[f]) : '',
-                            onChange: (v) => setOne(i, f, v),
-                          })
-                        )
-                      )
-                    )
-                  )
-                : h('div', { className: 'sim-hint' }, '还没有内容。'),
+              { key: 'cap-' + title },
+              h('div', { className: 'sim-sec' }, title + (list.length ? '（' + list.length + '）' : '')),
               h(
                 'div',
-                { className: 'sim-acts', style: { marginTop: 6 } },
-                h('button', { className: 'sim-btn', onClick: () => put(list.concat([empty()])) }, '+ ' + (addLabel || title))
+                { className: 'sim-chips' },
+                list.map((it, i) =>
+                  h(
+                    'span',
+                    {
+                      key: i,
+                      className: 'sim-chip',
+                      title: '点击编辑',
+                      onClick: () => setObjEdit({ key: title, fields, i, buf: Object.assign({}, it) }),
+                    },
+                    h('span', { className: 'sim-chip-t' }, labelOf(it))
+                  )
+                ),
+                h('span', { className: 'sim-chip sim-chip-add', title: '添加', onClick: openNew }, '+')
               )
             );
           }
+
+          /** 「收支」是单个对象，两个输入框就够，留在页面上 */
+
+          /** 单条编辑弹窗：objEdit = { key, fields, i, buf } */
+          function objEditModal() {
+            if (!objEdit) return null;
+            const { key, fields, i, buf } = objEdit;
+            const setOne = (f, v) => setObjEdit(Object.assign({}, objEdit, { buf: Object.assign({}, buf, { [f]: v }) }));
+            const save = () => {
+              const list = Array.isArray(draft.protagonist[key]) ? draft.protagonist[key] : [];
+              setProtag(key, list.map((x, j) => (j === i ? buf : x)));
+              setObjEdit(null);
+            };
+            const del = () => {
+              const list = Array.isArray(draft.protagonist[key]) ? draft.protagonist[key] : [];
+              setProtag(key, list.filter((_, j) => j !== i));
+              setObjEdit(null);
+            };
+            return h(
+              'div',
+              { className: 'sim-mask', onClick: () => setObjEdit(null) },
+              h(
+                'div',
+                { className: 'sim-modal', style: { maxWidth: 640 }, onClick: (e) => e.stopPropagation() },
+                h(
+                  'div',
+                  { className: 'sim-modal-h' },
+                  h('div', { className: 'who' }, h('div', { className: 'nm' }, key + ' · 第 ' + (i + 1) + ' 条')),
+                  h('button', { className: 'sim-modal-x', title: '关闭', onClick: () => setObjEdit(null) }, '✕')
+                ),
+                h(
+                  'div',
+                  { className: 'sim-modal-b' },
+                  h(
+                    'div',
+                    { className: 'sim-grid' },
+                    fields.map((f) =>
+                      h(Field, { key: f, label: f, value: buf[f] != null ? String(buf[f]) : '', onChange: (v) => setOne(f, v) })
+                    )
+                  )
+                ),
+                h(
+                  'div',
+                  { className: 'sim-modal-f' },
+                  h(Btn, { onClick: () => setObjEdit(null) }, '取消'),
+                  h(Btn, { onClick: () => del() }, '删除'),
+                  h(Btn, { primary: true, onClick: () => save() }, '保存')
+                )
+              )
+            );
+          }
+
 
           /** 「收支」是对象不是数组，单独一个两栏编辑器 */
           function incomeEditor() {
@@ -4389,44 +4447,33 @@ window.__ModuleLoader__.load({
                 parseNote ? h('div', { className: 'sim-hint' }, parseNote) : null
               ),
               charSec('基础', ['姓名', '性别', '生日', '出生地', '年龄']),
-              charSec('身份', ['身份', '种族', '婚姻状况', '配偶', '子女']),
-              charSec('外貌与性格', ['外貌', '表性格', '里性格']),
-              charSec('身体', ['身高', '体重', '三围', '罩杯', '健康状况', '疾病与伤病']),
-              charSec('当前', ['当前状态', '当前想法', '身体状态']),
-              charSec('私密', ['性癖', '敏感点', '底线', '经验', '是否处女', '月经状态', '妊娠状态']),
-              charSec('速记', ['标签', '特点']),
-            objListEditor('技能', '技能', ['名字', '等级', '说明', '来源'], '添加技能'),
-            objListEditor('住所', '住所', ['位置', '买入价格', '状态'], '添加住所'),
-            objListEditor('交通', '交通', ['车型', '买入价格', '状态'], '添加车辆'),
-            objListEditor('事业', '事业', ['名称', '职务', '发展情况'], '添加事业'),
-            incomeEditor(),
-            objListEditor('债务', '债务', ['对象', '金额', '约定', '状态'], '添加债务'),
-            objListEditor('凭证', '凭证', ['名称', '说明'], '添加凭证'),
-            objListEditor('隐患', '隐患', ['事情', '知情者', '危险度', '状态'], '添加隐患'),
-            objListEditor('私人关系', '私人关系', ['对象', '性质', '公开', '状态'], '添加私人关系'),
+              // 「星途模拟」开关：决定要不要显示演艺资料那一页。默认勾上。
               h('div', { className: 'sim-sec' }, '演艺身份'),
               h(
                 'div',
                 { className: 'sim-grid' },
                 h(
                   'label',
-                  {
-                    style: {
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 8,
-                      cursor: 'pointer',
-                      fontSize: 'var(--sim-fs-3)',
-                    },
-                  },
-                  h('input', {
-                    type: 'checkbox',
-                    checked: !!draft.protagonist.是否艺人,
-                    onChange: (e) => setProtag('是否艺人', e.target.checked),
-                  }),
+                  { style: { display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 'var(--sim-fs-3)' } },
+                  h('input', { type: 'checkbox', checked: !!draft.protagonist.是否艺人, onChange: (e) => setProtag('是否艺人', e.target.checked) }),
                   h('span', null, '星途模拟')
                 )
               ),
+              charSec('身份', ['身份', '种族', '婚姻状况', '配偶', '子女']),
+              charSec('外貌与性格', ['外貌', '表性格', '里性格']),
+              charSec('身体', ['身高', '体重', '三围', '罩杯', '健康状况', '疾病与伤病']),
+              charSec('当前', ['当前状态', '当前想法', '身体状态']),
+              charSec('私密', ['性癖', '敏感点', '底线', '经验', '是否处女', '月经状态', '妊娠状态']),
+              charSec('速记', ['标签', '特点']),
+            capsuleList('技能', ['名字', '等级', '说明', '来源']),
+            capsuleList('住所', ['位置', '买入价格', '状态']),
+            capsuleList('交通', ['车型', '买入价格', '状态']),
+            capsuleList('事业', ['名称', '职务', '发展情况']),
+          incomeEditor(),
+            capsuleList('债务', ['对象', '金额', '约定', '状态']),
+            capsuleList('凭证', ['名称', '说明']),
+            capsuleList('隐患', ['事情', '知情者', '危险度', '状态']),
+            capsuleList('私人关系', ['对象', '性质', '公开', '状态']),
               h('div', { className: 'sim-sec' }, '人物关系（家人、熟人）'),
               h('div', { className: 'sim-field' },
                 h('textarea', {
@@ -7374,6 +7421,7 @@ window.__ModuleLoader__.load({
             npcModalView(),
             assetModalView(),
             itemModalView(),
+            objEditModal(),
             UiPreviewModal(uiPrevOpen, () => setUiPrevOpen(false)),
             h(AvatarModal, {
               cfg: avatarEdit,
