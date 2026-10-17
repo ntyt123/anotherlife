@@ -3958,7 +3958,26 @@ window.__ModuleLoader__.load({
                   // 主角解析完了，再单独跑一次「人物名册」。
                   // 为什么分两次：合在一个提示词里时，模型常常只顾着写最后加的那部分
                   // （实测多次主角字段整片全空，人却是建好了的）。拆开各管一头就稳了。
-                  // 名册失败不影响上面已经拿到的主角字段 —— 兜底还能从「人物关系」里拆。
+                  /**
+                   * 把名册结果落到草稿上。**这是唯一的写入口**，success 与 catch 两条路都走它，
+                   * 免得某条分支漏了兜底（曾出现名册返回空、兜底也没跑，npcs 一直是空的）。
+                   * 传入空数组表示"名册没拿到东西"，此时从「人物关系」那句里拆。
+                   */
+                  const applyCast = (list) => {
+                    const fromCast = Array.isArray(list) ? list : [];
+                    const use = dropSelf(alignNpcNames(fromCast.length ? fromCast : parseRelationString(String(merged.人物关系 || '')), merged));
+                    if (use.length) {
+                      upd({
+                        npcs: use.map((x) => {
+                          const base = blankLike((Array.isArray(draft.npcs) && draft.npcs[0]) || {});
+                          return fixKeys(Object.assign(base, x));
+                        }),
+                      });
+                    } else {
+                      // 名册空、兜底也拆不出东西（描述里确实没提到别人）—— 说一句，免得以为坏了
+                      setErr('没有从描述里认出任何人物。如果描述里确实写了家人，可以在下面的「完整数据」里手填 npcs。');
+                    }
+                  };
                   setParseNote('正在解析人物名册…');
                   call('parseNatural', { target: 'cast', text: nl }, gameId)
                     .then((cr) => {
@@ -3970,29 +3989,13 @@ window.__ModuleLoader__.load({
                           : [];
                       // 名字以主角字段为准：名册自己起的名字，遇到主角那边已有的同名关系就让位。
                       // （「女儿罗心悦」vs 名册的「罗朵朵」，以主角为准）
-                      const use = dropSelf(alignNpcNames(list.length ? list : parseRelationString(String(merged.人物关系 || '')), merged));
-                      if (use.length) {
-                        upd({
-                          npcs: use.map((x) => {
-                            const base = blankLike((Array.isArray(draft.npcs) && draft.npcs[0]) || {});
-                            return fixKeys(Object.assign(base, x));
-                          }),
-                        });
-                      }
+                      applyCast(list);
                     })
                     .catch(() => {
-                      // 名册这步失败就退回兜底：从「人物关系」那句里拆
+                      // 名册这步失败（接口报错／超时／返回不解）就退回兜底：从「人物关系」那句里拆
                       setParseNote('');
                       setBusy(false);
-                      const use = dropSelf(alignNpcNames(parseRelationString(String(merged.人物关系 || '')), merged));
-                      if (use.length) {
-                        upd({
-                          npcs: use.map((x) => {
-                            const base = blankLike((Array.isArray(draft.npcs) && draft.npcs[0]) || {});
-                            return fixKeys(Object.assign(base, x));
-                          }),
-                        });
-                      }
+                      applyCast([]);
                     });
                   return;
                 }
