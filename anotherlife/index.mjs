@@ -22,7 +22,7 @@ const P = 'dsh-tavern-simulator/';
 const KEY_SLOTS = ['retrieve', 'settle', 'summary', 'assistant'];
 
 /** 每次改动宿主侧都改一下这个版本号：ping 会回报它，用来确认 Tavern 到底加载的是哪一版 */
-const REV = 'host-v46-cast-field-pos-20261017r';
+const REV = 'host-v47-skill-fallback-20261017r';
 
 /**
  * 只有这一局用的是这些卡时，插件才出现在界面上（其余卡片游玩时完全不打扰）。
@@ -1532,13 +1532,27 @@ export function apply(ctx) {
       lines.push('这些人**已经存在**：不要再把他们重新创建一遍，名字一律照上面写，不要改写。');
     }
     const si0 = s.skills_items || {};
-    const sk0 = Array.isArray(si0.技能) ? si0.技能 : [];
-    const bag0 = Array.isArray(si0.背包) ? si0.背包 : [];
+    // skills_items 是解析时新加的那套，但模型经常只把技能物品填在 protagonist 里。
+    // 这边空了就退回读主角字段 —— 两边取到的都是「他已经有的本事和随身物」。
+    const p0 = s.protagonist || {};
+    const pickNames = (arr) =>
+      (Array.isArray(arr) ? arr : [])
+        .map((x) => {
+          if (x == null) return '';
+          if (typeof x === 'string') return x.trim();
+          if (typeof x === 'object') return String(x.名称 || x.名字 || x.物品 || '').trim();
+          return '';
+        })
+        .filter(Boolean);
+    let sk0 = pickNames(si0.技能);
+    let bag0 = pickNames(si0.背包);
+    if (!sk0.length) sk0 = pickNames(p0.技能);
+    if (!bag0.length) bag0 = pickNames(p0.物品);
     if (sk0.length || bag0.length) {
       lines.push('');
       lines.push('【主角已有的本事与随身物】');
-      if (sk0.length) lines.push('- 本事：' + sk0.map((x) => (typeof x === 'string' ? x : String((x && (x.名称 || x.名字)) || JSON.stringify(x)))).join('、'));
-      if (bag0.length) lines.push('- 随身：' + bag0.map((x) => (typeof x === 'string' ? x : String((x && (x.名称 || x.名字)) || JSON.stringify(x)))).join('、'));
+      if (sk0.length) lines.push('- 本事：' + sk0.join('、'));
+      if (bag0.length) lines.push('- 随身：' + bag0.join('、'));
       lines.push('开场时这些东西已经在他身上／他会这些本事，不必再交代来历。');
     }
     lines.push('');
