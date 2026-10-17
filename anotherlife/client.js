@@ -3764,6 +3764,11 @@ window.__ModuleLoader__.load({
                     const prev = String(draft.extraInfo || '').trim();
                     upd({ extraInfo: prev ? prev + '\n' + extra : extra });
                   }
+                  // 年龄不靠模型算：它不知道世界观里的"现在"是哪一年，实测会差一两岁。
+                  // 用生日本地算一遍，和生日输入框那套逻辑一致（算不出来就不动原值）。
+                  const ageStr = ageFromBirth(merged.生日, nowForAge());
+                  const ageNum = Number(String(ageStr).replace(/[^\d]/g, ''));
+                  if (ageNum > 0 && ageNum < 200) merged.年龄 = ageNum;
                   // 「是否艺人」是界面上的开关，玩家说了算 —— 不许模型自己判断：
                   // 它会因为「顶流小生」这类描述就把整批演艺字段填上，哪怕开关没开。
                   const star = !!(backup && backup.是否艺人);
@@ -3793,9 +3798,27 @@ window.__ModuleLoader__.load({
                     return;
                   }
                   upd({ protagonist: merged });
-                  if (npcsIn.length) {
+                  /**
+                   * 名册里不该出现主角本人 —— 他已经是 protagonist 了。
+                   * 模型有时会额外给一条「姓名=罗伊、与主角关系=自己」，开局信息里就会出现
+                   * 两个罗伊。这里两道筛：关系写"自己/本人/主角"，或者姓名就是主角姓名。
+                   */
+                  const dropSelf = (arr) => {
+                    const me = String(merged.姓名 || '').trim();
+                    return (Array.isArray(arr) ? arr : []).filter((x) => {
+                      if (!x || typeof x !== 'object') return false;
+                      const nm = String(x.姓名 || x.名字 || '').trim();
+                      if (!nm) return false;
+                      const rel = String(x.与主角关系 || x.关系 || '').trim();
+                      if (/^(自己|本人|主角|我)$/.test(rel)) return false;
+                      if (me && nm === me) return false;
+                      return true;
+                    });
+                  };
+                  const npcsKeep = dropSelf(npcsIn);
+                  if (npcsKeep.length) {
                     upd({
-                      npcs: npcsIn.map((x) => {
+                      npcs: npcsKeep.map((x) => {
                         const base = blankLike((Array.isArray(draft.npcs) && draft.npcs[0]) || {});
                         return Object.assign(base, x);
                       }),
@@ -3814,7 +3837,7 @@ window.__ModuleLoader__.load({
                         cr && Array.isArray(cr.角色)
                           ? cr.角色.filter((x) => x && typeof x === 'object' && String(x.姓名 || '').trim())
                           : [];
-                      const use = list.length ? list : parseRelationString(String(merged.人物关系 || ''));
+                      const use = dropSelf(list.length ? list : parseRelationString(String(merged.人物关系 || '')));
                       if (use.length) {
                         upd({
                           npcs: use.map((x) => {
@@ -3828,7 +3851,7 @@ window.__ModuleLoader__.load({
                       // 名册这步失败就退回兜底：从「人物关系」那句里拆
                       setParseNote('');
                       setBusy(false);
-                      const use = parseRelationString(String(merged.人物关系 || ''));
+                      const use = dropSelf(parseRelationString(String(merged.人物关系 || '')));
                       if (use.length) {
                         upd({
                           npcs: use.map((x) => {
