@@ -2556,6 +2556,11 @@ window.__ModuleLoader__.load({
           const [stage, setStage] = React.useState(null); // 当前进行到哪一步：{stage,text}
           // 解析进行到哪一小步（主角字段 → 人物名册），显示在创角页那一行
           const [parseNote, setParseNote] = React.useState('');
+          // 创角页「物品」编辑弹窗是否打开（true=开）。以前这里是一个 JSON 文本框，
+          // 要手打 {"名字":…,"品质":…}，根本没法用。
+          const [itemEdit, setItemEdit] = React.useState(false);
+          // 物品编辑弹窗里的临时列表（打开时从草稿拷一份，保存才写回）
+          const [itemEditList, setItemEditList] = React.useState([]);
           // 创角页最下面那份「完整数据」JSON 的编辑态（null = 还没打开/内容已同步）
           const [preJson, setPreJson] = React.useState(null);
           const [preJsonErr, setPreJsonErr] = React.useState('');
@@ -4181,6 +4186,17 @@ window.__ModuleLoader__.load({
           function nowForAge() {
             return String((draft.world && draft.world['当前日期时间']) || '') || new Date().toISOString().slice(0, 10);
           }
+          /**
+           * 给角色条目补一个「算出来的年龄」。
+           * 只用于显示，不写回数据 —— 模型的年龄经常差一两岁，而且创角阶段干脆不给。
+           * 有生日才算（角色没生日就保持原样）。
+           */
+          function withAge(o) {
+            if (!o || typeof o !== 'object') return o;
+            const a = ageFromBirth(o.生日, nowForAge());
+            const n = Number(String(a).replace(/[^\d]/g, ''));
+            return n > 0 && n < 200 ? Object.assign({}, o, { 年龄: n }) : o;
+          }
           /** 生日那一行：日期选择框 + 手写框；选完顺手把年龄算出来 */
           function birthField() {
             const birth = String(draft.protagonist.生日 || '');
@@ -4408,7 +4424,36 @@ window.__ModuleLoader__.load({
               { className: 'sim-grid' },
               h(Field, { key: 'cur', label: '货币名', ph: '如 人民币 / 银两', value: draft.protagonist.货币名, onChange: (v) => setProtag('货币名', v) }),
               h(Field, { key: 'mn', label: '金钱', ph: '按身份给，如 3000000', value: draft.protagonist.金钱, onChange: (v) => setProtag('金钱', Number(v) || 0) }),
-              h(Field, { key: 'it', label: '物品(JSON数组)', value: JSON.stringify(draft.protagonist.物品 || []), onChange: (v) => { try { setProtag('物品', JSON.parse(v)); } catch (e) {} } }),
+              h(Field, { key: 'mn', label: '金钱', ph: '按身份给，如 3000000', value: draft.protagonist.金钱, onChange: (v) => setProtag('金钱', Number(v) || 0) }),
+              // 物品不再用 JSON 文本框：点开一个弹窗，逐件增删改
+              h(
+                'div',
+                { className: 'sim-field' },
+                h('label', null, '物品'),
+                h(
+                  'div',
+                  { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+                  h(
+                    'div',
+                    { className: 'sim-hint', style: { flex: 1 } },
+                    Array.isArray(draft.protagonist.物品) && draft.protagonist.物品.length
+                      ? draft.protagonist.物品.map((x) => String((x && x.名字) || '')).filter(Boolean).join('、')
+                      : '还没有物品'
+                  ),
+                  h(
+                    'button',
+                    {
+                      className: 'sim-btn',
+                      onClick: () => {
+                        // 打开时把当前物品拷一份进临时列表：中途点 ✕ 不会改到草稿
+                        setItemEditList(JSON.parse(JSON.stringify(Array.isArray(draft.protagonist.物品) ? draft.protagonist.物品 : [])));
+                        setItemEdit(true);
+                      },
+                    },
+                    '编辑物品'
+                  )
+                )
+              ),
               h(Field, { key: 'ft', label: '特点', value: Array.isArray(draft.protagonist.特点) ? draft.protagonist.特点.join('、') : String(draft.protagonist.特点 || ''), onChange: (v) => setProtag('特点', String(v || '')) })
             ),
             h('div', { style: hint }, '物品每项：{"名字","品质":"N/R/SR/SSR/UR","获取时间","简介","属性提升":{}}。'),
@@ -4883,6 +4928,112 @@ window.__ModuleLoader__.load({
             return h('div', { className: 'sim-agrid' }, arr.map((it, i) => objCard(it, i, L)));
           }
           /** 资产详情弹窗：字段只读展示 + 底部那条 JSON 编辑通道 */
+          /**
+           * 物品编辑弹窗：逐件增删改。
+           *
+           * 以前创角页那里是一个 JSON 文本框（`JSON.stringify(物品)`），要自己手打
+           * {"名字":"吉他","品质":"SR","获取时间":"三年前","简介":"…","属性提升":{}} ——
+           * 括号和引号错一个就整段解析失败，等于没法编辑。改成表单。
+           *
+           * 编辑中的内容放在组件内的临时数组里（每次打开时从草稿拷贝一份），
+           * 点「保存」才写回草稿 —— 中途点 ✕ 不会留下半截改动。
+           */
+          function itemModalView() {
+            if (!itemEdit) return null;
+            const list = Array.isArray(itemEditList) ? itemEditList : [];
+            const setOne = (i, k, v) =>
+              setItemEditList(list.map((x, j) => (j === i ? Object.assign({}, x, { [k]: v }) : x)));
+            const save = () => {
+              setProtag('物品', list.filter((x) => x && typeof x === 'object'));
+              setItemEdit(false);
+              setItemEditList([]);
+            };
+            return h(
+              'div',
+              { className: 'sim-mask', onClick: () => setItemEdit(false) },
+              h(
+                'div',
+                { className: 'sim-modal', style: { maxWidth: 720 }, onClick: (e) => e.stopPropagation() },
+                h(
+                  'div',
+                  { className: 'sim-modal-h' },
+                  h('div', { className: 'who' },
+                    h('div', { className: 'nm' }, '🎒 物品'),
+                    h('div', { className: 'chips' }, h('span', { className: 'sim-mchip' }, list.length + ' 件'))
+                  ),
+                  h('button', { className: 'sim-modal-x', title: '关闭', onClick: () => setItemEdit(false) }, '✕')
+                ),
+                h(
+                  'div',
+                  { className: 'sim-modal-b' },
+                  list.length
+                    ? list.map((it, i) =>
+                        h(
+                          'div',
+                          { className: 'sim-panel', key: i },
+                          h(
+                            'div',
+                            { style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 } },
+                            h('div', { className: 'sim-panel-h', style: { flex: 1, margin: 0 } }, '第 ' + (i + 1) + ' 件'),
+                            h(
+                              'button',
+                              {
+                                className: 'sim-close',
+                                onClick: () => setItemEditList(list.filter((_, j) => j !== i)),
+                              },
+                              '删除'
+                            )
+                          ),
+                          h('div', { className: 'sim-field' },
+                            h('label', null, '名字'),
+                            h('input', { value: it.名字 || '', onChange: (e) => setOne(i, '名字', e.target.value) })
+                          ),
+                          h('div', { className: 'sim-field' },
+                            h('label', null, '品质'),
+                            h(
+                              'select',
+                              { value: it.品质 || '', onChange: (e) => setOne(i, '品质', e.target.value) },
+                              ['', 'N', 'R', 'SR', 'SSR', 'UR'].map((q) => h('option', { key: q, value: q }, q || '（未定）'))
+                            )
+                          ),
+                          h('div', { className: 'sim-field' },
+                            h('label', null, '获取时间'),
+                            h('input', {
+                              value: it.获取时间 || '',
+                              placeholder: '如：三年前 / 2023 年春',
+                              onChange: (e) => setOne(i, '获取时间', e.target.value),
+                            })
+                          ),
+                          h('div', { className: 'sim-field' },
+                            h('label', null, '简介'),
+                            h('textarea', {
+                              style: { minHeight: 60 },
+                              value: it.简介 || '',
+                              placeholder: '这件东西的由来或现在的样子',
+                              onChange: (e) => setOne(i, '简介', e.target.value),
+                            })
+                          )
+                        )
+                      )
+                    : h('div', { className: 'sim-hint' }, '还没有物品。'),
+                  h(
+                    'div',
+                    { className: 'sim-acts', style: { marginTop: 10 } },
+                    h(
+                      'button',
+                      {
+                        className: 'sim-btn',
+                        onClick: () => setItemEditList(list.concat([{ 名字: '', 品质: '', 获取时间: '', 简介: '', 属性提升: {} }])),
+                      },
+                      '+ 添加物品'
+                    ),
+                    h('button', { className: 'sim-btn primary', onClick: () => save() }, '保存')
+                  )
+                )
+              )
+            );
+          }
+
           function assetModalView() {
             if (!assetOpen) return null;
             const L = objListOf(assetOpen.key);
@@ -5610,7 +5761,7 @@ window.__ModuleLoader__.load({
           // 「出生地」放最前：它是基础信息，和种族身高一样该在基本信息里露出来。
           // （这块面板是 strict 模式，只显示这个列表里点到的字段 —— 不列出来就等于藏起来。）
           // 实测过一遍真实存档的 47 种字段，只有「印象标签」也不在这个名单里，一并补上。
-          const PREF_NPC = ['出生地', '种族', '身高', '体重', '三围', '罩杯', '是否处女', '月经状态', '外貌', '表性格', '里性格', '性格', '与主角关系', '关系', '当前状况', '当前状态', '当前想法', '好感度', '信任度', '欲望', '依据', '印象标签', '备注', '曾用名', '艺人咖位', '经纪公司', '所属组合', '出道时间', '微博账号', '全网粉丝数', '主要奖项', '当前代言', '商业报价', '粉丝称呼', '当前舆论评价', '合约到期'];
+          const PREF_NPC = ['出生地', '生日', '年龄', '种族', '身高', '体重', '三围', '罩杯', '是否处女', '月经状态', '外貌', '表性格', '里性格', '性格', '与主角关系', '关系', '当前状况', '当前状态', '当前想法', '好感度', '信任度', '欲望', '依据', '印象标签', '备注', '曾用名', '艺人咖位', '经纪公司', '所属组合', '出道时间', '微博账号', '全网粉丝数', '主要奖项', '当前代言', '商业报价', '粉丝称呼', '当前舆论评价', '合约到期'];
 
           /**
            * 标/取消「重要角色」。重要的人排在角色列表最前面。
@@ -5830,7 +5981,9 @@ window.__ModuleLoader__.load({
                           ? h('div', { className: 'sim-status-line', style: { marginBottom: 8 } }, statusLine(npc || obj))
                           : null,
                         h(KVView, {
-                          obj: npc || obj,
+                          // 年龄不靠模型给：有生日就用生日跟世界观当前日期算一遍再显示。
+                          // （模型给的年龄经常差一两岁，而且创角阶段干脆不给）
+                          obj: withAge(npc || obj),
                           // 短字段走紧凑两列网格；长字段（外貌／性格／当前状态…）挑出来单独成块
                           preferred: PREF_NPC.filter((k) => WIDE_KEYS.indexOf(k) < 0),
                           // 长字段和摘要字段都由别处渲染了：不挂进 skip 的话，KVView 会把它们当成
@@ -7066,6 +7219,7 @@ window.__ModuleLoader__.load({
              */
             npcModalView(),
             assetModalView(),
+            itemModalView(),
             UiPreviewModal(uiPrevOpen, () => setUiPrevOpen(false)),
             h(AvatarModal, {
               cfg: avatarEdit,
