@@ -4229,6 +4229,77 @@ window.__ModuleLoader__.load({
               })
             );
           }
+
+          /**
+           * 通用「对象数组」编辑器（只出现在创角页）。
+           * 住所／交通／事业／债务／凭证／隐患／私人关系 结构各不相同，但形态都是
+           * 「一个数组，每项若干短字段」—— 用同一套卡片 + 输入框渲染，不写七份几乎一样的代码。
+           * 游玩阶段这些内容由结算模型维护，那里不给手改入口。
+           */
+          function objListEditor(title, key, fields, addLabel) {
+            const list = Array.isArray(draft.protagonist[key]) ? draft.protagonist[key] : [];
+            const put = (arr) => setProtag(key, arr);
+            const setOne = (i, k, v) => put(list.map((x, j) => (j === i ? Object.assign({}, x, { [k]: v }) : x)));
+            const empty = () => {
+              const o = {};
+              fields.forEach((f) => (o[f] = ''));
+              return o;
+            };
+            return h(
+              'div',
+              { key: key + '-editor' },
+              h('div', { className: 'sim-sec' }, title),
+              list.length
+                ? list.map((it, i) =>
+                    h(
+                      'div',
+                      { className: 'sim-panel', key: i, style: { marginBottom: 8 } },
+                      h(
+                        'div',
+                        { style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 } },
+                        h('div', { className: 'sim-panel-h', style: { flex: 1, margin: 0 } }, '第 ' + (i + 1) + ' 条'),
+                        h('button', { className: 'sim-close', onClick: () => put(list.filter((_, j) => j !== i)) }, '删除')
+                      ),
+                      h(
+                        'div',
+                        { className: 'sim-grid' },
+                        fields.map((f) =>
+                          h(Field, {
+                            key: f,
+                            label: f,
+                            value: it && it[f] != null ? String(it[f]) : '',
+                            onChange: (v) => setOne(i, f, v),
+                          })
+                        )
+                      )
+                    )
+                  )
+                : h('div', { className: 'sim-hint' }, '还没有内容。'),
+              h(
+                'div',
+                { className: 'sim-acts', style: { marginTop: 6 } },
+                h('button', { className: 'sim-btn', onClick: () => put(list.concat([empty()])) }, '+ ' + (addLabel || title))
+              )
+            );
+          }
+
+          /** 「收支」是对象不是数组，单独一个两栏编辑器 */
+          function incomeEditor() {
+            const s = draft.protagonist.收支 && typeof draft.protagonist.收支 === 'object' ? draft.protagonist.收支 : {};
+            const setKey = (k, v) => setProtag('收支', Object.assign({}, s, { [k]: v }));
+            return h(
+              'div',
+              { key: 'income-editor' },
+              h('div', { className: 'sim-sec' }, '收支（月）'),
+              h(
+                'div',
+                { className: 'sim-grid' },
+                h(Field, { key: 'in', label: '月收入', ph: '只写数字', value: s.月收入, onChange: (v) => setKey('月收入', v) }),
+                h(Field, { key: 'out', label: '月支出', ph: '只写数字', value: s.月支出, onChange: (v) => setKey('月支出', v) })
+              )
+            );
+          }
+
           function charSec(title, fields) {
             return h(
               'div',
@@ -4323,6 +4394,15 @@ window.__ModuleLoader__.load({
             charSec('当前', ['当前状态', '当前想法', '身体状态']),
             charSec('私密', ['性癖', '敏感点', '底线', '经验', '是否处女', '月经状态', '妊娠状态']),
             charSec('速记', ['标签', '特点']),
+          objListEditor('技能', '技能', ['名字', '等级', '说明', '来源'], '添加技能'),
+          objListEditor('住所', '住所', ['位置', '买入价格', '状态'], '添加住所'),
+          objListEditor('交通', '交通', ['车型', '买入价格', '状态'], '添加车辆'),
+          objListEditor('事业', '事业', ['名称', '职务', '发展情况'], '添加事业'),
+          incomeEditor(),
+          objListEditor('债务', '债务', ['对象', '金额', '约定', '状态'], '添加债务'),
+          objListEditor('凭证', '凭证', ['名称', '说明'], '添加凭证'),
+          objListEditor('隐患', '隐患', ['事情', '知情者', '危险度', '状态'], '添加隐患'),
+          objListEditor('私人关系', '私人关系', ['对象', '性质', '公开', '状态'], '添加私人关系'),
             h('div', { className: 'sim-sec' }, '演艺身份'),
             h(
               'div',
