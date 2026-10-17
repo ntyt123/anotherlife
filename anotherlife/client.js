@@ -6049,6 +6049,15 @@ const NPC_STAR_KEYS = [
   '主要奖项', '当前代言', '商业报价', '粉丝称呼', '当前舆论评价', '合约到期',
 ];
 
+/** 演艺面板的值格式化：微博账号统一带 @（数据里存不带 @ 的名字，显示时补；已经有了就不重复加） */
+function starVal(k, v) {
+  const s = String(fmtVal(v) == null ? '' : fmtVal(v));
+  if (k !== '微博账号') return s;
+  const t = s.trim();
+  if (!t) return t;
+  return /^@/.test(t) ? t : '@' + t;
+}
+
 /** 「🎬 演艺」面板：一行一个字段，值可以换行（比塞进两列网格里被裁掉强） */
 function starPanel(n) {
   if (!n || typeof n !== 'object') return null;
@@ -6066,7 +6075,7 @@ function starPanel(n) {
           'div',
           { className: 'sim-star-row', key: k },
           h('div', { className: 'sim-star-k' }, k),
-          h('div', { className: 'sim-star-v' }, String(fmtVal(n[k])))
+          h('div', { className: 'sim-star-v' }, starVal(k, n[k]))
         )
       )
     )
