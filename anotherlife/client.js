@@ -2988,7 +2988,9 @@ window.__ModuleLoader__.load({
               call(
                 'openGame',
                 {
-                  protagonist: draft.protagonist,
+                  // 特点／标签／性癖／疾病与伤病在界面上是「顿号连成一行」编辑的，
+                  // 提交前才拆回数组（边输入边拆会吃掉刚敲的分隔符）。
+                  protagonist: normalizeArrs(draft.protagonist),
                   extraInfo: draft.extraInfo,
                   npcs: Array.isArray(draft.npcs) ? draft.npcs : [],
                   skillsItems: draft.skills_items || null,
@@ -4241,12 +4243,32 @@ window.__ModuleLoader__.load({
                     : h(Field, {
                         key: f,
                         label: f,
-                        value: draft.protagonist[f],
+                        // 数组字段（特点/标签/性癖/疾病）显示时连成一行；
+                        // **输入时原样存**（不立刻拆回数组）—— 边输入边 split 会把刚敲的顿号吃掉。
+                        // 真正拆成数组在提交前做（normalizeArrs）。
+                        value: Array.isArray(draft.protagonist[f])
+                          ? draft.protagonist[f]
+                              .map((x) => (typeof x === 'object' ? String((x && (x.名称 || x.名字 || '')) || '') : String(x)))
+                              .filter(Boolean)
+                              .join('、')
+                          : draft.protagonist[f],
                         onChange: (v) => setProtag(f, v),
                       })
                 )
               )
             );
+          }
+          /** 提交前把「顿号连成一行」的字段拆回数组（只对这四类字段） */
+          const ARR_FIELDS = ['特点', '标签', '性癖', '疾病与伤病'];
+          function normalizeArrs(p) {
+            const o = Object.assign({}, p);
+            ARR_FIELDS.forEach((k) => {
+              const v = o[k];
+              if (typeof v === 'string') {
+                o[k] = v.split(/[、,，;；\n]+/).map((x) => x.trim()).filter(Boolean);
+              }
+            });
+            return o;
           }
 
           const worldForm = h(
@@ -4295,6 +4317,12 @@ window.__ModuleLoader__.load({
               parseNote ? h('div', { className: 'sim-hint' }, parseNote) : null
             ),
             charSec('基础', ['姓名', '性别', '生日', '出生地', '年龄']),
+            charSec('身份', ['身份', '种族', '婚姻状况', '配偶', '子女']),
+            charSec('外貌与性格', ['外貌', '表性格', '里性格']),
+            charSec('身体', ['身高', '体重', '三围', '罩杯', '健康状况', '疾病与伤病']),
+            charSec('当前', ['当前状态', '当前想法', '身体状态']),
+            charSec('私密', ['性癖', '敏感点', '底线', '经验', '是否处女', '月经状态', '妊娠状态']),
+            charSec('速记', ['标签', '特点']),
             h('div', { className: 'sim-sec' }, '演艺身份'),
             h(
               'div',
@@ -4318,18 +4346,6 @@ window.__ModuleLoader__.load({
                 h('span', null, '星途模拟')
               )
             ),
-            h('div', { className: 'sim-sec' }, isMale ? '身体' : '身体（三围/罩杯仅女性）'),
-            h(
-              'div',
-              { className: 'sim-grid' },
-              h(Field, { key: 'h', label: '身高', value: draft.protagonist.身高, ph: '如 162cm', onChange: (v) => setProtag('身高', v) }),
-              h(Field, { key: 'w', label: '体重', value: draft.protagonist.体重, ph: '如 42kg', onChange: (v) => setProtag('体重', v) }),
-              isMale ? null : h(Field, { key: 't', label: '三围', value: draft.protagonist.三围, ph: '如 80-58-82', onChange: (v) => setProtag('三围', v) }),
-              isMale ? null : h(Field, { key: 'c', label: '罩杯', value: draft.protagonist.罩杯, ph: '如 B', onChange: (v) => setProtag('罩杯', v) })
-            ),
-            h('div', { className: 'sim-sec' }, '外貌（细描，100 字以内）'),
-            h('div', { className: 'sim-field' }, h('label', null, '外貌'), h('textarea', { style: { minHeight: 132 }, value: draft.protagonist.外貌 || '', onChange: (e) => setProtag('外貌', e.target.value) })),
-            charSec('身份', ['身份', '种族', '婚姻状况', '配偶', '子女']),
             h('div', { className: 'sim-sec' }, '人物关系（家人、熟人）'),
             h('div', { className: 'sim-field' },
               h('textarea', {
@@ -4340,15 +4356,6 @@ window.__ModuleLoader__.load({
               })
             ),
             h('div', { className: 'sim-hint' }, '这里写过的人，开局那轮会逐个建成角色。名字请照写，AI 不会改。'),
-            h('div', { className: 'sim-sec' }, '性格（仅面板，不发给模型）'),
-            h(
-              'div',
-              { className: 'sim-grid' },
-              h(Field, { key: 'a', label: '表性格(面板)', value: draft.protagonist.表性格, onChange: (v) => setProtag('表性格', v) }),
-              h(Field, { key: 'b', label: '里性格(面板)', value: draft.protagonist.里性格, onChange: (v) => setProtag('里性格', v) }),
-              h(Field, { key: 'c', label: '当前想法(面板)', value: draft.protagonist.当前想法, onChange: (v) => setProtag('当前想法', v) })
-            ),
-            charSec('状态', ['当前状态']),
             (function () {
               // 数组字段（性癖这种）：**按原样存**，只在显示时拼起来。
               // 早先这里每次输入都 split 回数组，结果玩家一按顿号／逗号就被当场吃掉，根本打不出分隔符。
