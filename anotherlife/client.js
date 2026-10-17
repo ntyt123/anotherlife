@@ -2557,11 +2557,11 @@ window.__ModuleLoader__.load({
           const [npcOpen, setNpcOpen] = React.useState(null); // 打开的角色卡：{kind,i}
           const [editText, setEditText] = React.useState('');
           const [stage, setStage] = React.useState(null); // 当前进行到哪一步：{stage,text}
-          // 创角页「列表编辑」弹窗：{ key, fields, title } 或 null。
-          // 物品／技能／住所／交通／事业／收支之外的各类列表共用一个弹窗。
+          // 创角页「单条编辑」弹窗：{ key, title, fields, nameKey, index } 或 null。
+          // index >= 0 表示改已有的那条，-1 表示新增。
           const [listEdit, setListEdit] = React.useState(null);
-          // 弹窗里的临时副本（打开时拷贝，点保存才写回草稿）
-          const [listEditArr, setListEditArr] = React.useState([]);
+          // 正在编辑的那一条的副本（打开时拷贝，保存才写回草稿）
+          const [listOne, setListOne] = React.useState(null);
           // 解析进行到哪一小步（主角字段 → 人物名册），显示在创角页那一行
           const [parseNote, setParseNote] = React.useState('');
           // 创角页「物品」编辑弹窗是否打开（true=开）。以前这里是一个 JSON 文本框，
@@ -4356,51 +4356,53 @@ window.__ModuleLoader__.load({
            * 技能／住所／交通／事业／债务／凭证／隐患／私人关系 全走这一套；
            * 物品与主角物品也共用同一个弹窗（fields 不同而已）。
            */
+          /**
+           * 列表类字段的「胶囊 + 单条编辑」（只出现在创角页）。
+           *
+           * 每个条目一个胶囊，点哪个就编辑哪个；列表下面是「+ 添加」，点了弹出空白一条。
+           * 技能／住所／交通／事业／债务／凭证／隐患／私人关系／物品 全走这一套。
+           */
           function objListEditor(title, key, fields, addLabel, nameKey) {
             const list = Array.isArray(draft.protagonist[key]) ? draft.protagonist[key] : [];
             const nmk = nameKey || fields[0] || '名称';
             const nmOf = (x) => (x == null ? '' : typeof x === 'object' ? String(x[nmk] || x.名称 || x.名字 || x.物品 || '') : String(x));
-            const names = list.map(nmOf).filter(Boolean);
-            /** 打开这一块的编辑弹窗（把当前内容拷一份进临时数组，取消不留痕） */
-            const openEdit = () => {
-              setListEditArr(JSON.parse(JSON.stringify(Array.isArray(draft.protagonist[key]) ? draft.protagonist[key] : [])));
-              setListEdit({ key, title: addLabel || title, fields, nameKey: nmk });
+            const openOne = (i) => {
+              setListOne(JSON.parse(JSON.stringify(list[i])));
+              setListEdit({ key, title: addLabel || title, fields, nameKey: nmk, index: i });
+            };
+            const openNew = () => {
+              const o = {};
+              fields.forEach((f) => (o[f] = ''));
+              setListOne(o);
+              setListEdit({ key, title: addLabel || title, fields, nameKey: nmk, index: -1 });
             };
             return h(
               'div',
               { key: key + '-editor' },
               h('div', { className: 'sim-sec' }, title),
+              list.length
+                ? h(
+                    'div',
+                    { className: 'sim-chips' },
+                    list.map((x, i) =>
+                      h(
+                        'span',
+                        {
+                          className: 'sim-chip',
+                          key: i,
+                          style: { cursor: 'pointer' },
+                          title: '点击编辑',
+                          onClick: () => openOne(i),
+                        },
+                        h('span', { className: 'sim-chip-t' }, nmOf(x) || '（未命名）')
+                      )
+                    )
+                  )
+                : h('div', { className: 'sim-hint' }, '还没有内容'),
               h(
                 'div',
-                { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
-                names.length
-                  ? h(
-                      'div',
-                      { style: { display: 'flex', gap: 6, flexWrap: 'wrap', flex: '1 1 auto' } },
-                      // 胶囊可点：点任意一个都打开同一个编辑弹窗（不然只有右边那个小按钮能点）
-                      names.map((n, i) =>
-                        h(
-                          'span',
-                          {
-                            className: 'sim-chip',
-                            key: i,
-                            style: { cursor: 'pointer' },
-                            title: '点击编辑',
-                            onClick: openEdit,
-                          },
-                          h('span', { className: 'sim-chip-t' }, n)
-                        )
-                      ),
-                    )
-                  : h('div', { className: 'sim-hint', style: { flex: '1 1 auto' } }, '还没有内容'),
-                h(
-                  'button',
-                  {
-                    className: 'sim-btn',
-                    onClick: openEdit,
-                  },
-                  names.length ? '编辑' : '+ 添加'
-                )
+                { style: { marginTop: 8, marginBottom: 4 } },
+                h('button', { className: 'sim-btn', onClick: openNew }, '+ ' + (addLabel || title))
               )
             );
           }
@@ -5178,76 +5180,80 @@ window.__ModuleLoader__.load({
            * 点「编辑」才打开这个弹窗，在里面增删改，点保存写回草稿并关闭。
            *
            * listEdit = { key, title, fields, nameKey }；
-           * listEditArr 是编辑中的临时数组，点 ✕ 直接丢弃。
+           * listOne 是正在编辑那一条的副本，点 ✕ 直接丢弃。
+           */
+          /**
+           * 单个条目的编辑弹窗（创角页专用）。
+           *
+           * 交互：在页面上点某一条的胶囊 → 只打开这一条；列表下方的「+ 添加」→ 打开一条空白。
+           * 保存才写回草稿（新增就 push，改已有的就替换）；点 ✕ 或「取消」什么都不改。
+           *
+           * listEdit = { key, title, fields, nameKey, index }，index = -1 表示新增。
+           * listOne 是正在编辑的那一条的副本。
            */
           function listModalView() {
             if (!listEdit) return null;
-            const { key, title, fields, nameKey } = listEdit;
-            const arr = Array.isArray(listEditArr) ? listEditArr : [];
-            const nmOf = (x) => (x == null ? '' : typeof x === 'object' ? String(x[nameKey] || x.名称 || x.名字 || '') : String(x));
-            const setOne = (i, k, v) => setListEditArr(arr.map((x, j) => (j === i ? Object.assign({}, x, { [k]: v }) : x)));
-            const blank = () => {
-              const o = {};
-              (fields || []).forEach((f) => (o[f] = ''));
-              return o;
-            };
+            const { key, title, fields, nameKey, index } = listEdit;
+            const isNew = !(index >= 0);
+            const it = listOne || {};
+            const setF = (f, v) => setListOne(Object.assign({}, it, { [f]: v }));
+            const nmOf = (x) => (x == null ? '' : String(x[nameKey] || x.名称 || x.名字 || x.物品 || ''));
             const save = () => {
-              // 全空的条目丢掉，免得列表里留一堆空壳
-              const keep = arr.filter((x) => x && typeof x === 'object' && (fields || []).some((f) => String(x[f] == null ? '' : x[f]).trim()));
-              setProtag(key, keep);
+              const list = Array.isArray(draft.protagonist[key]) ? draft.protagonist[key].slice() : [];
+              // 全空的条目直接丢弃，不往列表里塞空壳
+              const filled = (fields || []).some((f) => String(it[f] == null ? '' : it[f]).trim());
+              if (!filled) {
+                setListEdit(null);
+                setListOne(null);
+                return;
+              }
+              if (isNew) list.push(it);
+              else list[index] = it;
+              setProtag(key, list);
               setListEdit(null);
-              setListEditArr([]);
+              setListOne(null);
+            };
+            const del = () => {
+              const list = Array.isArray(draft.protagonist[key]) ? draft.protagonist[key].slice() : [];
+              if (!isNew) list.splice(index, 1);
+              setProtag(key, list);
+              setListEdit(null);
+              setListOne(null);
             };
             return h(
               'div',
-              { className: 'sim-mask', onClick: () => setListEdit(null) },
+              { className: 'sim-mask', onClick: () => { setListEdit(null); setListOne(null); } },
               h(
                 'div',
-                { className: 'sim-modal', style: { maxWidth: 720 }, onClick: (e) => e.stopPropagation() },
+                { className: 'sim-modal', style: { maxWidth: 640 }, onClick: (e) => e.stopPropagation() },
                 h(
                   'div',
                   { className: 'sim-modal-h' },
                   h('div', { className: 'who' },
-                    h('div', { className: 'nm' }, title || key),
-                    h('div', { className: 'chips' }, h('span', { className: 'sim-mchip' }, arr.length + ' 项'))
+                    h('div', { className: 'nm' }, (isNew ? '新增' : '编辑') + (title || key)),
+                    nmOf(it) ? h('div', { className: 'chips' }, h('span', { className: 'sim-mchip' }, nmOf(it))) : null
                   ),
-                  h('button', { className: 'sim-modal-x', title: '关闭', onClick: () => setListEdit(null) }, '✕')
+                  h('button', { className: 'sim-modal-x', title: '关闭', onClick: () => { setListEdit(null); setListOne(null); } }, '✕')
                 ),
                 h(
                   'div',
                   { className: 'sim-modal-b' },
-                  arr.length
-                    ? arr.map((it, i) =>
-                        h(
-                          'div',
-                          { className: 'sim-panel', key: i },
-                          h(
-                            'div',
-                            { style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 } },
-                            h('div', { className: 'sim-panel-h', style: { flex: 1, margin: 0 } }, '第 ' + (i + 1) + ' 项' + (nmOf(it) ? ' · ' + nmOf(it) : '')),
-                            h('button', { className: 'sim-close', onClick: () => setListEditArr(arr.filter((_, j) => j !== i)) }, '删除')
-                          ),
-                          h(
-                            'div',
-                            { className: 'sim-grid' },
-                            (fields || []).map((f) =>
-                              h(Field, {
-                                key: f,
-                                label: f,
-                                value: it && it[f] != null ? String(it[f]) : '',
-                                onChange: (v) => setOne(i, f, v),
-                              })
-                            )
-                          )
-                        )
-                      )
-                    : h('div', { className: 'sim-hint' }, '还没有内容。'),
-                  h(
-                    'div',
-                    { className: 'sim-acts', style: { marginTop: 10 } },
-                    h('button', { className: 'sim-btn', onClick: () => setListEditArr(arr.concat([blank()])) }, '+ 添加'),
-                    h('button', { className: 'sim-btn primary', onClick: () => save() }, '保存')
+                  (fields || []).map((f) =>
+                    h(Field, {
+                      key: f,
+                      label: f,
+                      value: it[f] == null ? '' : String(it[f]),
+                      onChange: (v) => setF(f, v),
+                    })
                   )
+                ),
+                h(
+                  'div',
+                  { className: 'sim-modal-f' },
+                  isNew ? null : h(Btn, { onClick: del }, '删除这条'),
+                  h('div', { style: { flex: 1 } }),
+                  h(Btn, { onClick: () => { setListEdit(null); setListOne(null); } }, '取消'),
+                  h(Btn, { primary: true, onClick: save }, '保存')
                 )
               )
             );
