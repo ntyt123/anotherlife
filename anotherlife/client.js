@@ -790,7 +790,11 @@ window.__ModuleLoader__.load({
       '.sim-when-row .v{font-size:var(--sim-fs-6)}',
       '.sim-when-row.sub .v{font-size:var(--sim-fs-4)}',
       '.sim-chip{padding:7px 11px;font-size:var(--sim-fs-3)}',
-      '.sim-tip{max-width:min(510px,92vw)}',
+      // 物品/衣着的悬浮详情在手机上偏大，整体缩到 0.9。
+      // 必须同时 animation:none —— 入场动画的 to{transform:none} 会把 scale 覆盖掉。
+      // 缩放原点定在左上：浮窗的 left 是 JS 算的，从左上缩不会偏移；
+      // 向上翻（用 bottom 定位）时会有约 10% 的偏移，肉眼看不出来。
+      '.sim-tip{max-width:min(510px,92vw);animation:none;transform:scale(.9);transform-origin:top left}',
       '}',
     ].join('\n');
 
