@@ -507,6 +507,12 @@ window.__ModuleLoader__.load({
       '.sim-cyc-ph{display:inline-flex;align-items:center;gap:6px;font-size:var(--sim-fs-4);font-weight:600;color:var(--sim-t)}',
       '.sim-cyc-ph .dot{width:7px;height:7px;border-radius:50%;flex:none;background:var(--sim-t2)}',
       '.sim-cyc-nx{font-size:var(--sim-fs-3);color:var(--sim-t2);white-space:nowrap}',
+      // 周期条右上角：生理信号（只在节点上出现）+ 倒计时
+      '.sim-cyc-r{display:inline-flex;align-items:center;gap:8px;white-space:nowrap}',
+      '.sim-cyc-sig{font-size:var(--sim-fs-2);padding:1px 7px;border-radius:99px;border:1px solid currentColor;line-height:1.5}',
+      '.sim-cyc-sig.hi{color:#c9922a;background:rgba(201,146,42,.12)}',
+      '.sim-cyc-sig.warn{color:#c34a4a;background:rgba(195,74,74,.12)}',
+      '.sim-cyc-sig.low{color:#b4485c;background:rgba(180,72,92,.12)}',
       '.sim-cyc-bar{position:relative;display:flex;gap:2px;height:9px;border-radius:5px;overflow:hidden;background:var(--sim-bg2)}',
       '.sim-cyc-bar .sg{height:100%;opacity:.32;border-radius:2px;flex:1 1 auto}',
       '.sim-cyc-bar .sg.on{opacity:1}',
@@ -5417,7 +5423,7 @@ window.__ModuleLoader__.load({
             ['身体', ['身高', '体重', '三围', '罩杯']],
             // 生理周期 / 妊娠状态 / 身体状态 已经拼在图头那行摘要里了，这里不再重复列一遍
             // 疾病与伤病 单独成一排标签（放在穿着上方），不进通用字段表
-            ['健康与生理', ['健康状况', '是否处女', '月经状态']],
+            ['健康与生理', ['健康状况', '生理周期', '是否处女', '月经状态']],
             ['面板专用', ['表性格', '里性格', '当前想法']],
             ['偏好', ['标签', '特点']],
             ['私密', ['性癖', '敏感点', '底线', '经验']],
@@ -6082,6 +6088,18 @@ function cycleInfo(txt) {
   if (!day) return null;
   return { phase, day };
 }
+/**
+ * 生理信号：只在几个节点上出现，把「第几天」翻译成剧情能用的判断。
+ * 没有信号就返回 null —— 平时不显示任何东西，免得变成常驻噪音。
+ */
+function cycleSignal(info) {
+  if (!info) return null;
+  if (info.phase === '月经') return { t: '不适', cls: 'low' };
+  if (info.phase === '排卵') return { t: '高危', cls: 'hi' };
+  if (info.phase === '黄体' && info.day >= 25) return { t: '经前 · 易怒', cls: 'warn' };
+  return null;
+}
+
 /** 下一站的名称与到达它的天数（距本次月经第 1 天） */
 function cycleNext(phase) {
   if (phase === '月经' || phase === '卵泡') return ['排卵', 14];
@@ -6113,11 +6131,19 @@ function cycleBar(obj, compact) {
       ),
       compact
         ? null
-        : h(
-            'span',
-            { className: 'sim-cyc-nx' },
-            left > 0 ? '距' + nx[0] + ' ' + left + ' 天' : nx[0] + '当天'
-          )
+        : (function () {
+            const sig = cycleSignal(info);
+            return h(
+              'span',
+              { className: 'sim-cyc-r' },
+              sig ? h('span', { className: 'sim-cyc-sig ' + sig.cls }, sig.t) : null,
+              h(
+                'span',
+                { className: 'sim-cyc-nx' },
+                left > 0 ? '距' + nx[0] + ' ' + left + ' 天' : nx[0] + '当天'
+              )
+            );
+          })()
     ),
     h(
       'div',
@@ -6195,7 +6221,7 @@ function cycleBar(obj, compact) {
           // 「出生地」放最前：它是基础信息，和种族身高一样该在基本信息里露出来。
           // （这块面板是 strict 模式，只显示这个列表里点到的字段 —— 不列出来就等于藏起来。）
           // 实测过一遍真实存档的 47 种字段，只有「印象标签」也不在这个名单里，一并补上。
-          const PREF_NPC = ['出生地', '生日', '年龄', '种族', '身高', '体重', '三围', '罩杯', '是否处女', '月经状态', '外貌', '表性格', '里性格', '性格', '与主角关系', '关系', '当前状况', '当前状态', '当前想法', '好感度', '信任度', '欲望', '依据', '印象标签', '备注', '曾用名', '艺人咖位', '经纪公司', '所属组合', '出道时间', '微博账号', '全网粉丝数', '主要奖项', '当前代言', '商业报价', '粉丝称呼', '当前舆论评价', '合约到期'];
+          const PREF_NPC = ['出生地', '生日', '年龄', '种族', '身高', '体重', '三围', '罩杯', '是否处女', '月经状态', '外貌', '表性格', '里性格', '性格', '与主角关系', '关系', '当前状况', '当前状态', '当前想法', '好感度', '信任度', '欲望', '依据', '印象标签', '备注', '曾用名', '生理周期', '艺人咖位', '经纪公司', '所属组合', '出道时间', '微博账号', '全网粉丝数', '主要奖项', '当前代言', '商业报价', '粉丝称呼', '当前舆论评价', '合约到期'];
 
 /** NPC 的演艺资料：查看态单独成块，不混在「基本信息」里（那些字段值都很长） */
 const NPC_STAR_KEYS = [
@@ -6596,8 +6622,12 @@ function starPanel(n) {
                             // 编辑态列全，方便补填。
                             // 演艺资料在查看态单独成块（starPanel），这里排除掉；
                             // 编辑态仍留在网格里，方便直接改。
+                            // 演艺资料在查看态单独成块（starPanel）、生理周期由 cycleBar 画成条，
+                            // 这两个都不进网格 —— 否则同一份内容会出现两遍。
+                            // 编辑态仍留在网格里，方便直接改。
                             const keep = (k) =>
-                              editing || (hasVal(src[k]) && NPC_STAR_KEYS.indexOf(k) < 0);
+                              editing ||
+                              (hasVal(src[k]) && NPC_STAR_KEYS.indexOf(k) < 0 && k !== '生理周期');
                             const keys = HEAD_KEYS.concat(
                               PREF_NPC.filter(
                                 (k) => WIDE_KEYS.indexOf(k) < 0 && !(ancient && MODERN_ONLY_KEYS.indexOf(k) >= 0) && keep(k)
