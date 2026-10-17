@@ -513,6 +513,14 @@ window.__ModuleLoader__.load({
       '.sim-cyc-sig.hi{color:#c9922a;background:rgba(201,146,42,.12)}',
       '.sim-cyc-sig.warn{color:#c34a4a;background:rgba(195,74,74,.12)}',
       '.sim-cyc-sig.low{color:#b4485c;background:rgba(180,72,92,.12)}',
+      // 「生理周期」的编辑控件：阶段下拉 + 天数滑块
+      '.sim-cyc-edit{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:5px}',
+      '.sim-cyc-edit-r{display:flex;align-items:center;gap:10px;flex-wrap:wrap}',
+      '.sim-cyc-edit .sim-select{flex:0 0 auto;width:104px;min-width:0}',
+      '.sim-cyc-day{flex:1 1 130px;min-width:120px;display:flex;align-items:center;gap:9px}',
+      // range 要盖掉 .sim-field input 那套边框与内边距，否则会变成一个方框
+      '.sim-cyc-day input[type=range]{flex:1 1 auto;min-width:0;height:18px;padding:0;border:none;background:transparent;box-shadow:none;accent-color:var(--sim-ac);cursor:pointer}',
+      '.sim-cyc-day .val{flex:none;font-size:var(--sim-fs-3);color:var(--sim-t2);min-width:52px;text-align:right}',
       '.sim-cyc-bar{position:relative;display:flex;gap:2px;height:9px;border-radius:5px;overflow:hidden;background:var(--sim-bg2)}',
       '.sim-cyc-bar .sg{height:100%;opacity:.32;border-radius:2px;flex:1 1 auto}',
       '.sim-cyc-bar .sg.on{opacity:1}',
@@ -4514,6 +4522,13 @@ window.__ModuleLoader__.load({
                 fields.map((f) =>
                   f === '生日'
                     ? birthField()
+                    : f === '生理周期'
+                      ? h(
+                          'div',
+                          { className: 'sim-field', key: f },
+                          h('label', null, f),
+                          cycleField(draft.protagonist[f], (v) => setProtag(f, v))
+                        )
                     : h(Field, {
                         key: f,
                         label: f,
@@ -6110,6 +6125,77 @@ function cycleNext(phase) {
  * compact=true 给角色卡片用（一条细线 + 「卵泡 D10」），否则是弹窗里的完整版。
  * 没有数据、或解不出阶段，就返回 null（不画空条）。
  */
+/** 天数落在哪一段（滑块拖动时用来自动选阶段） */
+function phaseOfDay(d) {
+  let acc = 0;
+  for (const s of CYCLE_SEGS) {
+    if (d <= acc + s.n) return s.k;
+    acc += s.n;
+  }
+  return '黄体';
+}
+/**
+ * 「生理周期」的编辑控件：阶段下拉 + 天数滑块。
+ * 直接改文字太容易写错（写「第 10 天」不带阶段、「卵泡」写成「卵泡期前后」…），
+ * 而这两个维度本来就是固定的：4 个阶段、1~28 天。
+ * 对外仍然是一个字符串（「卵泡期 · 第10天」），下层解析逻辑不用改。
+ */
+function cycleField(value, onChange) {
+  const info = cycleInfo(value);
+  const phase = info ? info.phase : '';
+  const day = info ? info.day : 1;
+  const clamp = (x) => Math.min(Math.max(Number(x) || 1, 1), 28);
+  // 阶段本来**就是天数决定的**，所以写回时一律按天数重推阶段 ——
+  // 否则会写出「卵泡期 · 第20天」「月经期 · 第27天」这种自相矛盾的值。
+  const commit = (dd) => onChange(phaseOfDay(dd) + '期 · 第' + dd + '天');
+  const segMid = (k) => {
+    let acc = 0;
+    for (const s of CYCLE_SEGS) {
+      if (s.k === k) return acc + Math.ceil(s.n / 2);
+      acc += s.n;
+    }
+    return 1;
+  };
+  return h(
+    'div',
+    { className: 'sim-cyc-edit' },
+    h(
+      'div',
+      { className: 'sim-cyc-edit-r' },
+      h(
+        'select',
+        {
+          className: 'sim-select',
+          value: phase,
+          // 选阶段 = 把天数跳到该段中间，滑块和下拉始终一致
+          onChange: (e) => {
+            const v = e.target.value;
+            if (!v) {
+              onChange('');
+              return;
+            }
+            commit(segMid(v));
+          },
+        },
+        h('option', { value: '' }, '未记录'),
+        CYCLE_SEGS.map((s) => h('option', { key: s.k, value: s.k }, s.k + '期'))
+      ),
+      h(
+        'div',
+        { className: 'sim-cyc-day' },
+        h('input', {
+          type: 'range',
+          min: 1,
+          max: 28,
+          value: String(day),
+          onChange: (e) => commit(clamp(e.target.value)),
+        }),
+        h('span', { className: 'val' }, phase ? '第 ' + day + ' 天' : '未记录')
+      )
+    )
+  );
+}
+
 function cycleBar(obj, compact) {
   const o = obj || {};
   if (o.性别 && !/女/.test(String(o.性别))) return null;
@@ -6634,12 +6720,19 @@ function starPanel(n) {
                               )
                             );
                             return keys.map((k) =>
-                              h(Field, {
-                                key: k,
-                                label: k,
-                                value: src ? src[k] : '',
-                                onChange: (v) => setObj(Object.assign({}, src || {}, { [k]: v })),
-                              })
+                                k === '生理周期'
+                                  ? h(
+                                  'div',
+                                  { className: 'sim-field', key: k },
+                                  h('label', null, k),
+                                  cycleField(src ? src[k] : '', (v) => setObj(Object.assign({}, src || {}, { [k]: v })))
+                                    )
+                                  : h(Field, {
+                                  key: k,
+                                  label: k,
+                                  value: src ? src[k] : '',
+                                  onChange: (v) => setObj(Object.assign({}, src || {}, { [k]: v })),
+                                    })
                             );
                           })()
                         )
