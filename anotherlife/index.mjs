@@ -22,7 +22,7 @@ const P = 'dsh-tavern-simulator/';
 const KEY_SLOTS = ['retrieve', 'settle', 'summary', 'assistant'];
 
 /** 每次改动宿主侧都改一下这个版本号：ping 会回报它，用来确认 Tavern 到底加载的是哪一版 */
-const REV = 'host-v56-wear-duration-20261017r';
+const REV = 'host-v57-story-idle-600-20261017r';
 
 /**
  * 只有这一局用的是这些卡时，插件才出现在界面上（其余卡片游玩时完全不打扰）。
@@ -2361,7 +2361,7 @@ export function apply(ctx) {
       const sec = Math.round((Date.now() - t0) / 1000);
       setProg(gid, 'story', '生成正文中 · 已收到 ' + n + ' 字（' + sec + 's）');
     };
-    const storyOpts = { maxTokens: 4500, onChunk, firstChunkMs: 420000, idleMs: 150000, purpose: opts.all ? '开场' : '正文' };
+    const storyOpts = { maxTokens: 4500, onChunk, firstChunkMs: 420000, idleMs: 600000, purpose: opts.all ? '开场' : '正文' };
     let r = await callMainModel([{ role: 'system', content: sys }, { role: 'user', content: userContent }], storyOpts);
     let sp = splitStory(r.text);
     // 有些模型／中转会把内容全塞进「思考」通道，正文一条都不给。
