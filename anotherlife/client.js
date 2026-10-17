@@ -3264,7 +3264,6 @@ window.__ModuleLoader__.load({
           const skin = state.skin || 'paper';
           const phase = state.phase || 'world';
           const ks = state.keyStatus || {};
-          const hint = { color: 'var(--sim-t2)', fontSize: 11, marginBottom: 4 };
 
           function sourceData() {
             if (phase === 'play') {
@@ -4629,12 +4628,11 @@ window.__ModuleLoader__.load({
                 { className: 'sim-grid' },
                 h(Field, { key: 'cur', label: '货币名', ph: '如 人民币 / 银两', value: draft.protagonist.货币名, onChange: (v) => setProtag('货币名', v) }),
                 h(Field, { key: 'mn', label: '金钱', ph: '按身份给，如 3000000', value: draft.protagonist.金钱, onChange: (v) => setProtag('金钱', Number(v) || 0) }),
-                h(Field, { key: 'mn', label: '金钱', ph: '按身份给，如 3000000', value: draft.protagonist.金钱, onChange: (v) => setProtag('金钱', Number(v) || 0) }),
-                // 物品不再用 JSON 文本框：点开一个弹窗，逐件增删改
-                capsuleList('物品', ['名字', '品质', '获取时间', '简介']),
                 h(Field, { key: 'ft', label: '特点', value: Array.isArray(draft.protagonist.特点) ? draft.protagonist.特点.join('、') : String(draft.protagonist.特点 || ''), onChange: (v) => setProtag('特点', String(v || '')) })
               ),
-              h('div', { style: hint }, '物品每项：{"名字","品质":"N/R/SR/SSR/UR","获取时间","简介","属性提升":{}}。'),
+              // 物品是列表块（标题 + 胶囊 + 添加），必须放在 sim-grid 外面：
+              // 塞进网格会变成其中一列，跟左边的货币名／金钱并排显示。
+              capsuleList('物品', ['名字', '品质', '获取时间', '简介']),
               h('div', { className: 'sim-sec' }, '备注'),
               h(
                 'div',
