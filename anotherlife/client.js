@@ -476,6 +476,14 @@ window.__ModuleLoader__.load({
       '.sim-real-chip-h .nm{font-weight:700;font-size:var(--sim-fs-3);flex:none}',
       '.sim-real-chip-h .was{font-size:var(--sim-fs-1);color:var(--sim-t2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}',
       '.sim-real-chip-v{font-size:var(--sim-fs-2);color:var(--sim-t2);white-space:pre-wrap;word-break:break-word}',
+      // 角色弹窗右上角的「修改」图标（查看态 ✏ / 编辑态 ✓），跟 ✕ 同一套外观
+      '.sim-modal-edit{flex:0 0 auto;background:rgba(255,255,255,.18);border:none;color:#fff;width:30px;height:30px;border-radius:9px;cursor:pointer;font-size:15px;line-height:1}',
+      '.sim-modal-edit:hover{background:rgba(255,255,255,.32)}',
+      '.sim-modal-edit.on{background:rgba(255,255,255,.45)}',
+      // 查看态：把输入框的边框与底色去掉、不可点，看起来就是普通文字
+      '.sim-modal.viewing .sim-field input,.sim-modal.viewing .sim-field textarea,.sim-modal.viewing .sim-select{border-color:transparent;background:transparent;box-shadow:none;pointer-events:none;padding-left:0;padding-right:0;resize:none}',
+      '.sim-modal.viewing .sim-field textarea{min-height:0}',
+      '.sim-modal.viewing .sim-select{appearance:none}',
       '.sim-ai{padding:14px;border:1px dashed var(--sim-ac);border-radius:12px;margin-bottom:6px;background:var(--sim-bg)}',
       '.sim-ta{width:100%;min-height:76px;background:var(--sim-bg);border:1px solid var(--sim-bd);border-radius:8px;color:var(--sim-t);padding:9px 11px;font-size:var(--sim-fs-3);resize:vertical;font-family:inherit}',
       '.sim-foot{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px;padding-top:14px;border-top:1px solid var(--sim-bd)}',
@@ -6045,7 +6053,7 @@ window.__ModuleLoader__.load({
                 key: kind + '-' + idx,
                 className: 'sim-npc' + (c.male ? ' male' : ''),
                 title: '点开查看',
-                onClick: () => setNpcOpen({ kind, i: idx }),
+                onClick: () => setNpcOpen({ kind, i: idx, editing: phase === 'character' }),
               },
               // 头像在左，信息在右 —— 点头像换头像，点别处打开角色卡
               avatarNode(npc || rel, 'sim-av sim-npc-av', '', {
@@ -6174,6 +6182,8 @@ window.__ModuleLoader__.load({
              * 所以不能直接认死 dps —— 否则创角时点角色卡片会打开一个空壳。
              */
             const inChar = phase === 'character';
+            // 查看 / 编辑两种模式：游玩时先看清爽的展示态，点右上角 ✏ 才进编辑
+            const editing = !!npcOpen.editing;
             const pickSrc = (k) =>
               inChar
                 ? (Array.isArray(draft[k]) ? draft[k] : [])
@@ -6296,7 +6306,7 @@ window.__ModuleLoader__.load({
               { className: 'sim-mask', onClick: () => setNpcOpen(null) },
               h(
                 'div',
-                { className: 'sim-modal', onClick: (e) => e.stopPropagation() },
+                { className: 'sim-modal' + (editing ? '' : ' viewing'), onClick: (e) => e.stopPropagation() },
                 h(
                   'div',
                   { className: 'sim-modal-h' },
@@ -6319,13 +6329,23 @@ window.__ModuleLoader__.load({
                         },
                       }, '删除')
                     : null,
+                  // 右上角：查看态显示 ✏ 进编辑，编辑态显示 ✓ 回到查看
+                  h(
+                    'button',
+                    {
+                      className: 'sim-modal-edit' + (editing ? ' on' : ''),
+                      title: editing ? '完成修改' : '修改这个角色的设定',
+                      onClick: () => setNpcOpen(Object.assign({}, npcOpen, { editing: !editing })),
+                    },
+                    editing ? '✓' : '✏'
+                  ),
                   h('button', { className: 'sim-modal-x', title: '关闭', onClick: () => setNpcOpen(null) }, '✕')
                 ),
                 h(
                   'div',
                   { className: 'sim-modal-b' },
                   // 查到的真实资料：点胶囊填入（再点撤回）；正文由 renderRealBody 渲染
-                  realInfo
+                  editing && realInfo
                     ? h('div', { className: 'sim-panel' },
                           h('div', { className: 'sim-panel-h' }, '🔎 真实资料' + (realInfo.year ? ' · ' + realInfo.year + ' 年' : '') + (Object.keys(realInfo.fields || {}).length ? ' · ' + Object.keys(realInfo.fields || {}).length + ' 项' : '')),
                           renderRealBody())
@@ -6566,25 +6586,29 @@ window.__ModuleLoader__.load({
                 h(
                   'div',
                   { className: 'sim-modal-f' },
-                  h(Btn, { disabled: busy || !!(realInfo && realInfo.loading), onClick: () => askReal() }, '🔎 查真实资料'),
-                  h(Btn, { disabled: busy, onClick: () => setNpcOpen(null) }, '取消'),
-                  h(
-                    Btn,
-                    {
-                      primary: true,
-                      disabled: busy,
-                      onClick: () => {
-                        // 创角阶段改动本来就在 draft 里（点「进入正文」时一起提交），这里只需关闭；
-                        // 游玩阶段才需要把草稿写回存档。
-                        if (inChar) {
-                          setNpcOpen(null);
-                          return;
-                        }
-                        saveFields({ npcs: pickSrc('npcs'), relationships: pickSrc('relationships') }).then(() => setNpcOpen(null));
+                  editing
+                    ? [
+                    h(Btn, { disabled: busy || !!(realInfo && realInfo.loading), onClick: () => askReal() }, '🔎 查真实资料'),
+                    h(Btn, { disabled: busy, onClick: () => setNpcOpen(null) }, '取消'),
+                    h(
+                      Btn,
+                      {
+                        primary: true,
+                        disabled: busy,
+                        onClick: () => {
+                          // 创角阶段改动本来就在 draft 里（点「进入正文」时一起提交），这里只需关闭；
+                          // 游玩阶段才需要把草稿写回存档。
+                          if (inChar) {
+                            setNpcOpen(null);
+                            return;
+                          }
+                          saveFields({ npcs: pickSrc('npcs'), relationships: pickSrc('relationships') }).then(() => setNpcOpen(null));
+                        },
                       },
-                    },
-                    '保存'
-                  )
+                      '保存'
+                    )
+                      ]
+                    : h(Btn, { disabled: busy, onClick: () => setNpcOpen(null) }, '关闭'),
                 )
               )
             );
