@@ -6307,7 +6307,17 @@ window.__ModuleLoader__.load({
                       })
                     ),
                     // 长字段放在「头像那一行」**外面**：跟头像并排的话，头像下方会留一大块空白
-                    PREF_NPC.filter((k) => WIDE_KEYS.indexOf(k) >= 0).map((k) => wideField(k, (npc || obj)[k]))
+                    // 长字段（外貌／表性格／里性格／当前状态…）也改成输入框 —— 只读预览改不了东西
+                    PREF_NPC.filter((k) => WIDE_KEYS.indexOf(k) >= 0).map((k) =>
+                      h(Field, {
+                        key: k,
+                        label: k,
+                        value: Array.isArray((npc || obj)[k])
+                          ? (npc || obj)[k].map((x) => String(x == null ? '' : x)).join('、')
+                          : (npc || obj)[k],
+                        onChange: (v) => setObj(Object.assign({}, npc || obj || {}, { [k]: v })),
+                      })
+                    ),
                   ),
                   h(
                     'div',
@@ -6439,11 +6449,28 @@ window.__ModuleLoader__.load({
                         ])
                       : null,
                     rel && rel !== npc
-                      ? h(KVView, {
-                          obj: rel,
-                          preferred: ['对象', '关系', '好感度', '信任度', '欲望', '依据', '印象标签', '当前状况', '备注'],
-                          twoCol: true,
-                        })
+                      // 关系数值也改成输入框：好感度／信任度／欲望 这些本来就该能直接调
+                      ? h(
+                        'div',
+                        { className: 'sim-grid' },
+                        ['对象', '关系', '好感度', '信任度', '欲望', '依据', '印象标签', '当前状况', '备注'].map((k) =>
+                          h(Field, {
+                            key: k,
+                            label: k,
+                            value: rel[k] == null ? '' : rel[k],
+                            onChange: (v) => {
+                              const kind2 = 'relationships';
+                              const arr = pickSrc(kind2);
+                              // 按对象名定位这一条，改完写回（创角改草稿、游玩写存档）
+                              const nm2 = String(rel.对象 || rel.姓名 || '').trim();
+                              writeSrc(
+                                kind2,
+                                arr.map((x) => (String(x && (x.对象 || x.姓名) || '').trim() === nm2 ? Object.assign({}, x, { [k]: v }) : x))
+                              );
+                            },
+                          })
+                        )
+                      )
                       : h(
                           'div',
                           { className: 'sim-hint' },
