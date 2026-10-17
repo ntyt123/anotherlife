@@ -463,9 +463,11 @@ window.__ModuleLoader__.load({
       // 长文本字段（外貌／性格／当前状态…）跨整行，别挤在半列里
       '.sim-field.wide{grid-column:1 / -1}',
       // 带单位的输入：输入框 + 框外右侧的单位（cm／kg／岁）。单位不进输入框，省得跟数字挤在一起。
-      '.sim-input-wrap{flex:1;min-width:0;display:flex;align-items:center;gap:6px}',
-      '.sim-input-wrap input{flex:1;min-width:0}',
-      '.sim-unit{flex:none;color:var(--sim-t2);font-size:var(--sim-fs-2);white-space:nowrap}',
+      // 注意类名不能叫 sim-input-wrap —— 那个名字是聊天输入区在用的（412 行），
+      // 它带 flex-direction:column 和 border-top，撞上就会让单位掉到框下面并多一条灰线。
+      '.sim-unit-box{flex:1;min-width:0;display:flex;flex-direction:row;align-items:center;gap:6px}',
+      '.sim-unit-box input{flex:1;min-width:0}',
+      '.sim-unit{flex:none;color:var(--sim-t2);font-size:var(--sim-fs-2);white-space:nowrap;line-height:1}',
       '.sim-ai{padding:14px;border:1px dashed var(--sim-ac);border-radius:12px;margin-bottom:6px;background:var(--sim-bg)}',
       '.sim-ta{width:100%;min-height:76px;background:var(--sim-bg);border:1px solid var(--sim-bd);border-radius:8px;color:var(--sim-t);padding:9px 11px;font-size:var(--sim-fs-3);resize:vertical;font-family:inherit}',
       '.sim-foot{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px;padding-top:14px;border-top:1px solid var(--sim-bd)}',
@@ -898,7 +900,7 @@ window.__ModuleLoader__.load({
             { className: 'sim-field' + (props.wide ? ' wide' : '') },
             h('label', null, props.label),
             props.unit && !props.multiline
-              ? h('div', { className: 'sim-input-wrap' }, box, h('span', { className: 'sim-unit' }, props.unit))
+              ? h('div', { className: 'sim-unit-box' }, box, h('span', { className: 'sim-unit' }, props.unit))
               : box
           );
         }
