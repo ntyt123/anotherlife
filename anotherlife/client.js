@@ -3672,11 +3672,37 @@ window.__ModuleLoader__.load({
            * 对象/数组字段纠形：模型偶尔把本该是数组的字段给成对象（例如「事业」），
            * 界面按数组读就会显示不出来。这里统一包成数组。
            */
-          const ARRAY_FIELDS = ['事业', '住所', '交通', '债务', '凭证', '物品', '技能', '特点', '标签', '隐患', '私人关系', '代表作品', '作品履历', '主要奖项', '当前代言', '团队', '行程', '疾病与伤病', '性癖', '身体'];
+          // 「身体」是对象不是数组 —— 早先误放进来，toArrays 会把 {} 包成 [{}]，数据就废了
+          const ARRAY_FIELDS = ['事业', '住所', '交通', '债务', '凭证', '物品', '技能', '特点', '标签', '隐患', '私人关系', '代表作品', '作品履历', '主要奖项', '当前代言', '团队', '行程', '疾病与伤病', '性癖'];
+          /** 字符串数组 → 对象数组：模型偶尔把「住所」写成 ["北京某小区"]，界面读不到位置与价格 */
+          const STR2OBJ = { 住所: '位置', 交通: '车型', 事业: '名称', 债务: '对象', 凭证: '名称', 物品: '名字', 技能: '名字' };
           function toArrays(o) {
             ARRAY_FIELDS.forEach((k) => {
               if (o && o[k] != null && !Array.isArray(o[k]) && typeof o[k] === 'object') o[k] = [o[k]];
             });
+            // 「身体」是对象：老数据里可能被包成 [{...}] 或 [{}]，统一还原成一个对象
+            if (o && Array.isArray(o.身体)) {
+              const first = o.身体.find((x) => x && typeof x === 'object' && Object.keys(x).length);
+              o.身体 = first ? Object.assign({}, first) : {};
+            }
+            // 字符串项补成对象（只补主键，其余字段用户自己填或后面结算补）
+            Object.keys(STR2OBJ).forEach((k) => {
+              const arr = o && o[k];
+              if (!Array.isArray(arr)) return;
+              o[k] = arr.map((x) => (typeof x === 'string' && x.trim() ? { [STR2OBJ[k]]: x.trim() } : x));
+            });
+            // 私人关系里模型常把「性质」写成「品质」（那是物品的字段）
+            if (o && Array.isArray(o.私人关系)) {
+              o.私人关系 = o.私人关系.map((x) => {
+                if (!x || typeof x !== 'object') return x;
+                if (x.性质 == null && x.品质 != null) {
+                  const y = Object.assign({}, x, { 性质: x.品质 });
+                  delete y.品质;
+                  return y;
+                }
+                return x;
+              });
+            }
             return o;
           }
 
