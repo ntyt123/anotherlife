@@ -3760,6 +3760,21 @@ window.__ModuleLoader__.load({
                   const npcsIn = Array.isArray(p.角色) ? p.角色.filter((x) => x && typeof x === 'object' && String(x.姓名 || '').trim()) : [];
                   // 「角色」属于存档顶层，不是主角的字段 —— 先摘出去，再写 protagonist。
                   delete merged.角色;
+                  /**
+                   * 保护：解析结果的核心字段全空，说明这次没解析成功（模型交了个空壳），
+                   * 不能拿它去覆盖玩家已经填好的内容，也不能让玩家以为"解析完了"。
+                   * 出现过的真实原因：提示词里有一句「开关没打开就全部留空」被模型理解成
+                   * "整份 JSON 都留空"。这类话改掉了，但接口再出别的岔子时这条仍能兜住。
+                   */
+                  const CORE = ['姓名', '性别', '年龄', '身份', '外貌'];
+                  const gotCore = CORE.some((k) => String(merged[k] == null ? '' : merged[k]).trim());
+                  if (!gotCore) {
+                    upd({ protagonist: backup });
+                    setErr('解析没有返回主角的任何信息（模型返回了一个空壳）。可以重试；也可以直接在下面的「完整数据」里手填 —— 原内容已恢复。');
+                    setBusy(false);
+                    setParseNote('');
+                    return;
+                  }
                   upd({ protagonist: merged });
                   if (npcsIn.length) {
                     upd({
