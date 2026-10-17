@@ -4361,6 +4361,11 @@ window.__ModuleLoader__.load({
             const nmk = nameKey || fields[0] || '名称';
             const nmOf = (x) => (x == null ? '' : typeof x === 'object' ? String(x[nmk] || x.名称 || x.名字 || x.物品 || '') : String(x));
             const names = list.map(nmOf).filter(Boolean);
+            /** 打开这一块的编辑弹窗（把当前内容拷一份进临时数组，取消不留痕） */
+            const openEdit = () => {
+              setListEditArr(JSON.parse(JSON.stringify(Array.isArray(draft.protagonist[key]) ? draft.protagonist[key] : [])));
+              setListEdit({ key, title: addLabel || title, fields, nameKey: nmk });
+            };
             return h(
               'div',
               { key: key + '-editor' },
@@ -4372,17 +4377,27 @@ window.__ModuleLoader__.load({
                   ? h(
                       'div',
                       { style: { display: 'flex', gap: 6, flexWrap: 'wrap', flex: '1 1 auto' } },
-                      names.map((n, i) => h('span', { className: 'sim-chip', key: i }, h('span', { className: 'sim-chip-t' }, n)))
+                      // 胶囊可点：点任意一个都打开同一个编辑弹窗（不然只有右边那个小按钮能点）
+                      names.map((n, i) =>
+                        h(
+                          'span',
+                          {
+                            className: 'sim-chip',
+                            key: i,
+                            style: { cursor: 'pointer' },
+                            title: '点击编辑',
+                            onClick: openEdit,
+                          },
+                          h('span', { className: 'sim-chip-t' }, n)
+                        )
+                      ),
                     )
                   : h('div', { className: 'sim-hint', style: { flex: '1 1 auto' } }, '还没有内容'),
                 h(
                   'button',
                   {
                     className: 'sim-btn',
-                    onClick: () => {
-                      setListEditArr(JSON.parse(JSON.stringify(Array.isArray(draft.protagonist[key]) ? draft.protagonist[key] : [])));
-                      setListEdit({ key, title: addLabel || title, fields, nameKey: nmk });
-                    },
+                    onClick: openEdit,
                   },
                   names.length ? '编辑' : '+ 添加'
                 )
