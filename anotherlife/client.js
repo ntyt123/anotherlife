@@ -485,14 +485,14 @@ window.__ModuleLoader__.load({
       '.sim-modal.viewing .sim-select{appearance:none}',
       // 查看态还要把布局还原成「标签左、值右」的行式读法 ——
       // 创角页那套自适应多列是给输入用的，套在这里会变成一堆密集小格。
-      '.sim-modal.viewing .sim-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:2px 26px}',
-      '.sim-modal.viewing .sim-grid .sim-field{flex-direction:row;align-items:baseline;gap:10px;padding:3px 0}',
-      '.sim-modal.viewing .sim-grid .sim-field>label{flex:none;min-width:56px;font-size:var(--sim-fs-2);color:var(--sim-t2)}',
-      '.sim-modal.viewing .sim-grid .sim-field>input,.sim-modal.viewing .sim-grid .sim-field>textarea{flex:1;min-width:0;font-size:var(--sim-fs-3);color:var(--sim-t);text-align:left}',
+      '.sim-modal.viewing .sim-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 26px}',
+      '.sim-modal.viewing .sim-grid .sim-field{flex-direction:row;align-items:baseline;gap:9px;padding:2px 0}',
+      '.sim-modal.viewing .sim-grid .sim-field>label{flex:0 0 82px;font-size:var(--sim-fs-4);color:var(--sim-t2);white-space:nowrap}',
+      '.sim-modal.viewing .sim-grid .sim-field>input,.sim-modal.viewing .sim-grid .sim-field>textarea{flex:1 1 auto;min-width:0;font-size:var(--sim-fs-5);line-height:1.6;color:var(--sim-t);text-align:left}',
       // 长字段（外貌／性格／当前状态…）单独占一行，上面加条淡分隔，读起来成块
       '.sim-modal.viewing .sim-grid .sim-field.wide{grid-column:1 / -1;flex-direction:column;align-items:stretch;gap:4px;margin-top:10px;padding-top:8px;border-top:1px solid var(--sim-bd)}',
-      '.sim-modal.viewing .sim-grid .sim-field.wide>label{font-weight:700;font-size:var(--sim-fs-3);color:var(--sim-t);min-width:0}',
-      '.sim-modal.viewing .sim-grid .sim-field.wide>textarea{min-height:78px;max-height:340px;font-size:var(--sim-fs-3);line-height:1.7}',
+      '.sim-modal.viewing .sim-grid .sim-field.wide>label{flex:none;width:auto;font-weight:700;font-size:var(--sim-fs-4);color:var(--sim-t)}',
+      '.sim-modal.viewing .sim-grid .sim-field.wide>textarea{min-height:78px;max-height:340px;font-size:var(--sim-fs-5);line-height:1.75}',
       '.sim-ai{padding:14px;border:1px dashed var(--sim-ac);border-radius:12px;margin-bottom:6px;background:var(--sim-bg)}',
       '.sim-ta{width:100%;min-height:76px;background:var(--sim-bg);border:1px solid var(--sim-bd);border-radius:8px;color:var(--sim-t);padding:9px 11px;font-size:var(--sim-fs-3);resize:vertical;font-family:inherit}',
       '.sim-foot{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px;padding-top:14px;border-top:1px solid var(--sim-bd)}',
@@ -6380,8 +6380,13 @@ window.__ModuleLoader__.load({
                           (function () {
                             const src = withAge(npc || obj);
                             // 姓名／性别／年龄／身份／关系 也放进输入框（标题栏那几个胶囊只是速览，不能改）
+                            // 查看态只列**有值**的字段：小学老师不该看到「艺人咖位／微博账号」这一堆空的。
+                            // 编辑态列全，方便补填。
+                            const keep = (k) => editing || hasVal(src[k]);
                             const keys = HEAD_KEYS.concat(
-                              PREF_NPC.filter((k) => WIDE_KEYS.indexOf(k) < 0 && !(ancient && MODERN_ONLY_KEYS.indexOf(k) >= 0))
+                              PREF_NPC.filter(
+                                (k) => WIDE_KEYS.indexOf(k) < 0 && !(ancient && MODERN_ONLY_KEYS.indexOf(k) >= 0) && keep(k)
+                              )
                             );
                             return keys.map((k) =>
                               h(Field, {
@@ -6403,7 +6408,7 @@ window.__ModuleLoader__.load({
                     ),
                     // 长字段放在「头像那一行」**外面**：跟头像并排的话，头像下方会留一大块空白
                     // 长字段（外貌／表性格／里性格／当前状态…）也改成输入框 —— 只读预览改不了东西
-                    PREF_NPC.filter((k) => WIDE_KEYS.indexOf(k) >= 0).map((k) =>
+                    PREF_NPC.filter((k) => WIDE_KEYS.indexOf(k) >= 0 && (editing || hasVal((npc || obj)[k]))).map((k) =>
                       h(Field, {
                         key: k,
                         label: k,
