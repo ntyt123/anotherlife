@@ -4445,6 +4445,9 @@ window.__ModuleLoader__.load({
                 o[k] = v.split(/[、,，;；\n]+/).map((x) => x.trim()).filter(Boolean);
               }
             });
+            // 「是否艺人」：界面上的勾选框只要不是明确取消，就按 true 落盘。
+            // 新开局时这个键常常是 undefined（旧存档、预设里也没有），不能让它变成「没开」。
+            o.是否艺人 = o.是否艺人 !== false;
             return o;
           }
 
@@ -4495,28 +4498,37 @@ window.__ModuleLoader__.load({
                 parseNote ? h('div', { className: 'sim-hint' }, parseNote) : null
               ),
               charSec('基础', ['姓名', '性别', '生日', '出生地', '年龄']),
-                // 「星途模拟」开关。这里不用 sim-field：它给 label 定了 104px 宽，
-                // 稍长的文案会被挤成竖排（截图里就是这样）。自己写一行，勾选框和文字同一行。
+                // 「星途模拟」开关。
+                // ① 不用 sim-field —— 它给 label 定了 104px 宽，文案稍长就被挤成竖排；
+                // ② 默认勾上：只有**明确存了 false** 才不勾。undefined／旧存档里没这个键都算勾上
+                //    （原来写 !!x，新开局时值是 undefined，于是默认变成不勾）。
                 h(
-                  'div',
+                  'label',
                   {
                     style: {
                       display: 'flex',
                       alignItems: 'center',
-                      gap: 8,
-                      marginBottom: 8,
-                      fontSize: 'var(--sim-fs-3)',
-                      color: 'var(--sim-t2)',
+                      gap: 9,
+                      marginBottom: 10,
+                      padding: '10px 12px',
+                      borderRadius: 8,
+                      border: '1px solid var(--sim-bd)',
+                      background: 'var(--sim-bg2)',
+                      cursor: 'pointer',
+                      fontSize: 'var(--sim-fs-4)',
+                      fontWeight: 600,
+                      color: 'var(--sim-t)',
                       whiteSpace: 'nowrap',
+                      boxSizing: 'border-box',
                     },
                   },
                   h('input', {
                     type: 'checkbox',
-                    checked: !!draft.protagonist.是否艺人,
+                    checked: draft.protagonist.是否艺人 !== false,
                     onChange: (e) => setProtag('是否艺人', e.target.checked),
-                    style: { flex: 'none' },
+                    style: { flex: 'none', width: 18, height: 18, accentColor: 'var(--sim-ac)' },
                   }),
-                  h('span', null, '星途模拟')
+                  h('span', null, '开启星途模拟')
                 ),
               charSec('身份', ['身份', '种族', '婚姻状况', '配偶', '子女']),
               charSec('外貌与性格', ['外貌', '表性格', '里性格']),
