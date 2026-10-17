@@ -494,6 +494,11 @@ window.__ModuleLoader__.load({
       '.sim-modal.viewing .sim-field.wide>label{flex:none;width:auto;font-weight:700;font-size:var(--sim-fs-4);color:var(--sim-t)}',
       '.sim-modal.viewing .sim-field.wide>textarea{min-height:74px;max-height:340px;font-size:var(--sim-fs-5);line-height:1.75;text-align:left}',
       '.sim-modal.viewing .sim-field-v{font-size:var(--sim-fs-5);line-height:1.75;white-space:pre-wrap;word-break:break-word;color:var(--sim-t)}',
+      // 「🎬 演艺」面板：一行一个字段，值可以换行（两列网格里长值会被裁掉）
+      '.sim-star-list{display:flex;flex-direction:column;gap:9px}',
+      '.sim-star-row{display:flex;gap:14px;align-items:baseline}',
+      '.sim-star-k{flex:0 0 92px;color:var(--sim-t2);font-size:var(--sim-fs-4);white-space:nowrap}',
+      '.sim-star-v{flex:1 1 auto;min-width:0;font-size:var(--sim-fs-5);line-height:1.6;word-break:break-word;color:var(--sim-t)}',
       '.sim-modal.viewing .sim-field>input,.sim-modal.viewing .sim-field>textarea{font-size:var(--sim-fs-5);line-height:1.6;color:var(--sim-t);text-align:left}',
       '.sim-ai{padding:14px;border:1px dashed var(--sim-ac);border-radius:12px;margin-bottom:6px;background:var(--sim-bg)}',
       '.sim-ta{width:100%;min-height:76px;background:var(--sim-bg);border:1px solid var(--sim-bd);border-radius:8px;color:var(--sim-t);padding:9px 11px;font-size:var(--sim-fs-3);resize:vertical;font-family:inherit}',
@@ -6038,6 +6043,37 @@ window.__ModuleLoader__.load({
           // 实测过一遍真实存档的 47 种字段，只有「印象标签」也不在这个名单里，一并补上。
           const PREF_NPC = ['出生地', '生日', '年龄', '种族', '身高', '体重', '三围', '罩杯', '是否处女', '月经状态', '外貌', '表性格', '里性格', '性格', '与主角关系', '关系', '当前状况', '当前状态', '当前想法', '好感度', '信任度', '欲望', '依据', '印象标签', '备注', '曾用名', '艺人咖位', '经纪公司', '所属组合', '出道时间', '微博账号', '全网粉丝数', '主要奖项', '当前代言', '商业报价', '粉丝称呼', '当前舆论评价', '合约到期'];
 
+/** NPC 的演艺资料：查看态单独成块，不混在「基本信息」里（那些字段值都很长） */
+const NPC_STAR_KEYS = [
+  '艺人咖位', '经纪公司', '所属组合', '出道时间', '微博账号', '全网粉丝数',
+  '主要奖项', '当前代言', '商业报价', '粉丝称呼', '当前舆论评价', '合约到期',
+];
+
+/** 「🎬 演艺」面板：一行一个字段，值可以换行（比塞进两列网格里被裁掉强） */
+function starPanel(n) {
+  if (!n || typeof n !== 'object') return null;
+  const ks = NPC_STAR_KEYS.filter((k) => hasVal(n[k]));
+  if (!ks.length) return null;
+  return h(
+    'div',
+    { className: 'sim-panel' },
+    h('div', { className: 'sim-panel-h' }, '🎬 演艺'),
+    h(
+      'div',
+      { className: 'sim-star-list' },
+      ks.map((k) =>
+        h(
+          'div',
+          { className: 'sim-star-row', key: k },
+          h('div', { className: 'sim-star-k' }, k),
+          h('div', { className: 'sim-star-v' }, String(fmtVal(n[k])))
+        )
+      )
+    )
+  );
+}
+
+
           /**
            * 两个"点了立刻生效"的角色操作：标重要、删除。
            * 创角阶段改草稿（点「进入正文」时一起提交），游玩阶段才写回存档。
@@ -6393,7 +6429,10 @@ window.__ModuleLoader__.load({
                             // 姓名／性别／年龄／身份／关系 也放进输入框（标题栏那几个胶囊只是速览，不能改）
                             // 查看态只列**有值**的字段：小学老师不该看到「艺人咖位／微博账号」这一堆空的。
                             // 编辑态列全，方便补填。
-                            const keep = (k) => editing || hasVal(src[k]);
+                            // 演艺资料在查看态单独成块（starPanel），这里排除掉；
+                            // 编辑态仍留在网格里，方便直接改。
+                            const keep = (k) =>
+                              editing || (hasVal(src[k]) && NPC_STAR_KEYS.indexOf(k) < 0);
                             const keys = HEAD_KEYS.concat(
                               PREF_NPC.filter(
                                 (k) => WIDE_KEYS.indexOf(k) < 0 && !(ancient && MODERN_ONLY_KEYS.indexOf(k) >= 0) && keep(k)
@@ -6435,6 +6474,8 @@ window.__ModuleLoader__.load({
                       })
                     ),
                   ),
+                  // 演艺资料单独成块：那些值都很长，塞进两列网格会被裁掉（截图里就是这样）
+                  editing ? null : starPanel(npc),
                   h(
                     'div',
                     { className: 'sim-panel' },
