@@ -4500,6 +4500,33 @@ window.__ModuleLoader__.load({
                 h(Btn, { disabled: preJson == null, onClick: () => { setPreJson(null); setPreJsonErr(''); } }, '还原')
               )
             ),
+            // ── 角色 ──
+            // 解析出来的人放在主角字段最下面：这里能直接看到有谁、点开能改。
+            // 点「进入正文」时这一份会跟着一起提交，开局消息里就会带上他们。
+            h('div', { className: 'sim-sec' }, '角色' + (Array.isArray(draft.npcs) && draft.npcs.length ? '（' + draft.npcs.length + '）' : '')),
+            Array.isArray(draft.npcs) && draft.npcs.length
+              ? h(
+                  'div',
+                  { className: 'sim-npc-grid' },
+                  draft.npcs.map((n, i) => npcCard(n, null, i, 'npc'))
+                )
+              : h('div', { className: 'sim-hint' }, '还没有角色。点上面的「AI 解析填入」，会按描述把家人与熟人一并建出来。'),
+            h(
+              'div',
+              { className: 'sim-acts', style: { marginTop: 8 } },
+              h(
+                Btn,
+                {
+                  onClick: () =>
+                    upd({
+                      npcs: (Array.isArray(draft.npcs) ? draft.npcs : []).concat([
+                        { 姓名: '新角色', 与主角关系: '' },
+                      ]),
+                    }),
+                },
+                '+ 添加角色'
+              )
+            ),
             h(
               'div',
               { className: 'sim-foot' },
@@ -5764,25 +5791,31 @@ window.__ModuleLoader__.load({
           const PREF_NPC = ['出生地', '生日', '年龄', '种族', '身高', '体重', '三围', '罩杯', '是否处女', '月经状态', '外貌', '表性格', '里性格', '性格', '与主角关系', '关系', '当前状况', '当前状态', '当前想法', '好感度', '信任度', '欲望', '依据', '印象标签', '备注', '曾用名', '艺人咖位', '经纪公司', '所属组合', '出道时间', '微博账号', '全网粉丝数', '主要奖项', '当前代言', '商业报价', '粉丝称呼', '当前舆论评价', '合约到期'];
 
           /**
-           * 标/取消「重要角色」。重要的人排在角色列表最前面。
-           * 注意 editKey 只改本地快照（那是给弹窗编辑用的，它有自己的「保存」按钮）；
-           * 这里是"点了就该立即生效"的开关，必须跟着 saveFields 落盘，否则刷新就丢。
+           * 两个"点了立刻生效"的角色操作：标重要、删除。
+           * 创角阶段改草稿（点「进入正文」时一起提交），游玩阶段才写回存档。
            */
-          function toggleImportant(npc) {
-            const nm = nameOf(npc);
-            const arr = (Array.isArray(dps.npcs) ? dps.npcs : []).map((x) => {
-              if (nameOf(x) !== nm || x !== npc) return x;
-              return Object.assign({}, x, { 重要: !x.重要 });
-            });
+          function npcWrite(arr) {
+            if (phase === 'character') {
+              upd({ npcs: arr });
+              return Promise.resolve();
+            }
             editKey('npcs', arr);
             return saveFields({ npcs: arr });
           }
-          /** 从角色列表里删掉一个（只动本地这份 npcs，确认交给按钮那层做） */
+          function toggleImportant(npc) {
+            const nm = nameOf(npc);
+            const pool = phase === 'character' ? draft.npcs : dps.npcs;
+            const arr = (Array.isArray(pool) ? pool : []).map((x) => {
+              if (nameOf(x) !== nm || x !== npc) return x;
+              return Object.assign({}, x, { 重要: !x.重要 });
+            });
+            return npcWrite(arr);
+          }
           function removeNpc(npc) {
             const nm = nameOf(npc);
-            const arr = (Array.isArray(dps.npcs) ? dps.npcs : []).filter((x) => !(nameOf(x) === nm && x === npc));
-            editKey('npcs', arr);
-            return saveFields({ npcs: arr });
+            const pool = phase === 'character' ? draft.npcs : dps.npcs;
+            const arr = (Array.isArray(pool) ? pool : []).filter((x) => !(nameOf(x) === nm && x === npc));
+            return npcWrite(arr);
           }
           function npcCard(npc, rel, idx, kind) {
             const c = cardData(npc, rel);
@@ -5916,15 +5949,31 @@ window.__ModuleLoader__.load({
           function npcModalView() {
             if (!npcOpen) return null;
             const kind = npcOpen.kind;
-            const list = kind === 'npc' ? dps.npcs : dps.relationships;
+            /**
+             * 这个弹窗两处都用：游玩阶段（读存档投影 dps）和创角阶段（读还没落盘的草稿 draft）。
+             * 所以不能直接认死 dps —— 否则创角时点角色卡片会打开一个空壳。
+             */
+            const inChar = phase === 'character';
+            const pickSrc = (k) =>
+              inChar
+                ? (Array.isArray(draft[k]) ? draft[k] : [])
+                : (Array.isArray(dps[k]) ? dps[k] : []);
+            const writeSrc = (k, v) => {
+              if (inChar) {
+                upd({ [k]: v }); // 创角阶段只改草稿，点「进入正文」时一起提交
+                return;
+              }
+              editKey(k, v);
+            };
+            const list = pickSrc(kind === 'npc' ? 'npcs' : 'relationships');
             const arr = Array.isArray(list) ? list : [];
             const obj = arr[npcOpen.i];
             if (!obj || typeof obj !== 'object') return null;
             const nm = nameOf(obj);
-            const npc = kind === 'npc' ? obj : (Array.isArray(dps.npcs) ? dps.npcs.filter((n) => nameOf(n) === nm)[0] : null);
+            const npc = kind === 'npc' ? obj : pickSrc('npcs').filter((n) => nameOf(n) === nm)[0];
             const rel = kind === 'npc' ? relFor(nm) : obj;
             const c = cardData(npc, rel);
-            const setObj = (v) => editKey(kind === 'npc' ? 'npcs' : 'relationships', arr.map((x, j) => (j === npcOpen.i ? v : x)));
+            const setObj = (v) => writeSrc(kind === 'npc' ? 'npcs' : 'relationships', arr.map((x, j) => (j === npcOpen.i ? v : x)));
             // 标题条上的胶囊：性别 / 身份 / 年龄 / 关系。年龄直接写「19岁」，不加前缀。
             const HEAD_KEYS = ['姓名', '性别', '年龄', '身份', '关系'];
             const ancient = isAncientWorld(state); // 古风局：不显示微博/粉丝数这类现代字段
@@ -6052,7 +6101,7 @@ window.__ModuleLoader__.load({
                       const nw = Object.assign({}, (npc && npc.穿着) || {});
                       if (obj && obj.物品) nw[k] = obj;
                       else delete nw[k];
-                      editKey('npcs', (Array.isArray(dps.npcs) ? dps.npcs : []).map((x) => (nameOf(x) === nm ? Object.assign({}, x, { 穿着: nw }) : x)));
+                      writeSrc('npcs', pickSrc('npcs').map((x) => (nameOf(x) === nm ? Object.assign({}, x, { 穿着: nw }) : x)));
                     };
                     const male2 = /男/.test(String((npc && npc.性别) || ''));
                     const hasWear = !!(npc && npc.穿着 && typeof npc.穿着 === 'object' && Object.keys(npc.穿着).some((k) => String((npc.穿着[k] || {}).物品 || '').trim()));
@@ -6111,9 +6160,9 @@ window.__ModuleLoader__.load({
                                 rarity: it && it.品质,
                                 tip,
                                 onDelete: () =>
-                                  editKey(
+                                  writeSrc(
                                     'npcs',
-                                    (Array.isArray(dps.npcs) ? dps.npcs : []).map((x) => (nameOf(x) === nm ? Object.assign({}, x, { 物品: items.filter((_, m) => m !== j) }) : x))
+                                    pickSrc('npcs').map((x) => (nameOf(x) === nm ? Object.assign({}, x, { 物品: items.filter((_, m) => m !== j) }) : x))
                                   ),
                               });
                             })
@@ -6167,7 +6216,23 @@ window.__ModuleLoader__.load({
                   'div',
                   { className: 'sim-modal-f' },
                   h(Btn, { disabled: busy, onClick: () => setNpcOpen(null) }, '取消'),
-                  h(Btn, { primary: true, disabled: busy, onClick: () => saveFields({ npcs: dps.npcs, relationships: dps.relationships }).then(() => setNpcOpen(null)) }, '保存')
+                  h(
+                    Btn,
+                    {
+                      primary: true,
+                      disabled: busy,
+                      onClick: () => {
+                        // 创角阶段改动本来就在 draft 里（点「进入正文」时一起提交），这里只需关闭；
+                        // 游玩阶段才需要把草稿写回存档。
+                        if (inChar) {
+                          setNpcOpen(null);
+                          return;
+                        }
+                        saveFields({ npcs: pickSrc('npcs'), relationships: pickSrc('relationships') }).then(() => setNpcOpen(null));
+                      },
+                    },
+                    '保存'
+                  )
                 )
               )
             );
