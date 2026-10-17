@@ -453,10 +453,15 @@ window.__ModuleLoader__.load({
       '.sim-sec{display:block;margin:20px 0 10px;padding:6px 13px;border-radius:9px;background:#5f83ab;color:#fff;font-size:var(--sim-fs-5);font-weight:700;letter-spacing:.5px}',
       '.sim-sec::before{content:none}',
       '.sim-sec::after{content:"";flex:1;height:1px;background:var(--sim-bd)}',
-      '.sim-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 18px;margin-bottom:4px}',
+      // 列宽自适应：短字段（姓名/性别/年龄…）一行能排好几个，不再固定两列拉成巨框。
+      // align-items:start 让每个格子按自己的内容高度，不被同排的高个子（生日那种双输入）撑开 ——
+      // 之前「出生地」被拉成三行高就是这么来的。
+      '.sim-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px 18px;margin-bottom:4px;align-items:start}',
       '.sim-grid .sim-field{flex-direction:column;align-items:stretch;gap:4px;margin-bottom:0}',
       '.sim-grid .sim-field>label{width:auto;font-size:var(--sim-fs-1);letter-spacing:.5px}',
       '.sim-grid .sim-field input,.sim-grid .sim-field textarea{min-width:0}',
+      // 长文本字段（外貌／性格／当前状态…）跨整行，别挤在半列里
+      '.sim-field.wide{grid-column:1 / -1}',
       '.sim-ai{padding:14px;border:1px dashed var(--sim-ac);border-radius:12px;margin-bottom:6px;background:var(--sim-bg)}',
       '.sim-ta{width:100%;min-height:76px;background:var(--sim-bg);border:1px solid var(--sim-bd);border-radius:8px;color:var(--sim-t);padding:9px 11px;font-size:var(--sim-fs-3);resize:vertical;font-family:inherit}',
       '.sim-foot{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px;padding-top:14px;border-top:1px solid var(--sim-bd)}',
@@ -859,16 +864,28 @@ window.__ModuleLoader__.load({
             .join('丨');
         }
 
+        /**
+         * 一行「标签 + 输入框」。
+         * wide: true → 在 .sim-grid 里跨整行（给外貌、性格这类长文本用），
+         * 否则短字段并排两三列就够，不必每个都拉满一整行。
+         */
         function Field(props) {
           return h(
             'div',
-            { className: 'sim-field' },
+            { className: 'sim-field' + (props.wide ? ' wide' : '') },
             h('label', null, props.label),
-            h('input', {
-              value: props.value == null ? '' : String(props.value),
-              placeholder: props.ph || '',
-              onChange: (e) => props.onChange(e.target.value),
-            })
+            props.multiline
+              ? h('textarea', {
+                  style: { minHeight: 72 },
+                  value: props.value == null ? '' : String(props.value),
+                  placeholder: props.ph || '',
+                  onChange: (e) => props.onChange(e.target.value),
+                })
+              : h('input', {
+                  value: props.value == null ? '' : String(props.value),
+                  placeholder: props.ph || '',
+                  onChange: (e) => props.onChange(e.target.value),
+                })
           );
         }
         function Btn(props) {
@@ -4398,6 +4415,10 @@ window.__ModuleLoader__.load({
             );
           }
 
+          /**
+           * 长文本字段：跨整行、用多行框。其余短字段在网格里并排，不再各占一整行。
+           */
+          const WIDE_FIELDS = ['外貌', '表性格', '里性格', '当前状态', '当前想法', '身体状态', '健康状况'];
           function charSec(title, fields) {
             return h(
               'div',
@@ -4412,6 +4433,8 @@ window.__ModuleLoader__.load({
                     : h(Field, {
                         key: f,
                         label: f,
+                        wide: WIDE_FIELDS.indexOf(f) >= 0,
+                        multiline: WIDE_FIELDS.indexOf(f) >= 0,
                         // 数组字段（特点/标签/性癖/疾病）显示时连成一行；
                         // **输入时原样存**（不立刻拆回数组）—— 边输入边 split 会把刚敲的顿号吃掉。
                         // 真正拆成数组在提交前做（normalizeArrs）。
@@ -6242,6 +6265,8 @@ window.__ModuleLoader__.load({
                       h(Field, {
                         key: k,
                         label: k,
+                        // 这几种是成段的描述，用多行框才看得全
+                        multiline: true,
                         value: Array.isArray((npc || obj)[k])
                           ? (npc || obj)[k].map((x) => String(x == null ? '' : x)).join('、')
                           : (npc || obj)[k],
