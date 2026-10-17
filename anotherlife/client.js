@@ -283,7 +283,17 @@ window.__ModuleLoader__.load({
       '.sim-face{width:152px;height:190px;font-size:66px;border-radius:18px}',
       '.sim-npc-body{flex:1 1 auto;min-width:0}',
       '.sim-npc-h{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px}',
-      '.sim-npc-h .nm{font-weight:700;font-size:var(--sim-fs-5);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+      '.sim-npc-h .nm{font-weight:700;font-size:var(--sim-fs-5);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1 1 auto}',
+      // 卡片上的星标与删除：平时淡出，鼠标移上去才显形；标了重要的星一直亮着
+      '.sim-npc-star{border:0;background:none;color:var(--sim-t3);cursor:pointer;font-size:var(--sim-fs-4);padding:0 3px;opacity:0;transition:opacity .12s,color .12s;flex:none}',
+      '.sim-npc:hover .sim-npc-star,.sim-npc-star.on{opacity:1}',
+      '.sim-npc-star.on{color:#e8a33d}',
+      '.sim-npc-del{border:0;background:none;color:var(--sim-t3);cursor:pointer;font-size:var(--sim-fs-3);padding:0 3px;opacity:0;transition:opacity .12s,color .12s;flex:none}',
+      '.sim-npc:hover .sim-npc-del{opacity:1}',
+      '.sim-npc-del:hover{color:#d9534f}',
+      // 详情弹窗头部那两个：常显，做成小按钮的样子
+      '.sim-npc-star.on-modal,.sim-npc-del.on-modal{opacity:1;padding:3px 9px;border-radius:7px;font-size:var(--sim-fs-2);background:var(--sim-bg)}',
+      '.sim-npc-star.on-modal:hover,.sim-npc-del.on-modal:hover{background:var(--sim-bg2)}',
       '.sim-npc-d{font-size:var(--sim-fs-2);color:var(--sim-t2);line-height:1.55;margin-bottom:4px;word-break:break-word}',
       '.sim-npc-d.muted{opacity:.6}',
       '.sim-status-line{font-size:var(--sim-fs-2);color:var(--sim-t2);letter-spacing:.2px}',
@@ -5171,6 +5181,21 @@ window.__ModuleLoader__.load({
           /** 角色弹窗里要列的字段（长字段会被 WIDE_KEYS 挑出来单独成块） */
           const PREF_NPC = ['种族', '身高', '体重', '三围', '罩杯', '是否处女', '月经状态', '外貌', '表性格', '里性格', '性格', '与主角关系', '关系', '当前状况', '当前状态', '当前想法', '好感度', '信任度', '欲望', '依据', '备注', '曾用名', '艺人咖位', '经纪公司', '所属组合', '出道时间', '微博账号', '全网粉丝数', '主要奖项', '当前代言', '商业报价', '粉丝称呼', '当前舆论评价', '合约到期'];
 
+          /** 标/取消「重要角色」。重要的人排在角色列表最前面。 */
+          function toggleImportant(npc) {
+            const nm = nameOf(npc);
+            const arr = (Array.isArray(dps.npcs) ? dps.npcs : []).map((x) => {
+              if (nameOf(x) !== nm || x !== npc) return x;
+              return Object.assign({}, x, { 重要: !x.重要 });
+            });
+            return editKey('npcs', arr);
+          }
+          /** 从角色列表里删掉一个（只动本地这份 npcs，确认交给按钮那层做） */
+          function removeNpc(npc) {
+            const nm = nameOf(npc);
+            const arr = (Array.isArray(dps.npcs) ? dps.npcs : []).filter((x) => !(nameOf(x) === nm && x === npc));
+            return editKey('npcs', arr);
+          }
           function npcCard(npc, rel, idx, kind) {
             const c = cardData(npc, rel);
             return h(
@@ -5190,7 +5215,32 @@ window.__ModuleLoader__.load({
               h(
                 'div',
                 { className: 'sim-npc-body' },
-                h('div', { className: 'sim-npc-h' }, h('span', { className: 'nm' }, '☆ ' + c.nm)),
+                h(
+                  'div',
+                  { className: 'sim-npc-h' },
+                  h('span', { className: 'nm' }, '☆ ' + c.nm),
+                  // 重要的角色打个星，列表里排在最前
+                  npc
+                    ? h('button', {
+                        className: 'sim-npc-star' + (npc.重要 ? ' on' : ''),
+                        title: npc.重要 ? '取消重要' : '标为重要角色',
+                        onClick: (e) => {
+                          e.stopPropagation();
+                          toggleImportant(npc);
+                        },
+                      }, npc.重要 ? '★' : '☆')
+                    : null,
+                  npc
+                    ? h('button', {
+                        className: 'sim-npc-del',
+                        title: '从这个列表里删掉这个人',
+                        onClick: (e) => {
+                          e.stopPropagation();
+                          if (window.confirm('从角色列表里删掉「' + c.nm + '」？')) removeNpc(npc);
+                        },
+                      }, '✕')
+                    : null
+                ),
                 c.desc.length
                   ? h(
                       'div',
@@ -5206,17 +5256,41 @@ window.__ModuleLoader__.load({
             );
           }
 
-          const npcCards = (function () {
+          /**
+           * 角色列表的排布。
+           * 排序：标了「重要」的排最前，其余按「最近出场」倒序 —— 「最近出场」是宿主在每轮
+           * 结算后用代码记的（名字出现在正文里就算），所以不用手标也能自己浮上来、沉下去。
+           * 归档：没标重要、且超过 STALE 轮没露面的，收进「档案」折叠区，不占主列表。
+           */
+          const roster = (function () {
             const list = Array.isArray(dps.npcs) ? dps.npcs : [];
             const rels = Array.isArray(dps.relationships) ? dps.relationships : [];
-            const cards = list.map((n, i) => npcCard(n, relFor(nameOf(n)), i, 'npc'));
+            const round = Number(state && state.story && state.story.current_message_index) || 0;
+            const STALE = 20;
+            const items = list.map((n, i) => ({ kind: 'npc', i, n, r: relFor(nameOf(n)) }));
             // 关系列表里「没有对应 NPC」的，也单独出一张卡，免得看不见
             rels.forEach((r, i) => {
               const nm = nameOf(r);
-              if (nm && !list.some((n) => nameOf(n) === nm)) cards.push(npcCard(null, r, i, 'rel'));
+              if (nm && !list.some((n) => nameOf(n) === nm)) items.push({ kind: 'rel', i, n: null, r });
             });
-            return cards;
+            const lastOf = (x) => Number(x.n && x.n.最近出场) || 0;
+            const isKey = (x) => !!(x.n && x.n.重要);
+            items.sort((a, b) => {
+              const ka = isKey(a) ? 1 : 0;
+              const kb = isKey(b) ? 1 : 0;
+              if (ka !== kb) return kb - ka; // 重要的在前
+              return lastOf(b) - lastOf(a); // 再按最近出场倒序
+            });
+            const active = [];
+            const archived = [];
+            items.forEach((x) => {
+              if (!isKey(x) && round - lastOf(x) > STALE) archived.push(x);
+              else active.push(x);
+            });
+            return { active, archived, round, STALE };
           })();
+          const npcCards = roster.active.map((x) => npcCard(x.n, x.r, x.i, x.kind));
+          const npcArchived = roster.archived.map((x) => npcCard(x.n, x.r, x.i, x.kind));
 
           const npcEditor = h(
             'div',
@@ -5225,10 +5299,18 @@ window.__ModuleLoader__.load({
               'div',
               { className: 'sim-card' },
               h('div', { style: { fontWeight: 600, marginBottom: 4 } }, '出场角色'),
-              h('div', { className: 'sim-hint' }, '点卡片查看角色详情；要改字段，用卡片最下面的 JSON 编辑。'),
+              h('div', { className: 'sim-hint' }, '点卡片查看详情。★ 标为重要（排在最前），✕ 移出列表。'),
               npcCards.length
                 ? h('div', { className: 'sim-npc-grid' }, npcCards)
-                : h('div', { className: 'sim-hint' }, '还没有出场的角色。')
+                : h('div', { className: 'sim-hint' }, '还没有出场的角色。'),
+              npcArchived.length
+                ? h(
+                    'details',
+                    { className: 'sim-fact', style: { marginTop: 10 } },
+                    h('summary', null, '档案 · ' + npcArchived.length + ' 人（' + roster.STALE + ' 轮以上没露面）'),
+                    h('div', { style: { marginTop: 8 } }, h('div', { className: 'sim-npc-grid' }, npcArchived))
+                  )
+                : null
             )
           );
 
@@ -5263,6 +5345,24 @@ window.__ModuleLoader__.load({
                   'div',
                   { className: 'sim-modal-h' },
                   h('div', { className: 'who' }, h('div', { className: 'nm' }, c.nm), h('div', { className: 'chips' }, chips)),
+                  kind === 'npc' && npc
+                    ? h('button', {
+                        className: 'sim-npc-star on-modal' + (npc.重要 ? ' on' : ''),
+                        title: npc.重要 ? '取消重要' : '标为重要角色',
+                        onClick: () => toggleImportant(npc),
+                      }, npc.重要 ? '★ 重要' : '☆ 标为重要')
+                    : null,
+                  kind === 'npc' && npc
+                    ? h('button', {
+                        className: 'sim-npc-del on-modal',
+                        title: '从这个列表里删掉这个人',
+                        onClick: () => {
+                          if (!window.confirm('从角色列表里删掉「' + c.nm + '」？')) return;
+                          removeNpc(npc);
+                          setNpcOpen(null);
+                        },
+                      }, '删除')
+                    : null,
                   h('button', { className: 'sim-modal-x', title: '关闭', onClick: () => setNpcOpen(null) }, '✕')
                 ),
                 h(
