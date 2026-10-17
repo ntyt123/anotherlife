@@ -4447,16 +4447,15 @@ window.__ModuleLoader__.load({
                 parseNote ? h('div', { className: 'sim-hint' }, parseNote) : null
               ),
               charSec('基础', ['姓名', '性别', '生日', '出生地', '年龄']),
-              // 「星途模拟」开关：决定要不要显示演艺资料那一页。默认勾上。
-              h('div', { className: 'sim-sec' }, '演艺身份'),
+              // 「星途模拟」开关：决定要不要显示演艺资料那一页。属于基础信息，默认勾上。
               h(
                 'div',
-                { className: 'sim-grid' },
+                { className: 'sim-field' },
                 h(
                   'label',
-                  { style: { display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 'var(--sim-fs-3)' } },
+                  { style: { display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' } },
                   h('input', { type: 'checkbox', checked: !!draft.protagonist.是否艺人, onChange: (e) => setProtag('是否艺人', e.target.checked) }),
-                  h('span', null, '星途模拟')
+                  h('span', null, '星途模拟（演艺资料）')
                 )
               ),
               charSec('身份', ['身份', '种族', '婚姻状况', '配偶', '子女']),
@@ -6165,19 +6164,26 @@ window.__ModuleLoader__.load({
                         statusLine(npc || obj)
                           ? h('div', { className: 'sim-status-line', style: { marginBottom: 8 } }, statusLine(npc || obj))
                           : null,
-                        h(KVView, {
-                          // 年龄不靠模型给：有生日就用生日跟世界观当前日期算一遍再显示。
-                          // （模型给的年龄经常差一两岁，而且创角阶段干脆不给）
-                          obj: withAge(npc || obj),
-                          // 短字段走紧凑两列网格；长字段（外貌／性格／当前状态…）挑出来单独成块
-                          preferred: PREF_NPC.filter((k) => WIDE_KEYS.indexOf(k) < 0),
-                          // 长字段和摘要字段都由别处渲染了：不挂进 skip 的话，KVView 会把它们当成
-                          // 「没排进列表的字段」兜底再显示一遍（曾经整块重复过）
-                          skip: ['穿着', '物品'].concat(HEAD_KEYS).concat(STATUS_KEYS).concat(WIDE_KEYS).concat(NSFW_KEYS).concat(ancient ? MODERN_ONLY_KEYS : []),
-                          twoCol: true,
-                          // 严格模式：长字段／摘要字段／私密字段都在别处渲染，这里只显示列表里点到的
-                          strict: true,
-                        })
+                        // 和编辑主角一样：每个普通字段一个输入框，改完写回（创角阶段写草稿、游玩阶段写存档）
+                        h(
+                          'div',
+                          { className: 'sim-grid' },
+                          (function () {
+                            const src = withAge(npc || obj);
+                            // 姓名／性别／年龄／身份／关系 也放进输入框（标题栏那几个胶囊只是速览，不能改）
+                            const keys = HEAD_KEYS.concat(
+                              PREF_NPC.filter((k) => WIDE_KEYS.indexOf(k) < 0 && !(ancient && MODERN_ONLY_KEYS.indexOf(k) >= 0))
+                            );
+                            return keys.map((k) =>
+                              h(Field, {
+                                key: k,
+                                label: k,
+                                value: src ? src[k] : '',
+                                onChange: (v) => setObj(Object.assign({}, src || {}, { [k]: v })),
+                              })
+                            );
+                          })()
+                        )
                       ),
                       // 大头像在右边，点一下就能换
                       avatarNode(npc || rel, 'sim-av sim-face', '', {
