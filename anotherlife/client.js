@@ -468,6 +468,14 @@ window.__ModuleLoader__.load({
       '.sim-unit-box{flex:1;min-width:0;display:flex;flex-direction:row;align-items:center;gap:6px}',
       '.sim-unit-box input{flex:1;min-width:0}',
       '.sim-unit{flex:none;color:var(--sim-t2);font-size:var(--sim-fs-2);white-space:nowrap;line-height:1}',
+      // 真实资料胶囊：一条一个，竖排；点了就填入，选中态加 .on
+      '.sim-real-chip{display:block;padding:8px 10px;border:1.5px solid var(--sim-bd);border-radius:10px;background:var(--sim-bg);cursor:pointer}',
+      '.sim-real-chip:hover{border-color:var(--sim-ac)}',
+      '.sim-real-chip.on{border-color:var(--sim-ac);background:var(--sim-bg2);box-shadow:inset 0 0 0 1px var(--sim-ac)}',
+      '.sim-real-chip-h{display:flex;align-items:baseline;gap:8px;margin-bottom:3px;min-width:0}',
+      '.sim-real-chip-h .nm{font-weight:700;font-size:var(--sim-fs-3);flex:none}',
+      '.sim-real-chip-h .was{font-size:var(--sim-fs-1);color:var(--sim-t2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}',
+      '.sim-real-chip-v{font-size:var(--sim-fs-2);color:var(--sim-t2);white-space:pre-wrap;word-break:break-word}',
       '.sim-ai{padding:14px;border:1px dashed var(--sim-ac);border-radius:12px;margin-bottom:6px;background:var(--sim-bg)}',
       '.sim-ta{width:100%;min-height:76px;background:var(--sim-bg);border:1px solid var(--sim-bd);border-radius:8px;color:var(--sim-t);padding:9px 11px;font-size:var(--sim-fs-3);resize:vertical;font-family:inherit}',
       '.sim-foot{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px;padding-top:14px;border-top:1px solid var(--sim-bd)}',
@@ -6194,15 +6202,75 @@ window.__ModuleLoader__.load({
               .map((x, j) => h('span', { className: 'sim-mchip', key: j }, String(x).trim()));
 
             // ── 底部的 JSON 编辑通道 ──
-            /** 把勾中的字段写回这个角色（没勾的一律不动） */
-            const applyReal = () => {
+            /** 点一下把这个字段填进去；已经填过的再点一次撤回原值 */
+            const pickReal = (k) => {
+              const cur = String((npc || obj || {})[k] == null ? '' : (npc || obj || {})[k]);
+              const on = !!(realInfo.applied && realInfo.applied[k]);
+              const val = on ? ((realInfo.origin && realInfo.origin[k]) || '') : realInfo.fields[k];
+              setObj(Object.assign({}, npc || obj || {}, { [k]: val }));
+              setRealInfo(
+                Object.assign({}, realInfo, {
+                  applied: Object.assign({}, realInfo.applied, { [k]: !on }),
+                  origin: on ? realInfo.origin : Object.assign({}, realInfo.origin, { [k]: cur }),
+                })
+              );
+            };
+            /** 一次性把所有字段都填进去 */
+            const applyRealAll = () => {
               const f = (realInfo && realInfo.fields) || {};
               const patch = {};
+              const applied = {};
               Object.keys(f).forEach((k) => {
-                if (realInfo.picked && realInfo.picked[k]) patch[k] = f[k];
+                patch[k] = f[k];
+                applied[k] = true;
               });
-              if (Object.keys(patch).length) setObj(Object.assign({}, npc || obj || {}, patch));
-              setRealInfo(null);
+              setObj(Object.assign({}, npc || obj || {}, patch));
+              setRealInfo(Object.assign({}, realInfo, { applied }));
+            };
+            /** 真实资料面板的正文：一条一个胶囊，竖排；点哪个填哪个 */
+            const renderRealBody = () => {
+              if (realInfo.loading) return h('div', { className: 'sim-hint' }, '查询中…');
+              if (realInfo.err) return h('div', { className: 'sim-err' }, realInfo.err);
+              const ks = Object.keys(realInfo.fields || {});
+              if (!ks.length) return h('div', { className: 'sim-hint' }, realInfo.note || '没查到公开资料');
+              const done = ks.filter((k) => realInfo.applied && realInfo.applied[k]).length;
+              return h(
+                'div',
+                null,
+                h(
+                  'div',
+                  { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
+                  ks.map((k) => {
+                    const on = !!(realInfo.applied && realInfo.applied[k]);
+                    const now = (npc || obj)[k];
+                    return h(
+                      'div',
+                      {
+                        key: k,
+                        className: 'sim-real-chip' + (on ? ' on' : ''),
+                        title: on ? '再点一次撤回' : '点击填入',
+                        onClick: () => pickReal(k),
+                      },
+                      h(
+                        'div',
+                        { className: 'sim-real-chip-h' },
+                        h('span', { className: 'nm' }, (on ? '✓ ' : '') + k),
+                        now && String(now) !== String(realInfo.fields[k])
+                          ? h('span', { className: 'was' }, '现：' + String(now))
+                          : null
+                      ),
+                      h('div', { className: 'sim-real-chip-v' }, String(realInfo.fields[k]))
+                    );
+                  })
+                ),
+                h(
+                  'div',
+                  { className: 'sim-acts', style: { marginTop: 8 } },
+                  h(Btn, { primary: true, onClick: () => applyRealAll() }, '全部填入'),
+                  h(Btn, { onClick: () => setRealInfo(null) }, '关闭')
+                ),
+                h('div', { className: 'sim-hint', style: { marginTop: 6 } }, '已填 ' + done + ' / ' + ks.length + ' 项')
+              );
             };
             /** 按世界观的年份去查这个人的公开资料，结果逐条给玩家勾选 */
             const askReal = () => {
@@ -6217,9 +6285,9 @@ window.__ModuleLoader__.load({
               call('parseRealPerson', { name: who, gameId })
                 .then((r) => {
                   const f = (r && r.字段) || {};
-                  const picked = {};
-                  Object.keys(f).forEach((k) => (picked[k] = true));
-                  setRealInfo({ fields: f, note: (r && r.备注) || '', year: (r && r.年份) || '', picked });
+                  const applied = {};
+                  Object.keys(f).forEach((k) => (applied[k] = true));
+                  setRealInfo({ fields: f, note: (r && r.备注) || '', year: (r && r.年份) || '', applied, origin: {} });
                 })
                 .catch((e) => setRealInfo({ err: msg(e) }));
             };
@@ -6256,82 +6324,11 @@ window.__ModuleLoader__.load({
                 h(
                   'div',
                   { className: 'sim-modal-b' },
-                  // 查到的真实资料：逐条勾选要不要采用。不勾的保持原样。
+                  // 查到的真实资料：点胶囊填入（再点撤回）；正文由 renderRealBody 渲染
                   realInfo
-                    ? h(
-                        'div',
-                        { className: 'sim-panel' },
-                        h(
-                          'div',
-                          { className: 'sim-panel-h' },
-                          '🔎 真实资料' +
-                            (realInfo.year ? ' · ' + realInfo.year + ' 年' : '') +
-                            (realInfo.fields && Object.keys(realInfo.fields).length
-                              ? ' · ' + Object.keys(realInfo.fields).length + ' 项'
-                              : '')
-                        ),
-                        realInfo.loading
-                          ? h('div', { className: 'sim-hint' }, '查询中…')
-                          : realInfo.err
-                          ? h('div', { className: 'sim-err' }, realInfo.err)
-                          : Object.keys(realInfo.fields || {}).length
-                          ? h(
-                              'div',
-                              null,
-                              Object.keys(realInfo.fields).map((k) =>
-                                h(
-                                  'label',
-                                  {
-                                    key: k,
-                                    style: { display: 'flex', alignItems: 'flex-start', gap: 8, padding: '6px 0', cursor: 'pointer' },
-                                  },
-                                  h('input', {
-                                    type: 'checkbox',
-                                    checked: !!(realInfo.picked && realInfo.picked[k]),
-                                    style: { marginTop: 3, flex: 'none' },
-                                    onChange: (e) =>
-                                      setRealInfo(
-                                        Object.assign({}, realInfo, {
-                                          picked: Object.assign({}, realInfo.picked, { [k]: e.target.checked }),
-                                        })
-                                      ),
-                                  }),
-                                  h(
-                                    'div',
-                                    { style: { flex: 1, minWidth: 0 } },
-                                    h('div', { style: { fontWeight: 600 } }, k),
-                                    h('div', { className: 'sim-hint', style: { whiteSpace: 'pre-wrap' } }, String(realInfo.fields[k])),
-                                    (npc || obj)[k] && String((npc || obj)[k]) !== String(realInfo.fields[k])
-                                      ? h('div', { className: 'sim-hint', style: { opacity: 0.7 } }, '现在是：' + String((npc || obj)[k]))
-                                      : null
-                                  )
-                                )
-                              ),
-                              h(
-                                'div',
-                                { className: 'sim-acts', style: { marginTop: 8 } },
-                                h(
-                                  Btn,
-                                  {
-                                    onClick: () => {
-                                      const all = {};
-                                      Object.keys(realInfo.fields || {}).forEach((k) => (all[k] = true));
-                                      setRealInfo(Object.assign({}, realInfo, { picked: all }));
-                                    },
-                                  },
-                                  '全选'
-                                ),
-                                h(
-                                  Btn,
-                                  { onClick: () => setRealInfo(Object.assign({}, realInfo, { picked: {} })) },
-                                  '全不选'
-                                ),
-                                h(Btn, { primary: true, onClick: () => applyReal() }, '应用选中的'),
-                                h(Btn, { onClick: () => setRealInfo(null) }, '取消')
-                              )
-                            )
-                          : h('div', { className: 'sim-hint' }, realInfo.note || '没查到公开资料')
-                      )
+                    ? h('div', { className: 'sim-panel' },
+                          h('div', { className: 'sim-panel-h' }, '🔎 真实资料' + (realInfo.year ? ' · ' + realInfo.year + ' 年' : '') + (Object.keys(realInfo.fields || {}).length ? ' · ' + Object.keys(realInfo.fields || {}).length + ' 项' : '')),
+                          renderRealBody())
                     : null,
                   h(
                     'div',
