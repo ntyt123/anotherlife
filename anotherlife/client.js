@@ -499,6 +499,39 @@ window.__ModuleLoader__.load({
       '.sim-star-row{display:flex;gap:14px;align-items:baseline}',
       '.sim-star-k{flex:0 0 92px;color:var(--sim-t2);font-size:var(--sim-fs-4);white-space:nowrap}',
       '.sim-star-v{flex:1 1 auto;min-width:0;font-size:var(--sim-fs-5);line-height:1.6;word-break:break-word;color:var(--sim-t)}',
+      // ── 生理周期条 ──
+      // 四段按真实天数分宽（月经5／卵泡8／排卵3／黄体12），当前段实心，竖线标当天。
+      // 价值在右上角那句倒计时：剧情感兴趣的是「还有几天」，不是「第几天」。
+      '.sim-cyc{margin:2px 0 6px}',
+      '.sim-cyc-t{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:5px}',
+      '.sim-cyc-ph{display:inline-flex;align-items:center;gap:6px;font-size:var(--sim-fs-4);font-weight:600;color:var(--sim-t)}',
+      '.sim-cyc-ph .dot{width:7px;height:7px;border-radius:50%;flex:none;background:var(--sim-t2)}',
+      '.sim-cyc-nx{font-size:var(--sim-fs-3);color:var(--sim-t2);white-space:nowrap}',
+      '.sim-cyc-bar{position:relative;display:flex;gap:2px;height:9px;border-radius:5px;overflow:hidden;background:var(--sim-bg2)}',
+      '.sim-cyc-bar .sg{height:100%;opacity:.32;border-radius:2px;flex:1 1 auto}',
+      '.sim-cyc-bar .sg.on{opacity:1}',
+      '.sim-cyc-cur{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--sim-t);transform:translateX(-1px);border-radius:1px;box-shadow:0 0 0 1px var(--sim-bg)}',
+      '.sim-cyc-sc{display:flex;gap:2px;margin-top:4px}',
+      '.sim-cyc-sc .sc{font-size:var(--sim-fs-1);text-align:center;white-space:nowrap;overflow:hidden;flex:1 1 auto}',
+      // 四段配色：经期暗红／卵泡青绿／排卵金／黄体灰蓝
+      '.sg.ph-月经{background:#b4485c}',
+      '.sg.ph-卵泡{background:#3d9c78}',
+      '.sg.ph-排卵{background:#c9922a}',
+      '.sg.ph-黄体{background:#5b7ba6}',
+      '.sim-cyc-ph.ph-月经 .dot{background:#b4485c}',
+      '.sim-cyc-ph.ph-卵泡 .dot{background:#3d9c78}',
+      '.sim-cyc-ph.ph-排卵 .dot{background:#c9922a}',
+      '.sim-cyc-ph.ph-黄体 .dot{background:#5b7ba6}',
+      '.sim-cyc-sc .sc.ph-月经{color:#b4485c}',
+      '.sim-cyc-sc .sc.ph-卵泡{color:#3d9c78}',
+      '.sim-cyc-sc .sc.ph-排卵{color:#c9922a}',
+      '.sim-cyc-sc .sc.ph-黄体{color:#5b7ba6}',
+      // 卡片上的细条版：矮一档、文字压到次要色
+      '.sim-cyc.mini{margin:5px 0 2px}',
+      '.sim-cyc.mini .sim-cyc-t{margin-bottom:3px}',
+      '.sim-cyc.mini .sim-cyc-ph{font-size:var(--sim-fs-2);font-weight:400;color:var(--sim-t2)}',
+      '.sim-cyc.mini .sim-cyc-ph .dot{width:5px;height:5px}',
+      '.sim-cyc.mini .sim-cyc-bar{height:4px;border-radius:2px;gap:1px}',
       '.sim-modal.viewing .sim-field>input,.sim-modal.viewing .sim-field>textarea{font-size:var(--sim-fs-5);line-height:1.6;color:var(--sim-t);text-align:left}',
       '.sim-ai{padding:14px;border:1px dashed var(--sim-ac);border-radius:12px;margin-bottom:6px;background:var(--sim-bg)}',
       '.sim-ta{width:100%;min-height:76px;background:var(--sim-bg);border:1px solid var(--sim-bd);border-radius:8px;color:var(--sim-t);padding:9px 11px;font-size:var(--sim-fs-3);resize:vertical;font-family:inherit}',
@@ -5649,7 +5682,8 @@ window.__ModuleLoader__.load({
                   String(draft.protagonist.身份 || '').trim()
                     ? h('div', { className: 's' }, String(draft.protagonist.身份).trim())
                     : null,
-                  statusLine(draft.protagonist) ? h('div', { className: 'sim-status-line' }, statusLine(draft.protagonist)) : null
+                  statusLine(draft.protagonist) ? h('div', { className: 'sim-status-line' }, statusLine(draft.protagonist)) : null,
+                  cycleBar(draft.protagonist),
                 )
               ),
               // ── 基本信息：一张统一的字段表（照角色面板的做法）──
@@ -5983,11 +6017,131 @@ window.__ModuleLoader__.load({
            */
           function statusLine(obj) {
             const o = obj || {};
-            return [o.生理周期, o.妊娠状态, o.身体状态]
+            return [o.妊娠状态, o.身体状态]
               .map((x) => String(x == null ? '' : x).trim())
               .filter(Boolean)
               .join(' · ');
           }
+
+/** 月经周期四段（天数）与各自的起点，用于画条与算倒计时 */
+const CYCLE_SEGS = [
+  { k: '月经', n: 5 },
+  { k: '卵泡', n: 8 },
+  { k: '排卵', n: 3 },
+  { k: '黄体', n: 12 },
+];
+/**
+ * 从「生理周期」那段文本里解出阶段与天数。
+ * 兼容模型的各种写法：卵泡期，周期第10天 / 排卵期 · 第14天 / 经期第2天 / 第10天
+ * 解不出来就返回 null —— 宁可这条不画，也别画错的。
+ */
+function cycleInfo(txt) {
+  const t = String(txt == null ? '' : txt).trim();
+  if (!t) return null;
+  const m = /(\d+)\s*天/.exec(t);
+  let day = m ? Number(m[1]) : 0;
+  const hit = [
+    ['月经', /月经期|经期|例假|经血|来月事/],
+    ['卵泡', /卵泡/],
+    ['排卵', /排卵/],
+    ['黄体', /黄体/],
+  ].find(([, re]) => re.test(t));
+  let phase = hit ? hit[0] : '';
+  // 没有阶段时按 28 天折返；给了阶段就交给下面夹到那一段的范围内（不然会自相矛盾）
+  if (day > 28 && !phase) day = ((day - 1) % 28) + 1;
+  if (!phase && !day) return null;
+  if (phase) {
+    // 有明确阶段时，把天数夹到这一段自己的范围内 ——
+    // 否则「卵泡期·第30天」会被折成「卵泡期第2天」，阶段和天数自相矛盾。
+    let acc = 0;
+    let lo = 1;
+    let hi = 28;
+    for (const s of CYCLE_SEGS) {
+      if (s.k === phase) { lo = acc + 1; hi = acc + s.n; break; }
+      acc += s.n;
+    }
+    if (day && (day < lo || day > hi)) day = Math.min(Math.max(day, lo), hi);
+  }
+  if (!phase || !day) {
+    // 只知道一样，就用另一条推：按天数落段，或按段落取中位天数
+    if (day) {
+      let acc = 0;
+      for (const s of CYCLE_SEGS) {
+        if (day <= acc + s.n) { phase = s.k; break; }
+        acc += s.n;
+      }
+      if (!phase) phase = '黄体';
+    } else {
+      let acc = 0;
+      for (const s of CYCLE_SEGS) {
+        if (s.k === phase) { day = acc + Math.ceil(s.n / 2); break; }
+        acc += s.n;
+      }
+    }
+  }
+  if (!day) return null;
+  return { phase, day };
+}
+/** 下一站的名称与到达它的天数（距本次月经第 1 天） */
+function cycleNext(phase) {
+  if (phase === '月经' || phase === '卵泡') return ['排卵', 14];
+  return ['经期', 29];
+}
+/**
+ * 生理周期条。
+ * compact=true 给角色卡片用（一条细线 + 「卵泡 D10」），否则是弹窗里的完整版。
+ * 没有数据、或解不出阶段，就返回 null（不画空条）。
+ */
+function cycleBar(obj, compact) {
+  const o = obj || {};
+  if (o.性别 && !/女/.test(String(o.性别))) return null;
+  const info = cycleInfo(o.生理周期);
+  if (!info) return null;
+  const nx = cycleNext(info.phase);
+  const left = nx[1] - info.day;
+  return h(
+    'div',
+    { className: 'sim-cyc' + (compact ? ' mini' : '') },
+    h(
+      'div',
+      { className: 'sim-cyc-t' },
+      h(
+        'span',
+        { className: 'sim-cyc-ph ph-' + info.phase },
+        h('i', { className: 'dot' }),
+        compact ? info.phase + ' D' + info.day : info.phase + '期 · 第 ' + info.day + ' 天'
+      ),
+      compact
+        ? null
+        : h(
+            'span',
+            { className: 'sim-cyc-nx' },
+            left > 0 ? '距' + nx[0] + ' ' + left + ' 天' : nx[0] + '当天'
+          )
+    ),
+    h(
+      'div',
+      { className: 'sim-cyc-bar' },
+      CYCLE_SEGS.map((s, i) =>
+        h('div', {
+          key: i,
+          className: 'sg ph-' + s.k + (s.k === info.phase ? ' on' : ''),
+          style: { flex: String(s.n) },
+        })
+      ),
+      h('div', { className: 'sim-cyc-cur', style: { left: (info.day - 0.5) / 28 * 100 + '%' } })
+    ),
+    compact
+      ? null
+      : h(
+          'div',
+          { className: 'sim-cyc-sc' },
+          CYCLE_SEGS.map((s, i) =>
+            h('div', { key: i, className: 'sc ph-' + s.k, style: { flex: String(s.n) } }, s.k)
+          )
+        )
+  );
+}
           /** 「无/弱/中/强」这种文本档位 → 0~100，交给 statBar 画条；认不出就返回 null（不显示） */
           function levelOf(v) {
             const t = String(v == null ? '' : v).trim();
@@ -6163,6 +6317,7 @@ function starPanel(n) {
                     )
                   : h('div', { className: 'sim-npc-d muted' }, '（暂无描述）'),
                 c.st ? h('div', { className: 'sim-npc-d sim-status-line' }, c.st) : null,
+            cycleBar(npc, true),
                 c.aff != null ? statBar('❤️', c.aff, 'aff') : null,
                 c.tru != null ? statBar('🤝', c.tru, 'tru') : null,
                 c.des != null ? statBar('🔥', c.des, 'des') : null
@@ -6429,6 +6584,7 @@ function starPanel(n) {
                         statusLine(npc || obj)
                           ? h('div', { className: 'sim-status-line', style: { marginBottom: 8 } }, statusLine(npc || obj))
                           : null,
+                          h('div', { style: { marginBottom: 10 } }, cycleBar(npc || obj)),
                         // 和编辑主角一样：每个普通字段一个输入框，改完写回（创角阶段写草稿、游玩阶段写存档）
                         h(
                           'div',
