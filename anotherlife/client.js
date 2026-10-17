@@ -490,9 +490,11 @@ window.__ModuleLoader__.load({
       '.sim-modal.viewing .sim-grid .sim-field>label{flex:0 0 82px;font-size:var(--sim-fs-4);color:var(--sim-t2);white-space:nowrap}',
       '.sim-modal.viewing .sim-grid .sim-field>input,.sim-modal.viewing .sim-grid .sim-field>textarea{flex:1 1 auto;min-width:0;font-size:var(--sim-fs-5);line-height:1.6;color:var(--sim-t);text-align:left}',
       // 长字段（外貌／性格／当前状态…）单独占一行，上面加条淡分隔，读起来成块
-      '.sim-modal.viewing .sim-grid .sim-field.wide{grid-column:1 / -1;flex-direction:column;align-items:stretch;gap:4px;margin-top:10px;padding-top:8px;border-top:1px solid var(--sim-bd)}',
-      '.sim-modal.viewing .sim-grid .sim-field.wide>label{flex:none;width:auto;font-weight:700;font-size:var(--sim-fs-4);color:var(--sim-t)}',
-      '.sim-modal.viewing .sim-grid .sim-field.wide>textarea{min-height:78px;max-height:340px;font-size:var(--sim-fs-5);line-height:1.75}',
+      '.sim-modal.viewing .sim-field.wide{grid-column:1 / -1;flex-direction:column;align-items:stretch;gap:5px;margin-top:12px;padding-top:9px;border-top:1px solid var(--sim-bd)}',
+      '.sim-modal.viewing .sim-field.wide>label{flex:none;width:auto;font-weight:700;font-size:var(--sim-fs-4);color:var(--sim-t)}',
+      '.sim-modal.viewing .sim-field.wide>textarea{min-height:74px;max-height:340px;font-size:var(--sim-fs-5);line-height:1.75;text-align:left}',
+      '.sim-modal.viewing .sim-field-v{font-size:var(--sim-fs-5);line-height:1.75;white-space:pre-wrap;word-break:break-word;color:var(--sim-t)}',
+      '.sim-modal.viewing .sim-field>input,.sim-modal.viewing .sim-field>textarea{font-size:var(--sim-fs-5);line-height:1.6;color:var(--sim-t);text-align:left}',
       '.sim-ai{padding:14px;border:1px dashed var(--sim-ac);border-radius:12px;margin-bottom:6px;background:var(--sim-bg)}',
       '.sim-ta{width:100%;min-height:76px;background:var(--sim-bg);border:1px solid var(--sim-bd);border-radius:8px;color:var(--sim-t);padding:9px 11px;font-size:var(--sim-fs-3);resize:vertical;font-family:inherit}',
       '.sim-foot{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px;padding-top:14px;border-top:1px solid var(--sim-bd)}',
@@ -908,14 +910,19 @@ window.__ModuleLoader__.load({
             if (!props.unit) return s;
             return s.replace(new RegExp('\\s*' + props.unit + '\\s*$', 'i'), '');
           };
-          const box = props.multiline
-            ? h('textarea', {
-                style: { minHeight: 72 },
-                value: props.value == null ? '' : String(props.value),
-                placeholder: props.ph || '',
-                onChange: (e) => props.onChange(e.target.value),
-              })
-            : h('input', {
+          // 查看态的多行字段用 div：textarea 在内容只有一行时会留一大块空白，
+          // 而且高度不能随内容变化。div + pre-wrap 才是「读」该有的样子。
+          const box =
+            props.multiline && props.readonly
+              ? h('div', { className: 'sim-field-v' }, props.value == null ? '' : String(props.value))
+              : props.multiline
+              ? h('textarea', {
+                  style: { minHeight: 72 },
+                  value: props.value == null ? '' : String(props.value),
+                  placeholder: props.ph || '',
+                  onChange: (e) => props.onChange(e.target.value),
+                })
+              : h('input', {
                 value: stripUnit(props.value),
                 placeholder: props.ph || '',
                 onChange: (e) => props.onChange(e.target.value),
@@ -6414,6 +6421,9 @@ window.__ModuleLoader__.load({
                         label: k,
                         // 这几种是成段的描述，用多行框才看得全
                         multiline: true,
+                        readonly: !editing,
+                        // 它们不在 .sim-grid 里，靠 wide 类拿查看态那套「标签在上、正文在下」的样式
+                        wide: true,
                         value: Array.isArray((npc || obj)[k])
                           ? (npc || obj)[k].map((x) => String(x == null ? '' : x)).join('、')
                           : (npc || obj)[k],
