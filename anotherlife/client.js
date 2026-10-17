@@ -2557,6 +2557,11 @@ window.__ModuleLoader__.load({
           const [npcOpen, setNpcOpen] = React.useState(null); // 打开的角色卡：{kind,i}
           const [editText, setEditText] = React.useState('');
           const [stage, setStage] = React.useState(null); // 当前进行到哪一步：{stage,text}
+          // 创角页「列表编辑」弹窗：{ key, fields, title } 或 null。
+          // 物品／技能／住所／交通／事业／收支之外的各类列表共用一个弹窗。
+          const [listEdit, setListEdit] = React.useState(null);
+          // 弹窗里的临时副本（打开时拷贝，点保存才写回草稿）
+          const [listEditArr, setListEditArr] = React.useState([]);
           // 解析进行到哪一小步（主角字段 → 人物名册），显示在创角页那一行
           const [parseNote, setParseNote] = React.useState('');
           // 创角页「物品」编辑弹窗是否打开（true=开）。以前这里是一个 JSON 文本框，
@@ -4342,6 +4347,49 @@ window.__ModuleLoader__.load({
 
 
           /** 「收支」是对象不是数组，单独一个两栏编辑器 */
+
+          /**
+           * 列表类字段的「胶囊 + 编辑」（只出现在创角页）。
+           *
+           * 页面上不再铺开输入框：只显示一行胶囊（每项一个名字），点「编辑」打开弹窗，
+           * 在里面增删改，点保存写回草稿并关闭、列表立刻刷新。
+           * 技能／住所／交通／事业／债务／凭证／隐患／私人关系 全走这一套；
+           * 物品与主角物品也共用同一个弹窗（fields 不同而已）。
+           */
+          function objListEditor(title, key, fields, addLabel, nameKey) {
+            const list = Array.isArray(draft.protagonist[key]) ? draft.protagonist[key] : [];
+            const nmk = nameKey || fields[0] || '名称';
+            const nmOf = (x) => (x == null ? '' : typeof x === 'object' ? String(x[nmk] || x.名称 || x.名字 || x.物品 || '') : String(x));
+            const names = list.map(nmOf).filter(Boolean);
+            return h(
+              'div',
+              { key: key + '-editor' },
+              h('div', { className: 'sim-sec' }, title),
+              h(
+                'div',
+                { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
+                names.length
+                  ? h(
+                      'div',
+                      { style: { display: 'flex', gap: 6, flexWrap: 'wrap', flex: '1 1 auto' } },
+                      names.map((n, i) => h('span', { className: 'sim-chip', key: i }, h('span', { className: 'sim-chip-t' }, n)))
+                    )
+                  : h('div', { className: 'sim-hint', style: { flex: '1 1 auto' } }, '还没有内容'),
+                h(
+                  'button',
+                  {
+                    className: 'sim-btn',
+                    onClick: () => {
+                      setListEditArr(JSON.parse(JSON.stringify(Array.isArray(draft.protagonist[key]) ? draft.protagonist[key] : [])));
+                      setListEdit({ key, title: addLabel || title, fields, nameKey: nmk });
+                    },
+                  },
+                  names.length ? '编辑' : '+ 添加'
+                )
+              )
+            );
+          }
+
           function incomeEditor() {
             const s = draft.protagonist.收支 && typeof draft.protagonist.收支 === 'object' ? draft.protagonist.收支 : {};
             const setKey = (k, v) => setProtag('收支', Object.assign({}, s, { [k]: v }));
@@ -4464,6 +4512,15 @@ window.__ModuleLoader__.load({
               charSec('当前', ['当前状态', '当前想法', '身体状态']),
               charSec('私密', ['性癖', '敏感点', '底线', '经验', '是否处女', '月经状态', '妊娠状态']),
               charSec('速记', ['标签', '特点']),
+              objListEditor('技能', '技能', ['名字', '等级', '说明', '来源'], '技能', '名字'),
+              objListEditor('住所', '住所', ['位置', '买入价格', '状态'], '住所', '位置'),
+              objListEditor('交通', '交通', ['车型', '买入价格', '状态'], '交通', '车型'),
+              objListEditor('事业', '事业', ['名称', '职务', '发展情况'], '事业', '名称'),
+              incomeEditor(),
+              objListEditor('债务', '债务', ['对象', '金额', '约定', '状态'], '债务', '对象'),
+              objListEditor('凭证', '凭证', ['名称', '说明'], '凭证', '名称'),
+              objListEditor('隐患', '隐患', ['事情', '知情者', '危险度', '状态'], '隐患', '事情'),
+              objListEditor('私人关系', '私人关系', ['对象', '性质', '公开', '状态'], '私人关系', '对象'),
             capsuleList('技能', ['名字', '等级', '说明', '来源']),
             capsuleList('住所', ['位置', '买入价格', '状态']),
             capsuleList('交通', ['车型', '买入价格', '状态']),
@@ -4560,34 +4617,7 @@ window.__ModuleLoader__.load({
                 h(Field, { key: 'mn', label: '金钱', ph: '按身份给，如 3000000', value: draft.protagonist.金钱, onChange: (v) => setProtag('金钱', Number(v) || 0) }),
                 h(Field, { key: 'mn', label: '金钱', ph: '按身份给，如 3000000', value: draft.protagonist.金钱, onChange: (v) => setProtag('金钱', Number(v) || 0) }),
                 // 物品不再用 JSON 文本框：点开一个弹窗，逐件增删改
-                h(
-                  'div',
-                  { className: 'sim-field' },
-                  h('label', null, '物品'),
-                  h(
-                    'div',
-                    { style: { display: 'flex', alignItems: 'center', gap: 8 } },
-                    h(
-                      'div',
-                      { className: 'sim-hint', style: { flex: 1 } },
-                      Array.isArray(draft.protagonist.物品) && draft.protagonist.物品.length
-                        ? draft.protagonist.物品.map((x) => String((x && x.名字) || '')).filter(Boolean).join('、')
-                        : '还没有物品'
-                    ),
-                    h(
-                      'button',
-                      {
-                        className: 'sim-btn',
-                        onClick: () => {
-                          // 打开时把当前物品拷一份进临时列表：中途点 ✕ 不会改到草稿
-                          setItemEditList(JSON.parse(JSON.stringify(Array.isArray(draft.protagonist.物品) ? draft.protagonist.物品 : [])));
-                          setItemEdit(true);
-                        },
-                      },
-                      '编辑物品'
-                    )
-                  )
-                ),
+                objListEditor('物品', '物品', ['名字', '品质', '获取时间', '简介'], '物品', '名字'),
                 h(Field, { key: 'ft', label: '特点', value: Array.isArray(draft.protagonist.特点) ? draft.protagonist.特点.join('、') : String(draft.protagonist.特点 || ''), onChange: (v) => setProtag('特点', String(v || '')) })
               ),
               h('div', { style: hint }, '物品每项：{"名字","品质":"N/R/SR/SSR/UR","获取时间","简介","属性提升":{}}。'),
@@ -5100,6 +5130,90 @@ window.__ModuleLoader__.load({
            * 编辑中的内容放在组件内的临时数组里（每次打开时从草稿拷贝一份），
            * 点「保存」才写回草稿 —— 中途点 ✕ 不会留下半截改动。
            */
+
+          /**
+           * 通用「列表编辑」弹窗（创角页专用）。
+           *
+           * 创角页上的列表类内容（物品／技能／住所／交通／事业／债务／凭证／隐患／私人关系）
+           * 不在页面上直接铺开输入框 —— 那里只显示一行胶囊（每项一个名字），
+           * 点「编辑」才打开这个弹窗，在里面增删改，点保存写回草稿并关闭。
+           *
+           * listEdit = { key, title, fields, nameKey }；
+           * listEditArr 是编辑中的临时数组，点 ✕ 直接丢弃。
+           */
+          function listModalView() {
+            if (!listEdit) return null;
+            const { key, title, fields, nameKey } = listEdit;
+            const arr = Array.isArray(listEditArr) ? listEditArr : [];
+            const nmOf = (x) => (x == null ? '' : typeof x === 'object' ? String(x[nameKey] || x.名称 || x.名字 || '') : String(x));
+            const setOne = (i, k, v) => setListEditArr(arr.map((x, j) => (j === i ? Object.assign({}, x, { [k]: v }) : x)));
+            const blank = () => {
+              const o = {};
+              (fields || []).forEach((f) => (o[f] = ''));
+              return o;
+            };
+            const save = () => {
+              // 全空的条目丢掉，免得列表里留一堆空壳
+              const keep = arr.filter((x) => x && typeof x === 'object' && (fields || []).some((f) => String(x[f] == null ? '' : x[f]).trim()));
+              setProtag(key, keep);
+              setListEdit(null);
+              setListEditArr([]);
+            };
+            return h(
+              'div',
+              { className: 'sim-mask', onClick: () => setListEdit(null) },
+              h(
+                'div',
+                { className: 'sim-modal', style: { maxWidth: 720 }, onClick: (e) => e.stopPropagation() },
+                h(
+                  'div',
+                  { className: 'sim-modal-h' },
+                  h('div', { className: 'who' },
+                    h('div', { className: 'nm' }, title || key),
+                    h('div', { className: 'chips' }, h('span', { className: 'sim-mchip' }, arr.length + ' 项'))
+                  ),
+                  h('button', { className: 'sim-modal-x', title: '关闭', onClick: () => setListEdit(null) }, '✕')
+                ),
+                h(
+                  'div',
+                  { className: 'sim-modal-b' },
+                  arr.length
+                    ? arr.map((it, i) =>
+                        h(
+                          'div',
+                          { className: 'sim-panel', key: i },
+                          h(
+                            'div',
+                            { style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 } },
+                            h('div', { className: 'sim-panel-h', style: { flex: 1, margin: 0 } }, '第 ' + (i + 1) + ' 项' + (nmOf(it) ? ' · ' + nmOf(it) : '')),
+                            h('button', { className: 'sim-close', onClick: () => setListEditArr(arr.filter((_, j) => j !== i)) }, '删除')
+                          ),
+                          h(
+                            'div',
+                            { className: 'sim-grid' },
+                            (fields || []).map((f) =>
+                              h(Field, {
+                                key: f,
+                                label: f,
+                                value: it && it[f] != null ? String(it[f]) : '',
+                                onChange: (v) => setOne(i, f, v),
+                              })
+                            )
+                          )
+                        )
+                      )
+                    : h('div', { className: 'sim-hint' }, '还没有内容。'),
+                  h(
+                    'div',
+                    { className: 'sim-acts', style: { marginTop: 10 } },
+                    h('button', { className: 'sim-btn', onClick: () => setListEditArr(arr.concat([blank()])) }, '+ 添加'),
+                    h('button', { className: 'sim-btn primary', onClick: () => save() }, '保存')
+                  )
+                )
+              )
+            );
+          }
+
           function itemModalView() {
             if (!itemEdit) return null;
             const list = Array.isArray(itemEditList) ? itemEditList : [];
@@ -7427,6 +7541,7 @@ window.__ModuleLoader__.load({
             npcModalView(),
             assetModalView(),
             itemModalView(),
+            listModalView(),
             objEditModal(),
             UiPreviewModal(uiPrevOpen, () => setUiPrevOpen(false)),
             h(AvatarModal, {
