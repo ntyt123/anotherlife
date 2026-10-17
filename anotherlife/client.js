@@ -4370,258 +4370,260 @@ window.__ModuleLoader__.load({
             )
           );
 
-          const charForm = h(
-            'div',
-            { className: 'sim-card' },
-            h(
+          function charFormView() {
+            return h(
               'div',
-              { className: 'sim-hero' },
-              h('span', { className: 'ic' }, '🎭'),
-              h('div', null, h('div', { className: 't' }, '创建主角'), h('div', { className: 's' }, '逐项填写，或用一句话描述让 AI 解析。'))
-            ),
-            h(
-              'div',
-              { className: 'sim-ai' },
-              h('div', { className: 'sim-hint' }, '自然语言描述（越具体越好）：'),
-              h('textarea', { className: 'sim-ta', value: nl, placeholder: '例如：19 岁的练习生，五官清秀、小鹿眼、黑长直，个子不高，怕被淘汰……', onChange: (e) => setNl(e.target.value) }),
-              h('div', { style: { marginTop: 8 } }, h(Btn, { primary: true, disabled: busy, onClick: () => aiParse('character') }, busy ? '解析中… ' + parseSec + 's' : '✨ AI 解析填入')),
-              parseNote ? h('div', { className: 'sim-hint' }, parseNote) : null
-            ),
-            charSec('基础', ['姓名', '性别', '生日', '出生地', '年龄']),
-            charSec('身份', ['身份', '种族', '婚姻状况', '配偶', '子女']),
-            charSec('外貌与性格', ['外貌', '表性格', '里性格']),
-            charSec('身体', ['身高', '体重', '三围', '罩杯', '健康状况', '疾病与伤病']),
-            charSec('当前', ['当前状态', '当前想法', '身体状态']),
-            charSec('私密', ['性癖', '敏感点', '底线', '经验', '是否处女', '月经状态', '妊娠状态']),
-            charSec('速记', ['标签', '特点']),
-          objListEditor('技能', '技能', ['名字', '等级', '说明', '来源'], '添加技能'),
-          objListEditor('住所', '住所', ['位置', '买入价格', '状态'], '添加住所'),
-          objListEditor('交通', '交通', ['车型', '买入价格', '状态'], '添加车辆'),
-          objListEditor('事业', '事业', ['名称', '职务', '发展情况'], '添加事业'),
-          incomeEditor(),
-          objListEditor('债务', '债务', ['对象', '金额', '约定', '状态'], '添加债务'),
-          objListEditor('凭证', '凭证', ['名称', '说明'], '添加凭证'),
-          objListEditor('隐患', '隐患', ['事情', '知情者', '危险度', '状态'], '添加隐患'),
-          objListEditor('私人关系', '私人关系', ['对象', '性质', '公开', '状态'], '添加私人关系'),
-            h('div', { className: 'sim-sec' }, '演艺身份'),
-            h(
-              'div',
-              { className: 'sim-grid' },
+              { className: 'sim-card' },
               h(
-                'label',
-                {
-                  style: {
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    cursor: 'pointer',
-                    fontSize: 'var(--sim-fs-3)',
+                'div',
+                { className: 'sim-hero' },
+                h('span', { className: 'ic' }, '🎭'),
+                h('div', null, h('div', { className: 't' }, '创建主角'), h('div', { className: 's' }, '逐项填写，或用一句话描述让 AI 解析。'))
+              ),
+              h(
+                'div',
+                { className: 'sim-ai' },
+                h('div', { className: 'sim-hint' }, '自然语言描述（越具体越好）：'),
+                h('textarea', { className: 'sim-ta', value: nl, placeholder: '例如：19 岁的练习生，五官清秀、小鹿眼、黑长直，个子不高，怕被淘汰……', onChange: (e) => setNl(e.target.value) }),
+                h('div', { style: { marginTop: 8 } }, h(Btn, { primary: true, disabled: busy, onClick: () => aiParse('character') }, busy ? '解析中… ' + parseSec + 's' : '✨ AI 解析填入')),
+                parseNote ? h('div', { className: 'sim-hint' }, parseNote) : null
+              ),
+              charSec('基础', ['姓名', '性别', '生日', '出生地', '年龄']),
+              charSec('身份', ['身份', '种族', '婚姻状况', '配偶', '子女']),
+              charSec('外貌与性格', ['外貌', '表性格', '里性格']),
+              charSec('身体', ['身高', '体重', '三围', '罩杯', '健康状况', '疾病与伤病']),
+              charSec('当前', ['当前状态', '当前想法', '身体状态']),
+              charSec('私密', ['性癖', '敏感点', '底线', '经验', '是否处女', '月经状态', '妊娠状态']),
+              charSec('速记', ['标签', '特点']),
+            objListEditor('技能', '技能', ['名字', '等级', '说明', '来源'], '添加技能'),
+            objListEditor('住所', '住所', ['位置', '买入价格', '状态'], '添加住所'),
+            objListEditor('交通', '交通', ['车型', '买入价格', '状态'], '添加车辆'),
+            objListEditor('事业', '事业', ['名称', '职务', '发展情况'], '添加事业'),
+            incomeEditor(),
+            objListEditor('债务', '债务', ['对象', '金额', '约定', '状态'], '添加债务'),
+            objListEditor('凭证', '凭证', ['名称', '说明'], '添加凭证'),
+            objListEditor('隐患', '隐患', ['事情', '知情者', '危险度', '状态'], '添加隐患'),
+            objListEditor('私人关系', '私人关系', ['对象', '性质', '公开', '状态'], '添加私人关系'),
+              h('div', { className: 'sim-sec' }, '演艺身份'),
+              h(
+                'div',
+                { className: 'sim-grid' },
+                h(
+                  'label',
+                  {
+                    style: {
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      cursor: 'pointer',
+                      fontSize: 'var(--sim-fs-3)',
+                    },
                   },
-                },
-                h('input', {
-                  type: 'checkbox',
-                  checked: !!draft.protagonist.是否艺人,
-                  onChange: (e) => setProtag('是否艺人', e.target.checked),
-                }),
-                h('span', null, '星途模拟')
-              )
-            ),
-            h('div', { className: 'sim-sec' }, '人物关系（家人、熟人）'),
-            h('div', { className: 'sim-field' },
-              h('textarea', {
-                style: { minHeight: 68 },
-                value: draft.protagonist.人物关系 || '',
-                placeholder: '如：妹妹罗瑶，刚毕业；母亲徐惠芳，小学数学老师；父亲在老家开厂',
-                onChange: (e) => setProtag('人物关系', e.target.value),
-              })
-            ),
-            h('div', { className: 'sim-hint' }, '这里写过的人，开局那轮会逐个建成角色。名字请照写，AI 不会改。'),
-            (function () {
-              // 数组字段（性癖这种）：**按原样存**，只在显示时拼起来。
-              // 早先这里每次输入都 split 回数组，结果玩家一按顿号／逗号就被当场吃掉，根本打不出分隔符。
-              const listField = (k, ph) => {
-                const cur = draft.protagonist[k];
-                const v = Array.isArray(cur) ? cur.join('、') : String(cur || '');
-                return h(Field, {
-                  key: k,
-                  label: k,
-                  value: v,
-                  ph: ph,
-                  onChange: (x) => setProtag(k, String(x || '')),
-                });
-              };
-              return h(
-                'div',
-                { key: 'nsfw' },
-                h('div', { className: 'sim-sec' }, '私密'),
-                h(
-                  'div',
-                  { className: 'sim-grid' },
-                  listField('性癖', '如 被咬肩膀'),
-                  h(Field, { key: '敏感点', label: '敏感点', value: draft.protagonist.敏感点, ph: '如 后颈、耳后', onChange: (v) => setProtag('敏感点', v) }),
-                  h(Field, { key: '底线', label: '底线', value: draft.protagonist.底线, ph: '如 不接受被拍照', onChange: (v) => setProtag('底线', v) }),
-                  h(Field, { key: '经验', label: '经验', value: draft.protagonist.经验, ph: '如 有过两段，不擅长主动', onChange: (v) => setProtag('经验', v) })
+                  h('input', {
+                    type: 'checkbox',
+                    checked: !!draft.protagonist.是否艺人,
+                    onChange: (e) => setProtag('是否艺人', e.target.checked),
+                  }),
+                  h('span', null, '星途模拟')
                 )
-              );
-            })(),
-            h('div', { className: 'sim-sec' }, isMale ? '穿着（衣物 / 稀有度 / 状态）' : '穿着（衣物 / 稀有度 / 状态；袜子另有气味）'),
-            ['头部', '上衣', '下衣', '袜子', '鞋子', '饰品'].map((k) => {
-              const slot = (draft.protagonist.穿着 || {})[k] || {};
-              return h(
-                'div',
-                { key: k, className: 'sim-field' },
-                h('label', null, k),
-                h('input', { placeholder: '衣物', value: slot.物品 || '', onChange: (e) => setWear(k, '物品', e.target.value) }),
-                h('input', { placeholder: '稀有度 N/R/SR/SSR/UR', value: slot.稀有度 || '', onChange: (e) => setWear(k, '稀有度', e.target.value) }),
-                h('input', { placeholder: '状态（正常就留空）', value: slot.状态 || '', onChange: (e) => setWear(k, '状态', e.target.value) }),
-                k === '袜子' && !isMale
-                  ? h('input', { placeholder: '气味（仅女性）', value: slot.气味 || '', onChange: (e) => setWear(k, '气味', e.target.value) })
-                  : null
-              );
-            }),
-            h('div', { className: 'sim-sec' }, '偏好与标签'),
-            h(
-              'div',
-              { className: 'sim-grid' },
-              // 性癖已经归到上面的「私密」组，这里不再重复一份；标签同样按原样存（不实时 split）
-              h(Field, {
-                key: 'g',
-                label: '标签',
-                value: Array.isArray(draft.protagonist.标签) ? draft.protagonist.标签.join('、') : String(draft.protagonist.标签 || ''),
-                onChange: (v) => setProtag('标签', String(v || '')),
-              })
-            ),
-            h('div', { className: 'sim-sec' }, '生理与健康'),
-            h(
-              'div',
-              { className: 'sim-grid' },
-              h(Field, { key: 'hl', label: '健康状况', value: draft.protagonist.健康状况, onChange: (v) => setProtag('健康状况', v) }),
-              h(Field, { key: 'dz', label: '疾病与伤病(顿号分隔)', value: Array.isArray(draft.protagonist.疾病与伤病) ? draft.protagonist.疾病与伤病.join('、') : String(draft.protagonist.疾病与伤病 || ''), onChange: (v) => setProtag('疾病与伤病', String(v || '')) })
-            ),
-            h(
-              'div',
-              { className: 'sim-grid' },
-              h(Field, { key: 'v', label: '是否处女', value: draft.protagonist.是否处女, onChange: (v) => setProtag('是否处女', v) }),
-              h(Field, { key: 'm', label: '月经状态', value: draft.protagonist.月经状态, onChange: (v) => setProtag('月经状态', v) }),
-              h(Field, { key: 'r', label: '妊娠状态', value: draft.protagonist.妊娠状态, onChange: (v) => setProtag('妊娠状态', v) })
-            ),
-            h('div', { className: 'sim-sec' }, '数值与持有'),
-            h(
-              'div',
-              { className: 'sim-grid' },
-              h(Field, { key: 'cur', label: '货币名', ph: '如 人民币 / 银两', value: draft.protagonist.货币名, onChange: (v) => setProtag('货币名', v) }),
-              h(Field, { key: 'mn', label: '金钱', ph: '按身份给，如 3000000', value: draft.protagonist.金钱, onChange: (v) => setProtag('金钱', Number(v) || 0) }),
-              h(Field, { key: 'mn', label: '金钱', ph: '按身份给，如 3000000', value: draft.protagonist.金钱, onChange: (v) => setProtag('金钱', Number(v) || 0) }),
-              // 物品不再用 JSON 文本框：点开一个弹窗，逐件增删改
-              h(
-                'div',
-                { className: 'sim-field' },
-                h('label', null, '物品'),
-                h(
+              ),
+              h('div', { className: 'sim-sec' }, '人物关系（家人、熟人）'),
+              h('div', { className: 'sim-field' },
+                h('textarea', {
+                  style: { minHeight: 68 },
+                  value: draft.protagonist.人物关系 || '',
+                  placeholder: '如：妹妹罗瑶，刚毕业；母亲徐惠芳，小学数学老师；父亲在老家开厂',
+                  onChange: (e) => setProtag('人物关系', e.target.value),
+                })
+              ),
+              h('div', { className: 'sim-hint' }, '这里写过的人，开局那轮会逐个建成角色。名字请照写，AI 不会改。'),
+              (function () {
+                // 数组字段（性癖这种）：**按原样存**，只在显示时拼起来。
+                // 早先这里每次输入都 split 回数组，结果玩家一按顿号／逗号就被当场吃掉，根本打不出分隔符。
+                const listField = (k, ph) => {
+                  const cur = draft.protagonist[k];
+                  const v = Array.isArray(cur) ? cur.join('、') : String(cur || '');
+                  return h(Field, {
+                    key: k,
+                    label: k,
+                    value: v,
+                    ph: ph,
+                    onChange: (x) => setProtag(k, String(x || '')),
+                  });
+                };
+                return h(
                   'div',
-                  { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+                  { key: 'nsfw' },
+                  h('div', { className: 'sim-sec' }, '私密'),
                   h(
                     'div',
-                    { className: 'sim-hint', style: { flex: 1 } },
-                    Array.isArray(draft.protagonist.物品) && draft.protagonist.物品.length
-                      ? draft.protagonist.物品.map((x) => String((x && x.名字) || '')).filter(Boolean).join('、')
-                      : '还没有物品'
-                  ),
-                  h(
-                    'button',
-                    {
-                      className: 'sim-btn',
-                      onClick: () => {
-                        // 打开时把当前物品拷一份进临时列表：中途点 ✕ 不会改到草稿
-                        setItemEditList(JSON.parse(JSON.stringify(Array.isArray(draft.protagonist.物品) ? draft.protagonist.物品 : [])));
-                        setItemEdit(true);
-                      },
-                    },
-                    '编辑物品'
+                    { className: 'sim-grid' },
+                    listField('性癖', '如 被咬肩膀'),
+                    h(Field, { key: '敏感点', label: '敏感点', value: draft.protagonist.敏感点, ph: '如 后颈、耳后', onChange: (v) => setProtag('敏感点', v) }),
+                    h(Field, { key: '底线', label: '底线', value: draft.protagonist.底线, ph: '如 不接受被拍照', onChange: (v) => setProtag('底线', v) }),
+                    h(Field, { key: '经验', label: '经验', value: draft.protagonist.经验, ph: '如 有过两段，不擅长主动', onChange: (v) => setProtag('经验', v) })
                   )
-                )
-              ),
-              h(Field, { key: 'ft', label: '特点', value: Array.isArray(draft.protagonist.特点) ? draft.protagonist.特点.join('、') : String(draft.protagonist.特点 || ''), onChange: (v) => setProtag('特点', String(v || '')) })
-            ),
-            h('div', { style: hint }, '物品每项：{"名字","品质":"N/R/SR/SSR/UR","获取时间","简介","属性提升":{}}。'),
-            h('div', { className: 'sim-sec' }, '备注'),
-            h(
-              'div',
-              { className: 'sim-hint' },
-              '原样发给 AI 的一段补充，不受上面字段的限制 —— 写不下、或想额外交代的都可以放这里（例如「妹妹叫罗小满，父母在北京」）。'
-            ),
-            h('div', { className: 'sim-field' },
-              h('textarea', {
-                style: { minHeight: 96 },
-                value: draft.extraInfo || '',
-                placeholder: '可留空。这里是额外补充，会连同上面的设定一起交给 AI。',
-                onChange: (e) => upd({ extraInfo: e.target.value }),
-              })
-            ),
-            // 最下面这份 JSON 就是发给开局的那份数据的原貌：
-            // 解析出来的角色、技能物品、世界，都在这里，可以直接改。
-            h(
-              'details',
-              { className: 'sim-fact', style: { marginTop: 12 } },
-              h('summary', null, '完整数据（JSON）· 可直接改'),
+                );
+              })(),
+              h('div', { className: 'sim-sec' }, isMale ? '穿着（衣物 / 稀有度 / 状态）' : '穿着（衣物 / 稀有度 / 状态；袜子另有气味）'),
+              ['头部', '上衣', '下衣', '袜子', '鞋子', '饰品'].map((k) => {
+                const slot = (draft.protagonist.穿着 || {})[k] || {};
+                return h(
+                  'div',
+                  { key: k, className: 'sim-field' },
+                  h('label', null, k),
+                  h('input', { placeholder: '衣物', value: slot.物品 || '', onChange: (e) => setWear(k, '物品', e.target.value) }),
+                  h('input', { placeholder: '稀有度 N/R/SR/SSR/UR', value: slot.稀有度 || '', onChange: (e) => setWear(k, '稀有度', e.target.value) }),
+                  h('input', { placeholder: '状态（正常就留空）', value: slot.状态 || '', onChange: (e) => setWear(k, '状态', e.target.value) }),
+                  k === '袜子' && !isMale
+                    ? h('input', { placeholder: '气味（仅女性）', value: slot.气味 || '', onChange: (e) => setWear(k, '气味', e.target.value) })
+                    : null
+                );
+              }),
+              h('div', { className: 'sim-sec' }, '偏好与标签'),
               h(
                 'div',
-                { className: 'sim-hint', style: { marginTop: 6 } },
-                '上面所有内容都在这里：世界、主角、角色、技能物品。改完点「应用」，它会覆盖回上面的表单。'
+                { className: 'sim-grid' },
+                // 性癖已经归到上面的「私密」组，这里不再重复一份；标签同样按原样存（不实时 split）
+                h(Field, {
+                  key: 'g',
+                  label: '标签',
+                  value: Array.isArray(draft.protagonist.标签) ? draft.protagonist.标签.join('、') : String(draft.protagonist.标签 || ''),
+                  onChange: (v) => setProtag('标签', String(v || '')),
+                })
               ),
-              h('textarea', {
-                className: 'sim-ta',
-                style: { minHeight: 240, marginTop: 8, fontFamily: 'ui-monospace,Menlo,Consolas,monospace', fontSize: 12, lineHeight: 1.5 },
-                value: preJson == null ? preJsonText() : preJson,
-                spellCheck: false,
-                onChange: (e) => {
-                  setPreJson(e.target.value);
-                  setPreJsonErr('');
-                },
-              }),
-              preJsonErr ? h('div', { className: 'sim-err' }, preJsonErr) : null,
+              h('div', { className: 'sim-sec' }, '生理与健康'),
+              h(
+                'div',
+                { className: 'sim-grid' },
+                h(Field, { key: 'hl', label: '健康状况', value: draft.protagonist.健康状况, onChange: (v) => setProtag('健康状况', v) }),
+                h(Field, { key: 'dz', label: '疾病与伤病(顿号分隔)', value: Array.isArray(draft.protagonist.疾病与伤病) ? draft.protagonist.疾病与伤病.join('、') : String(draft.protagonist.疾病与伤病 || ''), onChange: (v) => setProtag('疾病与伤病', String(v || '')) })
+              ),
+              h(
+                'div',
+                { className: 'sim-grid' },
+                h(Field, { key: 'v', label: '是否处女', value: draft.protagonist.是否处女, onChange: (v) => setProtag('是否处女', v) }),
+                h(Field, { key: 'm', label: '月经状态', value: draft.protagonist.月经状态, onChange: (v) => setProtag('月经状态', v) }),
+                h(Field, { key: 'r', label: '妊娠状态', value: draft.protagonist.妊娠状态, onChange: (v) => setProtag('妊娠状态', v) })
+              ),
+              h('div', { className: 'sim-sec' }, '数值与持有'),
+              h(
+                'div',
+                { className: 'sim-grid' },
+                h(Field, { key: 'cur', label: '货币名', ph: '如 人民币 / 银两', value: draft.protagonist.货币名, onChange: (v) => setProtag('货币名', v) }),
+                h(Field, { key: 'mn', label: '金钱', ph: '按身份给，如 3000000', value: draft.protagonist.金钱, onChange: (v) => setProtag('金钱', Number(v) || 0) }),
+                h(Field, { key: 'mn', label: '金钱', ph: '按身份给，如 3000000', value: draft.protagonist.金钱, onChange: (v) => setProtag('金钱', Number(v) || 0) }),
+                // 物品不再用 JSON 文本框：点开一个弹窗，逐件增删改
+                h(
+                  'div',
+                  { className: 'sim-field' },
+                  h('label', null, '物品'),
+                  h(
+                    'div',
+                    { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+                    h(
+                      'div',
+                      { className: 'sim-hint', style: { flex: 1 } },
+                      Array.isArray(draft.protagonist.物品) && draft.protagonist.物品.length
+                        ? draft.protagonist.物品.map((x) => String((x && x.名字) || '')).filter(Boolean).join('、')
+                        : '还没有物品'
+                    ),
+                    h(
+                      'button',
+                      {
+                        className: 'sim-btn',
+                        onClick: () => {
+                          // 打开时把当前物品拷一份进临时列表：中途点 ✕ 不会改到草稿
+                          setItemEditList(JSON.parse(JSON.stringify(Array.isArray(draft.protagonist.物品) ? draft.protagonist.物品 : [])));
+                          setItemEdit(true);
+                        },
+                      },
+                      '编辑物品'
+                    )
+                  )
+                ),
+                h(Field, { key: 'ft', label: '特点', value: Array.isArray(draft.protagonist.特点) ? draft.protagonist.特点.join('、') : String(draft.protagonist.特点 || ''), onChange: (v) => setProtag('特点', String(v || '')) })
+              ),
+              h('div', { style: hint }, '物品每项：{"名字","品质":"N/R/SR/SSR/UR","获取时间","简介","属性提升":{}}。'),
+              h('div', { className: 'sim-sec' }, '备注'),
+              h(
+                'div',
+                { className: 'sim-hint' },
+                '原样发给 AI 的一段补充，不受上面字段的限制 —— 写不下、或想额外交代的都可以放这里（例如「妹妹叫罗小满，父母在北京」）。'
+              ),
+              h('div', { className: 'sim-field' },
+                h('textarea', {
+                  style: { minHeight: 96 },
+                  value: draft.extraInfo || '',
+                  placeholder: '可留空。这里是额外补充，会连同上面的设定一起交给 AI。',
+                  onChange: (e) => upd({ extraInfo: e.target.value }),
+                })
+              ),
+              // 最下面这份 JSON 就是发给开局的那份数据的原貌：
+              // 解析出来的角色、技能物品、世界，都在这里，可以直接改。
+              h(
+                'details',
+                { className: 'sim-fact', style: { marginTop: 12 } },
+                h('summary', null, '完整数据（JSON）· 可直接改'),
+                h(
+                  'div',
+                  { className: 'sim-hint', style: { marginTop: 6 } },
+                  '上面所有内容都在这里：世界、主角、角色、技能物品。改完点「应用」，它会覆盖回上面的表单。'
+                ),
+                h('textarea', {
+                  className: 'sim-ta',
+                  style: { minHeight: 240, marginTop: 8, fontFamily: 'ui-monospace,Menlo,Consolas,monospace', fontSize: 12, lineHeight: 1.5 },
+                  value: preJson == null ? preJsonText() : preJson,
+                  spellCheck: false,
+                  onChange: (e) => {
+                    setPreJson(e.target.value);
+                    setPreJsonErr('');
+                  },
+                }),
+                preJsonErr ? h('div', { className: 'sim-err' }, preJsonErr) : null,
+                h(
+                  'div',
+                  { className: 'sim-acts', style: { marginTop: 8 } },
+                  h(Btn, { primary: true, disabled: busy, onClick: () => applyPreJson() }, '应用'),
+                  h(Btn, { disabled: preJson == null, onClick: () => { setPreJson(null); setPreJsonErr(''); } }, '还原')
+                )
+              ),
+              // ── 角色 ──
+              // 解析出来的人放在主角字段最下面：这里能直接看到有谁、点开能改。
+              // 点「进入正文」时这一份会跟着一起提交，开局消息里就会带上他们。
+              h('div', { className: 'sim-sec' }, '角色' + (Array.isArray(draft.npcs) && draft.npcs.length ? '（' + draft.npcs.length + '）' : '')),
+              Array.isArray(draft.npcs) && draft.npcs.length
+                ? h(
+                    'div',
+                    { className: 'sim-npc-grid' },
+                    draft.npcs.map((n, i) => npcCard(n, null, i, 'npc'))
+                  )
+                : h('div', { className: 'sim-hint' }, '还没有角色。点上面的「AI 解析填入」，会按描述把家人与熟人一并建出来。'),
               h(
                 'div',
                 { className: 'sim-acts', style: { marginTop: 8 } },
-                h(Btn, { primary: true, disabled: busy, onClick: () => applyPreJson() }, '应用'),
-                h(Btn, { disabled: preJson == null, onClick: () => { setPreJson(null); setPreJsonErr(''); } }, '还原')
-              )
-            ),
-            // ── 角色 ──
-            // 解析出来的人放在主角字段最下面：这里能直接看到有谁、点开能改。
-            // 点「进入正文」时这一份会跟着一起提交，开局消息里就会带上他们。
-            h('div', { className: 'sim-sec' }, '角色' + (Array.isArray(draft.npcs) && draft.npcs.length ? '（' + draft.npcs.length + '）' : '')),
-            Array.isArray(draft.npcs) && draft.npcs.length
-              ? h(
-                  'div',
-                  { className: 'sim-npc-grid' },
-                  draft.npcs.map((n, i) => npcCard(n, null, i, 'npc'))
+                h(
+                  Btn,
+                  {
+                    onClick: () =>
+                      upd({
+                        npcs: (Array.isArray(draft.npcs) ? draft.npcs : []).concat([
+                          { 姓名: '新角色', 与主角关系: '' },
+                        ]),
+                      }),
+                  },
+                  '+ 添加角色'
                 )
-              : h('div', { className: 'sim-hint' }, '还没有角色。点上面的「AI 解析填入」，会按描述把家人与熟人一并建出来。'),
-            h(
-              'div',
-              { className: 'sim-acts', style: { marginTop: 8 } },
+              ),
               h(
-                Btn,
-                {
-                  onClick: () =>
-                    upd({
-                      npcs: (Array.isArray(draft.npcs) ? draft.npcs : []).concat([
-                        { 姓名: '新角色', 与主角关系: '' },
-                      ]),
-                    }),
-                },
-                '+ 添加角色'
+                'div',
+                { className: 'sim-foot' },
+                h(Btn, { disabled: busy, onClick: () => run(call('setPhase', { phase: 'world' }, gameId)) }, '← 返回修改世界观'),
+                h(Btn, { disabled: busy, onClick: () => setTab('presets') }, '💾 去存预设'),
+                h(Btn, { primary: true, big: true, disabled: busy, onClick: () => startGame() }, busy ? '生成开场中…' : '进入正文 →')
               )
-            ),
-            h(
-              'div',
-              { className: 'sim-foot' },
-              h(Btn, { disabled: busy, onClick: () => run(call('setPhase', { phase: 'world' }, gameId)) }, '← 返回修改世界观'),
-              h(Btn, { disabled: busy, onClick: () => setTab('presets') }, '💾 去存预设'),
-              h(Btn, { primary: true, big: true, disabled: busy, onClick: () => startGame() }, busy ? '生成开场中…' : '进入正文 →')
-            )
-          );
+            );
+          }
 
           // ── 正文 ──
           const all = state.transcript || [];
@@ -7160,7 +7162,7 @@ window.__ModuleLoader__.load({
           if (tab === 'presets') view = presetsView;
           else if (tab === 'settings') view = settingsView;
           else if (phase === 'world') view = worldForm;
-          else if (phase === 'character') view = charForm;
+          else if (phase === 'character') view = charFormView();
           else if (tab === 'play') view = playView;
           else if (tab === 'protagonist') view = protEditor;
           else if (tab === 'star') view = starEditor;
@@ -7168,7 +7170,7 @@ window.__ModuleLoader__.load({
           else if (tab === 'npcs') view = npcEditor;
           else if (tab === 'skills') view = assetEditor;
           // 兜底：任何没匹配上的页签都不要留白屏（历史上踩过一次：正文阶段 tab='setup' → 全不匹配）
-          if (!view) view = phase === 'play' ? playView : phase === 'character' ? charForm : worldForm;
+          if (!view) view = phase === 'play' ? playView : phase === 'character' ? charFormView() : worldForm;
 
           // 最新一段正文给的行动选项（放进输入框左边的 🎯 图标里）
           const lastAsst = (function () {
