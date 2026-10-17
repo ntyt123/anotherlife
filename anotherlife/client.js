@@ -3678,7 +3678,11 @@ window.__ModuleLoader__.load({
           const STR2OBJ = { 住所: '位置', 交通: '车型', 事业: '名称', 债务: '对象', 凭证: '名称', 物品: '名字', 技能: '名字' };
           function toArrays(o) {
             ARRAY_FIELDS.forEach((k) => {
-              if (o && o[k] != null && !Array.isArray(o[k]) && typeof o[k] === 'object') o[k] = [o[k]];
+              if (!o) return;
+              // 整个字段给成了单个对象 → 包成数组
+              if (o[k] != null && !Array.isArray(o[k]) && typeof o[k] === 'object') o[k] = [o[k]];
+              // 整个字段给成了一段话（"事业": "旗下全资控股影视经纪公司…"）→ 包成 [ { 名称: 话 } ]
+              if (typeof o[k] === 'string' && o[k].trim() && STR2OBJ[k]) o[k] = [{ [STR2OBJ[k]]: o[k].trim() }];
             });
             // 「身体」是对象：老数据里可能被包成 [{...}] 或 [{}]，统一还原成一个对象
             if (o && Array.isArray(o.身体)) {
