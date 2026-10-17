@@ -2554,6 +2554,8 @@ window.__ModuleLoader__.load({
           const [npcOpen, setNpcOpen] = React.useState(null); // 打开的角色卡：{kind,i}
           const [editText, setEditText] = React.useState('');
           const [stage, setStage] = React.useState(null); // 当前进行到哪一步：{stage,text}
+          // 解析进行到哪一小步（主角字段 → 人物名册），显示在创角页那一行
+          const [parseNote, setParseNote] = React.useState('');
           // 创角页最下面那份「完整数据」JSON 的编辑态（null = 还没打开/内容已同步）
           const [preJson, setPreJson] = React.useState(null);
           const [preJsonErr, setPreJsonErr] = React.useState('');
@@ -3717,8 +3719,11 @@ window.__ModuleLoader__.load({
             call('parseNatural', { target, text: target === 'world' ? nlw : nl }, gameId)
               .then((p) => {
                 stopTimer();
-                setBusy(false);
+                // 这里不能无条件 setBusy(false)：主角解析完还要接着跑「人物名册」，
+                // 中途放开按钮的话，玩家可能在这半秒里再点一次，两批解析互相覆盖。
+                // 松手放在各分支真正结束的地方。
                 if (p && p._raw) {
+                  setBusy(false);
                   const raw = String(p._raw);
                   setErr('解析失败（共 ' + raw.length + ' 字' + (p._finish ? '，finish=' + p._finish : '') + '）。开头：' + raw.slice(0, 150) + ' … 结尾：' + raw.slice(-150));
                   if (target === 'world') upd({ world: backup });
@@ -3726,6 +3731,7 @@ window.__ModuleLoader__.load({
                   return;
                 }
                 if (target === 'world') {
+                  setBusy(false); // 世界观没有第二步，直接松手
                   upd({ world: Object.assign(blankLike(draft.world), p) });
                 } else {
                   const merged = Object.assign(blankLike(draft.protagonist), p);
@@ -3752,11 +3758,8 @@ window.__ModuleLoader__.load({
                     });
                   }
                   const npcsIn = Array.isArray(p.角色) ? p.角色.filter((x) => x && typeof x === 'object' && String(x.姓名 || '').trim()) : [];
-                  const siIn = p.技能物品 && typeof p.技能物品 === 'object' ? p.技能物品 : null;
-                  // 「角色」「技能物品」属于存档顶层，不是主角的字段 —— 先摘出去，再写 protagonist。
-                  // 有了这份数据，开局就不用再指望模型从原文里"盘点"有哪几个人：人已经在手上了。
+                  // 「角色」属于存档顶层，不是主角的字段 —— 先摘出去，再写 protagonist。
                   delete merged.角色;
-                  delete merged.技能物品;
                   upd({ protagonist: merged });
                   if (npcsIn.length) {
                     upd({
@@ -3765,28 +3768,45 @@ window.__ModuleLoader__.load({
                         return Object.assign(base, x);
                       }),
                     });
-                  } else {
-                    // 模型没建条目时，从它写的那句「人物关系」里拆（人其实都在里面）
-                    const fromRel = parseRelationString(String(merged.人物关系 || ''));
-                    if (fromRel.length) {
-                      upd({
-                        npcs: fromRel.map((x) => {
-                          const base = blankLike((Array.isArray(draft.npcs) && draft.npcs[0]) || {});
-                          return Object.assign(base, x);
-                        }),
-                      });
-                    }
                   }
-                  if (siIn) {
-                    const cur = draft.skills_items || {};
-                    upd({
-                      skills_items: {
-                        技能: Array.isArray(siIn.技能) ? siIn.技能 : Array.isArray(cur.技能) ? cur.技能 : [],
-                        背包: Array.isArray(siIn.背包) ? siIn.背包 : Array.isArray(cur.背包) ? cur.背包 : [],
-                        状态值: siIn.状态值 && typeof siIn.状态值 === 'object' ? siIn.状态值 : cur.状态值 || {},
-                      },
+                  // 主角解析完了，再单独跑一次「人物名册」。
+                  // 为什么分两次：合在一个提示词里时，模型常常只顾着写最后加的那部分
+                  // （实测多次主角字段整片全空，人却是建好了的）。拆开各管一头就稳了。
+                  // 名册失败不影响上面已经拿到的主角字段 —— 兜底还能从「人物关系」里拆。
+                  setParseNote('正在解析人物名册…');
+                  call('parseNatural', { target: 'cast', text: nl }, gameId)
+                    .then((cr) => {
+                      setParseNote('');
+                      setBusy(false);
+                      const list =
+                        cr && Array.isArray(cr.角色)
+                          ? cr.角色.filter((x) => x && typeof x === 'object' && String(x.姓名 || '').trim())
+                          : [];
+                      const use = list.length ? list : parseRelationString(String(merged.人物关系 || ''));
+                      if (use.length) {
+                        upd({
+                          npcs: use.map((x) => {
+                            const base = blankLike((Array.isArray(draft.npcs) && draft.npcs[0]) || {});
+                            return Object.assign(base, x);
+                          }),
+                        });
+                      }
+                    })
+                    .catch(() => {
+                      // 名册这步失败就退回兜底：从「人物关系」那句里拆
+                      setParseNote('');
+                      setBusy(false);
+                      const use = parseRelationString(String(merged.人物关系 || ''));
+                      if (use.length) {
+                        upd({
+                          npcs: use.map((x) => {
+                            const base = blankLike((Array.isArray(draft.npcs) && draft.npcs[0]) || {});
+                            return Object.assign(base, x);
+                          }),
+                        });
+                      }
                     });
-                  }
+                  return;
                 }
               })
               .catch((e) => {
@@ -4064,7 +4084,8 @@ window.__ModuleLoader__.load({
               { className: 'sim-ai' },
               h('div', { className: 'sim-hint' }, '自然语言描述（越具体越好）：'),
               h('textarea', { className: 'sim-ta', value: nl, placeholder: '例如：19 岁的练习生，五官清秀、小鹿眼、黑长直，个子不高，怕被淘汰……', onChange: (e) => setNl(e.target.value) }),
-              h('div', { style: { marginTop: 8 } }, h(Btn, { primary: true, disabled: busy, onClick: () => aiParse('character') }, busy ? '解析中… ' + parseSec + 's' : '✨ AI 解析填入'))
+              h('div', { style: { marginTop: 8 } }, h(Btn, { primary: true, disabled: busy, onClick: () => aiParse('character') }, busy ? '解析中… ' + parseSec + 's' : '✨ AI 解析填入')),
+              parseNote ? h('div', { className: 'sim-hint' }, parseNote) : null
             ),
             charSec('基础', ['姓名', '性别', '生日', '出生地', '年龄']),
             h('div', { className: 'sim-sec' }, '演艺身份'),
