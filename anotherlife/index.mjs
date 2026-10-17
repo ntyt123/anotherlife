@@ -22,7 +22,7 @@ const P = 'dsh-tavern-simulator/';
 const KEY_SLOTS = ['retrieve', 'settle', 'summary', 'assistant'];
 
 /** 每次改动宿主侧都改一下这个版本号：ping 会回报它，用来确认 Tavern 到底加载的是哪一版 */
-const REV = 'host-v47-skill-fallback-20261017r';
+const REV = 'host-v48-rich-opening-20261017r';
 
 /**
  * 只有这一局用的是这些卡时，插件才出现在界面上（其余卡片游玩时完全不打扰）。
@@ -218,8 +218,13 @@ export function apply(ctx) {
     交通: [],
   });
 
-  /** 纯面板字段：永不进上下文 */
-  const PANEL_ONLY = ['标签', '表性格', '里性格', '当前想法'];
+  /**
+   * 纯面板字段：永不进上下文。
+   * 只排「标签」—— 它是玩家自己维护的速记印象，明确不发给正文模型。
+   * 表性格／里性格／当前想法以前也在这里，那是分错了：它们是核心人设，
+   * 正文模型不知道主角什么性格，写出来的人就不像。现在照常注入。
+   */
+  const PANEL_ONLY = ['标签'];
   /** 实体资产里代表楼层列表的字段名（会被拆成逐层条目） */
   const FLOOR_KEYS = ['每一层的设施', '楼层', '各层设施', '各层'];
 
@@ -1498,36 +1503,29 @@ export function apply(ctx) {
       lines.push('【补充信息】');
       lines.push(String(s.extraInfo));
     }
-    // 创角阶段就已经建好的角色与随身本事 —— 直接给出名单，不用模型再从原文里"盘点"。
+    // 创角阶段就已经建好的角色 —— 直接给出名单，不用模型再从原文里"盘点"。
     // 这一步以前是漏的：这些数据要等第 0 轮结算时由模型自己从描述里认出来，
     // 认漏了就意味着后面剧情永远叫不出他们的名字。
+    // 现在把每个人的**全部字段**都摊开（上下文够长，不必省）：只有姓名和关系，
+    // 模型写出来的就是个空壳，外貌、性格、身份这些它一样要用。
     const npcs0 = Array.isArray(s.npcs) ? s.npcs : [];
     if (npcs0.length) {
       lines.push('');
       lines.push('【已经建好的角色 —— 他们在故事开始前就存在】');
       npcs0.forEach((n) => {
         if (!n || typeof n !== 'object') return;
-        const bits = [];
-        const nm = String(n.姓名 || '').trim();
+        const nm = String(n.姓名 || n.名字 || '').trim();
         if (!nm) return;
-        const one = (k) => {
-          const v = n[k];
-          if (v == null) return '';
-          const t = typeof v === 'object' ? '' : String(v).trim();
-          return t;
-        };
-        const g = one('性别');
-        const ag = one('年龄');
-        const rel = one('与主角关系') || one('关系');
-        const id = one('身份');
-        const bp = one('出生地');
-        const looks = one('外貌');
-        if (g) bits.push(g);
-        if (ag) bits.push(ag);
-        if (id) bits.push(id);
-        if (rel) bits.push('与主角的关系：' + rel);
-        if (bp) bits.push('籍贯：' + bp);
-        lines.push('- ' + nm + (bits.length ? '（' + bits.join('·') + '）' : '') + (looks ? ' —— ' + looks : ''));
+        const bits = [];
+        Object.keys(n).forEach((k) => {
+          if (k === '姓名' || k === '名字') return;
+          if (PANEL_ONLY.indexOf(k) >= 0) return;
+          if (!hasContent(n[k])) return;
+          bits.push(k + '：' + toText(n[k]));
+        });
+        lines.push('');
+        lines.push('· ' + nm);
+        bits.forEach((b) => lines.push('    - ' + b));
       });
       lines.push('这些人**已经存在**：不要再把他们重新创建一遍，名字一律照上面写，不要改写。');
     }
@@ -1554,6 +1552,75 @@ export function apply(ctx) {
       if (sk0.length) lines.push('- 本事：' + sk0.join('、'));
       if (bag0.length) lines.push('- 随身：' + bag0.join('、'));
       lines.push('开场时这些东西已经在他身上／他会这些本事，不必再交代来历。');
+    }
+    // 关系表与资产：这些是"故事里已经成立的事实"，开局就该知道 ——
+    // 不然开场会写出跟设定矛盾的东西（住哪儿、开什么车、月入多少、欠谁的）。
+    const rel0 = Array.isArray(s.relationships) ? s.relationships : [];
+    if (rel0.length) {
+      lines.push('');
+      lines.push('【关系表】');
+      rel0.forEach((r) => {
+        if (!r || typeof r !== 'object') return;
+        const nm = String(r.对象 || r.姓名 || r.名字 || '').trim();
+        const bits = [];
+        Object.keys(r).forEach((k) => {
+          if (['对象', '姓名', '名字'].indexOf(k) >= 0) return;
+          if (!hasContent(r[k])) return;
+          bits.push(k + '：' + toText(r[k]));
+        });
+        if (nm) lines.push('- ' + nm + (bits.length ? '（' + bits.join('·') + '）' : ''));
+      });
+    }
+    const assetBlocks = [
+      ['实体资产', s.实体资产],
+      ['虚拟资产', s.虚拟资产],
+    ].filter(([k, v]) => Array.isArray(v) && v.length);
+    if (assetBlocks.length) {
+      lines.push('');
+      lines.push('【资产】');
+      assetBlocks.forEach(([label, arr]) => {
+        lines.push('');
+        lines.push('· ' + label);
+        arr.forEach((x) => {
+          if (!x || typeof x !== 'object') return;
+          const nm = String(x.名称 || x.名字 || x.名称说明 || '').trim();
+          const bits = [];
+          Object.keys(x).forEach((k) => {
+            if (['名称', '名字', '名称说明'].indexOf(k) >= 0) return;
+            if (!hasContent(x[k])) return;
+            bits.push(k + '：' + toText(x[k]));
+          });
+          lines.push('    - ' + (nm || '（未命名）') + (bits.length ? '（' + bits.join('·') + '）' : ''));
+        });
+      });
+    }
+    // 最后附一份完整快照：上下文够长，与其让模型"从若干段落里拼"，不如把原始数据也给它。
+    // 前面那些分段是给人读顺的提纲，这一段是给模型对照的底本 —— 两者不冲突。
+    try {
+      const snap = {
+        world: s.world || {},
+        protagonist: (function () {
+          const o = {};
+          Object.keys(s.protagonist || {}).forEach((k) => {
+            if (PANEL_ONLY.indexOf(k) >= 0) return;
+            o[k] = s.protagonist[k];
+          });
+          return o;
+        })(),
+        npcs: s.npcs || [],
+        relationships: s.relationships || [],
+        skills_items: s.skills_items || {},
+        实体资产: s.实体资产 || [],
+        虚拟资产: s.虚拟资产 || [],
+      };
+      const js = JSON.stringify(snap, null, 2);
+      if (js && js.length > 2) {
+        lines.push('');
+        lines.push('【完整数据（JSON，与上面各段同源，字段名以这份为准）】');
+        lines.push(js);
+      }
+    } catch (e) {
+      /* 序列化失败就跳过这段，不影响开局 */
     }
     lines.push('');
     lines.push('【要求】这是故事的第一幕。请开场：先确立当前时间、地点与主角当下的处境，自然带出与处境相关的世界背景与在场人物，然后在结尾按下面的规则给出 8 条行动选项。不要替主角做重大决定，不要一次性把设定全念一遍。');
