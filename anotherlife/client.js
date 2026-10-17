@@ -6212,11 +6212,9 @@ window.__ModuleLoader__.load({
                 return;
               }
               setRealInfo({ loading: true });
-              call('parseRealPerson', {
-                name: who,
-                fields: ['姓名', '性别', '生日', '出生地', '身份', '外貌', '特点'],
-                gameId,
-              })
+              // 字段清单交给宿主：那边有一份完整的 28 项（艺人的微博、代言、粉丝数、
+              // 奖项、经纪公司、合约…都在内）。这里硬写一份只会漏。
+              call('parseRealPerson', { name: who, gameId })
                 .then((r) => {
                   const f = (r && r.字段) || {};
                   const picked = {};
@@ -6266,7 +6264,11 @@ window.__ModuleLoader__.load({
                         h(
                           'div',
                           { className: 'sim-panel-h' },
-                          '🔎 真实资料' + (realInfo.year ? ' · ' + realInfo.year + ' 年' : '')
+                          '🔎 真实资料' +
+                            (realInfo.year ? ' · ' + realInfo.year + ' 年' : '') +
+                            (realInfo.fields && Object.keys(realInfo.fields).length
+                              ? ' · ' + Object.keys(realInfo.fields).length + ' 项'
+                              : '')
                         ),
                         realInfo.loading
                           ? h('div', { className: 'sim-hint' }, '查询中…')
@@ -6308,6 +6310,22 @@ window.__ModuleLoader__.load({
                               h(
                                 'div',
                                 { className: 'sim-acts', style: { marginTop: 8 } },
+                                h(
+                                  Btn,
+                                  {
+                                    onClick: () => {
+                                      const all = {};
+                                      Object.keys(realInfo.fields || {}).forEach((k) => (all[k] = true));
+                                      setRealInfo(Object.assign({}, realInfo, { picked: all }));
+                                    },
+                                  },
+                                  '全选'
+                                ),
+                                h(
+                                  Btn,
+                                  { onClick: () => setRealInfo(Object.assign({}, realInfo, { picked: {} })) },
+                                  '全不选'
+                                ),
                                 h(Btn, { primary: true, onClick: () => applyReal() }, '应用选中的'),
                                 h(Btn, { onClick: () => setRealInfo(null) }, '取消')
                               )
