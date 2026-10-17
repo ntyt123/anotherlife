@@ -3220,8 +3220,16 @@ window.__ModuleLoader__.load({
           function refreshPresets() {
             return call('listPresets', {}, gameId).then((ps) => setPresets(ps || []));
           }
+          /**
+           * 更新草稿。
+           *
+           * 必须用**函数式更新**：同一个事件里连着调两次 upd 时（例如「先写主角、
+           * 再写角色」），第二次要基于第一次的结果展开；如果每次都拿渲染时捕获的
+           * draft 快照重建，第二次会把第一次的改动整个盖掉。
+           * 这个坑踩过两次：模型槽位的「选完弹回」、以及解析完主角后写角色把主角清空。
+           */
           function upd(patch) {
-            setDraft(Object.assign({}, draft, patch));
+            setDraft((prev) => Object.assign({}, prev, patch));
           }
 
           if (!state || !draft || !dps) {
@@ -3694,9 +3702,18 @@ window.__ModuleLoader__.load({
             setErr('');
             setParseSec(0);
             const backup = target === 'world' ? draft.world : draft.protagonist;
-            // 点击即清空
-            if (target === 'world') upd({ world: blankLike(draft.world) });
-            else upd({ protagonist: blankLike(draft.protagonist) });
+            // 点击即清空：目的是不让上一局的残值混进这次解析结果。
+            // 但**玩家自己手动设的开关不能清** —— 「是否艺人」是界面上的开关，
+            // 清掉之后解析会把整批演艺字段当"没开"处理，玩家还得再点一次。
+            // 它在上面「解析结果合并」那一步也是以 backup 为准的，所以这里保留即可。
+            if (target === 'world') {
+              upd({ world: blankLike(draft.world) });
+            } else {
+              const blanked = blankLike(draft.protagonist);
+              blanked.是否艺人 = !!(backup && backup.是否艺人);
+              blanked.标签 = (backup && backup.标签) || [];
+              upd({ protagonist: blanked });
+            }
             const t0 = Date.now();
             if (parseTimer.current) window.clearInterval(parseTimer.current);
             parseTimer.current = window.setInterval(() => {
