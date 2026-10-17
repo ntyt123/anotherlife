@@ -482,8 +482,17 @@ window.__ModuleLoader__.load({
       '.sim-modal-edit.on{background:rgba(255,255,255,.45)}',
       // 查看态：把输入框的边框与底色去掉、不可点，看起来就是普通文字
       '.sim-modal.viewing .sim-field input,.sim-modal.viewing .sim-field textarea,.sim-modal.viewing .sim-select{border-color:transparent;background:transparent;box-shadow:none;pointer-events:none;padding-left:0;padding-right:0;resize:none}',
-      '.sim-modal.viewing .sim-field textarea{min-height:0}',
       '.sim-modal.viewing .sim-select{appearance:none}',
+      // 查看态还要把布局还原成「标签左、值右」的行式读法 ——
+      // 创角页那套自适应多列是给输入用的，套在这里会变成一堆密集小格。
+      '.sim-modal.viewing .sim-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:2px 26px}',
+      '.sim-modal.viewing .sim-grid .sim-field{flex-direction:row;align-items:baseline;gap:10px;padding:3px 0}',
+      '.sim-modal.viewing .sim-grid .sim-field>label{flex:none;min-width:56px;font-size:var(--sim-fs-2);color:var(--sim-t2)}',
+      '.sim-modal.viewing .sim-grid .sim-field>input,.sim-modal.viewing .sim-grid .sim-field>textarea{flex:1;min-width:0;font-size:var(--sim-fs-3);color:var(--sim-t);text-align:left}',
+      // 长字段（外貌／性格／当前状态…）单独占一行，上面加条淡分隔，读起来成块
+      '.sim-modal.viewing .sim-grid .sim-field.wide{grid-column:1 / -1;flex-direction:column;align-items:stretch;gap:4px;margin-top:10px;padding-top:8px;border-top:1px solid var(--sim-bd)}',
+      '.sim-modal.viewing .sim-grid .sim-field.wide>label{font-weight:700;font-size:var(--sim-fs-3);color:var(--sim-t);min-width:0}',
+      '.sim-modal.viewing .sim-grid .sim-field.wide>textarea{min-height:78px;max-height:340px;font-size:var(--sim-fs-3);line-height:1.7}',
       '.sim-ai{padding:14px;border:1px dashed var(--sim-ac);border-radius:12px;margin-bottom:6px;background:var(--sim-bg)}',
       '.sim-ta{width:100%;min-height:76px;background:var(--sim-bg);border:1px solid var(--sim-bd);border-radius:8px;color:var(--sim-t);padding:9px 11px;font-size:var(--sim-fs-3);resize:vertical;font-family:inherit}',
       '.sim-foot{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px;padding-top:14px;border-top:1px solid var(--sim-bd)}',
