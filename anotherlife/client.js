@@ -140,13 +140,13 @@ window.__ModuleLoader__.load({
       '.sim-know-grid{display:grid;grid-template-columns:1fr 1fr;gap:2px 16px}',
       // 值可能是一句话那么长的标签：包一层让它在标签右侧换行；底色用中性的淡底深字，主题色底看不清
       '.sim-know .vals{flex:1 1 auto;min-width:0;display:flex;flex-wrap:wrap;gap:5px}',
-      '.sim-know .tag{display:inline-block;max-width:100%;padding:2px 9px;border-radius:8px;background:var(--sim-bg);border:1px solid var(--sim-bd);color:var(--sim-t);font-size:var(--sim-fs-2);line-height:1.6;white-space:normal;word-break:break-word}',
+      '.sim-know .tag{display:inline-block;max-width:100%;padding:2px 9px;border-radius:8px;background:var(--sim-bg);border:1px solid var(--sim-bd);color:var(--sim-t);font-size:var(--sim-fs-5);line-height:1.6;white-space:normal;word-break:break-word}',
       // 内容长的（角色弹窗那种）用单列，两列会被长标签撑错位
       '.sim-know-list{display:flex;flex-direction:column;gap:9px}',
-      '.sim-know .k{flex:0 0 auto;font-size:var(--sim-fs-2);color:var(--sim-t2);min-width:56px}',
-      '.sim-know.unk .v{font-size:var(--sim-fs-2);color:var(--sim-t2);opacity:.55}',
+      '.sim-know .k{flex:0 0 auto;font-size:var(--sim-fs-4);color:var(--sim-t2);min-width:74px}',
+      '.sim-know.unk .v{font-size:var(--sim-fs-5);color:var(--sim-t2);opacity:.55}',
       '.sim-body-list{display:flex;flex-direction:column;gap:2px;margin-top:8px}',
-      '.sim-body-list .sim-know .v{font-size:var(--sim-fs-2);color:var(--sim-t);word-break:break-word}',
+      '.sim-body-list .sim-know .v{font-size:var(--sim-fs-5);color:var(--sim-t);word-break:break-word}',
       // 小节块（标签／特点／穿着／物品／技能／资产…）：实心通铺标题条 + 淡底内容框，和长字段块同一套观感
       '.sim-block{margin:16px 0}',
       '.sim-block-h{padding:6px 13px;background:#5f83ab;color:#fff;font-size:var(--sim-fs-5);font-weight:700;border-radius:9px 9px 0 0;letter-spacing:.5px}',
@@ -359,8 +359,8 @@ window.__ModuleLoader__.load({
       '.sim-modal-b summary{font-size:var(--sim-fs-4)}',
       '.sim-modal-b .sim-kv-view .k{font-size:var(--sim-fs-4);flex:0 0 82px}',
       '.sim-modal-b .sim-kv-view .v{font-size:var(--sim-fs-5)}',
-      '.sim-modal-b .sim-kv-view .pill{font-size:var(--sim-fs-4)}',
-      '.sim-modal-b .sim-chip{font-size:var(--sim-fs-4)}',
+      '.sim-modal-b .sim-kv-view .pill{font-size:var(--sim-fs-5)}',
+      '.sim-modal-b .sim-chip{font-size:var(--sim-fs-5)}',
       '.sim-modal-b .sim-chip-b{font-size:var(--sim-fs-3)}',
       '.sim-modal-b .sim-btn{font-size:var(--sim-fs-4)}',
       '.sim-npc-h .nm{font-size:var(--sim-fs-5)}',
