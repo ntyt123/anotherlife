@@ -5483,7 +5483,17 @@ window.__ModuleLoader__.load({
               const nm = nameOf(r);
               if (nm && !list.some((n) => nameOf(n) === nm)) items.push({ kind: 'rel', i, n: null, r });
             });
-            const lastOf = (x) => Number(x.n && x.n.最近出场) || 0;
+            /**
+             * 「最近出场」的取值。
+             * 没有这个字段时**按当前轮算**（视为刚出场），不能用 0 ——
+             * 老存档里的角色都没有这个字段（它是后来加的），用 0 的话
+             * 「round - 0 > 阈值」对每个人都成立，一开这个功能就把整张表
+             * 全沉进「档案」，看着像角色信息全丢了（踩过）。
+             */
+            const lastOf = (x) => {
+              const v = Number(x.n && x.n.最近出场);
+              return Number.isFinite(v) && v > 0 ? v : round;
+            };
             const isKey = (x) => !!(x.n && x.n.重要);
             items.sort((a, b) => {
               const ka = isKey(a) ? 1 : 0;
