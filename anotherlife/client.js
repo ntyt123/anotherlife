@@ -2588,6 +2588,8 @@ window.__ModuleLoader__.load({
           const dingRef = React.useRef(false); // 这一轮生成完成后要响一声（重新生成这种「序号没变但正文换了」的情况靠它）
           const [editingKey, setEditingKey] = React.useState(''); // 正在编辑哪一段：role-seq
           const [npcOpen, setNpcOpen] = React.useState(null); // 打开的角色卡：{kind,i}
+          // 角色弹窗里「查真实资料」的结果：null / {loading} / {err} / {fields, note, year, picked}
+          const [realInfo, setRealInfo] = React.useState(null);
           const [editText, setEditText] = React.useState('');
           const [stage, setStage] = React.useState(null); // 当前进行到哪一步：{stage,text}
           // 解析进行到哪一小步（主角字段 → 人物名册），显示在创角页那一行
@@ -6192,6 +6194,37 @@ window.__ModuleLoader__.load({
               .map((x, j) => h('span', { className: 'sim-mchip', key: j }, String(x).trim()));
 
             // ── 底部的 JSON 编辑通道 ──
+            /** 把勾中的字段写回这个角色（没勾的一律不动） */
+            const applyReal = () => {
+              const f = (realInfo && realInfo.fields) || {};
+              const patch = {};
+              Object.keys(f).forEach((k) => {
+                if (realInfo.picked && realInfo.picked[k]) patch[k] = f[k];
+              });
+              if (Object.keys(patch).length) setObj(Object.assign({}, npc || obj || {}, patch));
+              setRealInfo(null);
+            };
+            /** 按世界观的年份去查这个人的公开资料，结果逐条给玩家勾选 */
+            const askReal = () => {
+              const who = String((npc || obj || {}).姓名 || '').trim();
+              if (!who) {
+                setRealInfo({ err: '这个角色还没有名字，先填名字再查' });
+                return;
+              }
+              setRealInfo({ loading: true });
+              call('parseRealPerson', {
+                name: who,
+                fields: ['姓名', '性别', '生日', '出生地', '身份', '外貌', '特点'],
+                gameId,
+              })
+                .then((r) => {
+                  const f = (r && r.字段) || {};
+                  const picked = {};
+                  Object.keys(f).forEach((k) => (picked[k] = true));
+                  setRealInfo({ fields: f, note: (r && r.备注) || '', year: (r && r.年份) || '', picked });
+                })
+                .catch((e) => setRealInfo({ err: msg(e) }));
+            };
             return h(
               'div',
               { className: 'sim-mask', onClick: () => setNpcOpen(null) },
@@ -6225,6 +6258,63 @@ window.__ModuleLoader__.load({
                 h(
                   'div',
                   { className: 'sim-modal-b' },
+                  // 查到的真实资料：逐条勾选要不要采用。不勾的保持原样。
+                  realInfo
+                    ? h(
+                        'div',
+                        { className: 'sim-panel' },
+                        h(
+                          'div',
+                          { className: 'sim-panel-h' },
+                          '🔎 真实资料' + (realInfo.year ? ' · ' + realInfo.year + ' 年' : '')
+                        ),
+                        realInfo.loading
+                          ? h('div', { className: 'sim-hint' }, '查询中…')
+                          : realInfo.err
+                          ? h('div', { className: 'sim-err' }, realInfo.err)
+                          : Object.keys(realInfo.fields || {}).length
+                          ? h(
+                              'div',
+                              null,
+                              Object.keys(realInfo.fields).map((k) =>
+                                h(
+                                  'label',
+                                  {
+                                    key: k,
+                                    style: { display: 'flex', alignItems: 'flex-start', gap: 8, padding: '6px 0', cursor: 'pointer' },
+                                  },
+                                  h('input', {
+                                    type: 'checkbox',
+                                    checked: !!(realInfo.picked && realInfo.picked[k]),
+                                    style: { marginTop: 3, flex: 'none' },
+                                    onChange: (e) =>
+                                      setRealInfo(
+                                        Object.assign({}, realInfo, {
+                                          picked: Object.assign({}, realInfo.picked, { [k]: e.target.checked }),
+                                        })
+                                      ),
+                                  }),
+                                  h(
+                                    'div',
+                                    { style: { flex: 1, minWidth: 0 } },
+                                    h('div', { style: { fontWeight: 600 } }, k),
+                                    h('div', { className: 'sim-hint', style: { whiteSpace: 'pre-wrap' } }, String(realInfo.fields[k])),
+                                    (npc || obj)[k] && String((npc || obj)[k]) !== String(realInfo.fields[k])
+                                      ? h('div', { className: 'sim-hint', style: { opacity: 0.7 } }, '现在是：' + String((npc || obj)[k]))
+                                      : null
+                                  )
+                                )
+                              ),
+                              h(
+                                'div',
+                                { className: 'sim-acts', style: { marginTop: 8 } },
+                                h(Btn, { primary: true, onClick: () => applyReal() }, '应用选中的'),
+                                h(Btn, { onClick: () => setRealInfo(null) }, '取消')
+                              )
+                            )
+                          : h('div', { className: 'sim-hint' }, realInfo.note || '没查到公开资料')
+                      )
+                    : null,
                   h(
                     'div',
                     { className: 'sim-panel' },
@@ -6461,6 +6551,7 @@ window.__ModuleLoader__.load({
                 h(
                   'div',
                   { className: 'sim-modal-f' },
+                  h(Btn, { disabled: busy || !!(realInfo && realInfo.loading), onClick: () => askReal() }, '🔎 查真实资料'),
                   h(Btn, { disabled: busy, onClick: () => setNpcOpen(null) }, '取消'),
                   h(
                     Btn,

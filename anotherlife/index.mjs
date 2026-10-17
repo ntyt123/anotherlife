@@ -22,7 +22,7 @@ const P = 'dsh-tavern-simulator/';
 const KEY_SLOTS = ['retrieve', 'settle', 'summary', 'assistant'];
 
 /** 每次改动宿主侧都改一下这个版本号：ping 会回报它，用来确认 Tavern 到底加载的是哪一版 */
-const REV = 'host-v53-npc-birthday-20261017r';
+const REV = 'host-v54-real-person-20261017r';
 
 /**
  * 只有这一局用的是这些卡时，插件才出现在界面上（其余卡片游玩时完全不打扰）。
@@ -3642,6 +3642,74 @@ export function apply(ctx) {
     if (parsed) return parsed;
     return { _raw: String(out), _len: String(out).length, _finish: r.finish == null ? null : String(r.finish) };
   });
+
+/**
+ * 按世界观的「当前年份」整理一个**真实存在的人**的公开资料。
+ *
+ * 用在现实题材里出现的真人（演员、歌手、运动员…）。返回逐字段的值，
+ * 由玩家自己在界面上勾选要不要采用 —— 绝不直接写进角色。
+ *
+ * 为什么强调「按那一年」：同一个人 2016 年和 2026 年的身份、代表作、
+ * 公众形象都不同，按今天答会串戏。所以要把世界观里的年份喂给它。
+ */
+reg('parseRealPerson', async ({ gameId, name, fields }) => {
+  const nm = String(name || '').trim();
+  if (!nm) throw new Error('这个角色还没有名字');
+  const s = gameId ? await loadState(gameId) : null;
+  const w = (s && s.world) || {};
+  const nowText = String(w['当前日期时间'] || w['时代与年份'] || '').trim();
+  const ym = /(\d{4})\s*年/.exec(nowText);
+  const year = ym ? ym[1] : '';
+  const keys = (Array.isArray(fields) && fields.length
+    ? fields
+    : ['姓名', '性别', '生日', '出生地', '身份', '外貌', '特点']
+  ).map((x) => String(x));
+
+  const sys = [
+    '你是真实人物公开资料整理器。用户给你一个人名，你要写出这个人在**指定时间点**已经公开的资料。',
+    year
+      ? '时间点：' + year + ' 年（世界观当前时间写作「' + nowText + '」）。写这个人 **' + year + ' 年前后**的状态，不是今天的状态。'
+      : '用户没有给出明确年份，按世界观当前时间判断；判断不了就按人物最广为人知的阶段写，并在备注里说明。',
+    '可填字段：' + keys.join('、') + '。',
+    '规则：',
+    '· 只写公开可查的事实（出生日期、籍贯、职业身份、当年的代表作或主要经历）。',
+    '· **不确定就留空，绝对不要编**。留空的字段直接不要出现在结果里。',
+    '· 不写隐私、家庭住址、联系方式、健康状况、未经证实的传闻与丑闻。',
+    '· 「生日」写成 YYYY-MM-DD；「外貌」写一句公开形象的白描（15~40 字）；「特点」写一句概括（如「当红小花，甜剧出身」）。',
+    '· 这个人不是公众人物、或你确实不了解，就把「字段」给成空对象，并在「备注」里说明原因。',
+    '输出：{"字段": {字段名: 值}, "备注": "一句话说明依据或哪里不确定"}',
+    '只输出一个完整 JSON 对象，不要思考，不要解释，不要输出代码块标记。',
+  ].join('\n');
+
+  const msgs = [
+    { role: 'system', content: sys },
+    { role: 'user', content: '人物：' + nm },
+  ];
+
+  // 和「解析设定」走同一套模型选择：优先用便宜的变量解析模型
+  const scfg = (s && s.config && s.config.settle) || {};
+  let out = '';
+  if (scfg.model) {
+    out = await callSlot(s, 'settle', msgs, { temperature: 0.2, maxTokens: 2500, timeoutMs: 120000, tag: '真人资料' });
+  } else {
+    const r = await callMainModel(msgs, { temperature: 0.2, maxTokens: 2500, stallMs: 90000, purpose: '真人资料' });
+    out = (r.text && r.text.trim()) || r.reasoning || '';
+  }
+  const text = String(out == null ? '' : out).trim();
+  if (!text) throw new Error('模型没有返回内容');
+
+  const parsed = parseJsonLoose(text) || {};
+  const got = parsed.字段 && typeof parsed.字段 === 'object' ? parsed.字段 : parsed;
+  const clean = {};
+  keys.forEach((k) => {
+    const v = got[k];
+    if (v == null || typeof v === 'object') return;
+    const str = String(v).trim();
+    if (str) clean[k] = str;
+  });
+  return { 字段: clean, 备注: String(parsed.备注 || '').trim(), 年份: year };
+});
+
 
   // ── 生成与结算 ──
   reg('generateStory', async ({ gameId, input }) => {
