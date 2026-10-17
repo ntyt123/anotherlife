@@ -3568,6 +3568,52 @@ window.__ModuleLoader__.load({
               );
             }
 
+          /**
+           * 兜底：模型没给「角色」数组时，从「人物关系」那句话里尽量把人拆出来。
+           *
+           * 为什么需要：提示词已经要求它单独建条目，但它经常只写那句摘要
+           * （「妻子田曦薇；女儿罗小满；妹妹罗芸，相貌出众；母亲是小学老师」），
+           * 条目一个都不建。这句摘要里其实人已经齐了，拆出来总比空着强。
+           * 拆不准也没关系 —— 玩家能在创角页的 JSON 里改。
+           */
+          function parseRelationString(text) {
+            const REL = ['未婚妻', '未婚夫', '岳父', '岳母', '公公', '婆婆', '外公', '外婆', '爷爷', '奶奶',
+              '父亲', '母亲', '爸爸', '妈妈', '老公', '老婆', '丈夫', '妻子', '儿子', '女儿',
+              '哥哥', '姐姐', '弟弟', '妹妹', '兄长', '姐姐', '师父', '师傅', '徒弟', '师兄', '师姐', '师弟', '师妹',
+              '同学', '同事', '上司', '下属', '老板', '经纪人', '助理', '司机', '保镖', '秘书',
+              '前妻', '前夫', '情人', '男友', '女友', '朋友', '邻居', '对手', '情敌', '发小', '战友'];
+            const out = [];
+            const seen = {};
+            String(text || '')
+              .split(/[；;\n、]/)
+              .forEach((segRaw) => {
+                const seg = String(segRaw || '').trim();
+                if (!seg || seg.length > 40) return;
+                // 找最长匹配的关系词
+                let rel = '';
+                REL.forEach((w) => {
+                  if (!rel && seg.indexOf(w) === 0) rel = w;
+                });
+                if (!rel) return;
+                // 关系词后面直接跟「是／在／也…」这类，说明写的是身份或去向，不是名字。
+                // 判断必须用**未剥离**的原文 —— 先把"是"去掉再看，就永远判不出来（踩过）。
+                const rawRest = seg.slice(rel.length).trim();
+                const hasName = rawRest.length > 0 && !/^[是为在正做干经营开已也从住现目对还很常喜好供任]/.test(rawRest);
+                const rest = rawRest.replace(/^[是为：:\s]+/, '').split(/[，,（(]/)[0].trim();
+                const m = hasName ? /^([\u4e00-\u9fa5]{2,4})/.exec(rest) : null;
+                const nm = m ? m[1] : rel;
+                if (!nm || seen[nm]) return;
+                seen[nm] = 1;
+                // 「是小学老师」这类：rest 以动词开头时没有名字，用称呼当名字
+                out.push({
+                  姓名: nm,
+                  与主角关系: rel,
+                  身份: m ? rest.slice(nm.length).replace(/^[是为：:\s]+/, '').trim() : rest,
+                });
+              });
+            return out;
+          }
+
           /** 按现有结构生成一份「全空」副本：数组→[]、对象→递归、布尔原样、其余→'' */
           function blankLike(v) {
             if (Array.isArray(v)) return [];
@@ -3719,6 +3765,17 @@ window.__ModuleLoader__.load({
                         return Object.assign(base, x);
                       }),
                     });
+                  } else {
+                    // 模型没建条目时，从它写的那句「人物关系」里拆（人其实都在里面）
+                    const fromRel = parseRelationString(String(merged.人物关系 || ''));
+                    if (fromRel.length) {
+                      upd({
+                        npcs: fromRel.map((x) => {
+                          const base = blankLike((Array.isArray(draft.npcs) && draft.npcs[0]) || {});
+                          return Object.assign(base, x);
+                        }),
+                      });
+                    }
                   }
                   if (siIn) {
                     const cur = draft.skills_items || {};
