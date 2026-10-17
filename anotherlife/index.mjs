@@ -22,7 +22,7 @@ const P = 'dsh-tavern-simulator/';
 const KEY_SLOTS = ['retrieve', 'settle', 'summary', 'assistant'];
 
 /** 每次改动宿主侧都改一下这个版本号：ping 会回报它，用来确认 Tavern 到底加载的是哪一版 */
-const REV = 'host-v41-roster-20261017r';
+const REV = 'host-v42-settings-groups-20261017r';
 
 /**
  * 只有这一局用的是这些卡时，插件才出现在界面上（其余卡片游玩时完全不打扰）。
@@ -295,6 +295,8 @@ export function apply(ctx) {
         // 正文长度：下限是硬要求（写不够就算不合格），上限 0 表示不设上限
         bodyMinWords: 1000,
         bodyMaxWords: 0,
+        // 角色列表：没标「重要」、且超过这么多轮没露面的，收进「档案」折叠区（不删）
+        rosterArchiveRounds: 20,
       },
       world: EMPTY_WORLD(),
       protagonist: EMPTY_PROTAG(),

@@ -201,6 +201,17 @@ window.__ModuleLoader__.load({
       '.sim-fact-b{font-size:var(--sim-fs-2);color:var(--sim-t2);white-space:pre-wrap;line-height:1.6;word-break:break-word}',
       '.sim-body{flex:1;overflow:auto;padding:12px}',
       '.sim-card{background:var(--sim-bg2);border:1px solid var(--sim-bd);border-radius:12px;padding:16px;margin-bottom:10px}',
+      // 设定页的分组：整组可折叠，标题行右侧显示当前值摘要
+      '.sim-group{background:var(--sim-bg2);border:1px solid var(--sim-bd);border-radius:12px;margin-bottom:10px;overflow:hidden}',
+      '.sim-group>summary{cursor:pointer;list-style:none;padding:12px 16px;display:flex;align-items:center;gap:8px;font-weight:600;font-size:var(--sim-fs-3)}',
+      '.sim-group>summary::-webkit-details-marker{display:none}',
+      '.sim-group>summary::before{content:"▸";color:var(--sim-t3);font-size:var(--sim-fs-2);flex:none}',
+      '.sim-group[open]>summary::before{content:"▾"}',
+      '.sim-group[open]>summary{border-bottom:1px solid var(--sim-bd)}',
+      '.sim-group>summary .sum{margin-left:auto;font-weight:400;color:var(--sim-t3);font-size:var(--sim-fs-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:64%}',
+      '.sim-group-b{padding:14px 16px 6px}',
+      '.sim-group-b .sim-card{background:var(--sim-bg);margin-bottom:10px}',
+      '.sim-group-b .sim-card:last-child{margin-bottom:8px}',
       '.sim-pcard{background:var(--sim-bg);border:1px solid var(--sim-bd);border-radius:10px;padding:10px 12px;margin-bottom:8px}',
       '.sim-field{display:flex;gap:8px;margin-bottom:8px;align-items:center;flex-wrap:wrap}',
       '.sim-field>label{width:104px;flex:none;color:var(--sim-t2);font-size:var(--sim-fs-2)}',
@@ -5266,7 +5277,7 @@ window.__ModuleLoader__.load({
             const list = Array.isArray(dps.npcs) ? dps.npcs : [];
             const rels = Array.isArray(dps.relationships) ? dps.relationships : [];
             const round = Number(state && state.story && state.story.current_message_index) || 0;
-            const STALE = 20;
+            const STALE = Math.max(1, Math.floor(Number(dcfg && dcfg.rosterArchiveRounds) || 20));
             const items = list.map((n, i) => ({ kind: 'npc', i, n, r: relFor(nameOf(n)) }));
             // 关系列表里「没有对应 NPC」的，也单独出一张卡，免得看不见
             rels.forEach((r, i) => {
@@ -6099,243 +6110,256 @@ window.__ModuleLoader__.load({
             );
           }
 
+          // 设定页的展开态记忆：刷新后保持（只记在这台机器上）
+          const SET_OPEN_DEFAULT = { look: true, body: true, model: false, ctx: false, local: false, dev: false };
+          const setOpen = (k, v) => writeUiPref('setopen-' + k, v ? '1' : '0');
+          const isOpen = (k) => {
+            const v = readUiPref('setopen-' + k, '');
+            return v === '1' ? true : v === '0' ? false : !!SET_OPEN_DEFAULT[k];
+          };
+          /** 一个可折叠的分组：标题 + 右侧当前值摘要 */
+          const group = (k, title, summary, ...kids) =>
+            h(
+              'details',
+              { className: 'sim-group', open: isOpen(k), onToggle: (e) => setOpen(k, e.currentTarget.open) },
+              h('summary', null, title, summary ? h('span', { className: 'sum' }, summary) : null),
+              h('div', { className: 'sim-group-b' }, ...kids)
+            );
+
           const settingsView = h(
             'div',
             null,
-            h('div', { className: 'sim-card' },
-              h('div', { style: { fontWeight: 600, marginBottom: 8 } }, '皮肤'),
-              h('div', { className: 'sim-acts' },
-                [['paper', '素纸簿'], ['parchment', '暮色羊皮卷'], ['neon', '霓虹玻璃']].map((s) => h(Btn, { key: s[0], primary: skin === s[0], onClick: () => run(call('setSkin', { skin: s[0] }, gameId)) }, s[1]))
-              )
-            ),
-            h('div', { className: 'sim-card' },
-              h('div', { style: { fontWeight: 600, marginBottom: 4 } }, '主模型（生成正文）'),
-              h('div', { className: 'sim-hint' }, '当前：' + mainModelName() + '。'),
-              mmC
-                ? null
-                : h('div', { className: 'sim-hint' }, '正在读取可选服务…'),
-              h(
-                'div',
-                { className: 'sim-field' },
-                h('label', null, '服务'),
-                h(
-                  'select',
-                  { className: 'sim-select', value: mmPick.provider, onChange: (e) => pickProvider(e.target.value) },
-                  h('option', { value: '' }, '— 选择服务 —'),
-                  ((mmC && mmC.providers) || []).map((p) => h('option', { key: p.id, value: p.id }, p.name || p.id))
+            h('div', { className: 'sim-hint', style: { marginBottom: 10 } }, '模型与注入规则跨故事共用，新开一局会带上；每局独立的只有剧情本身。'),
+
+            /* ── 外观与正文 ── */
+            group(
+              'look',
+              '外观与正文',
+              skin === 'parchment' ? '暮色羊皮卷' : skin === 'neon' ? '霓虹玻璃' : '素纸簿',
+              h('div', { className: 'sim-card' },
+                h('div', { style: { fontWeight: 600, marginBottom: 8 } }, '皮肤'),
+                h('div', { className: 'sim-acts' },
+                  [['paper', '素纸簿'], ['parchment', '暮色羊皮卷'], ['neon', '霓虹玻璃']].map((s) => h(Btn, { key: s[0], primary: skin === s[0], onClick: () => run(call('setSkin', { skin: s[0] }, gameId)) }, s[1]))
                 )
               ),
-              h(
-                'div',
-                { className: 'sim-field' },
-                h('label', null, '模型'),
-                h('input', {
-                  list: 'sim-mmlist',
-                  value: mmPick.model,
-                  placeholder: '从列表选，也可以手填',
-                  onChange: (e) => setMmPick(Object.assign({}, mmPick, { model: e.target.value })),
-                }),
-                h(
-                  'datalist',
-                  { id: 'sim-mmlist' },
-                  ((mmC && mmC.models) || []).map((m) => h('option', { key: m.id, value: m.id }, m.name || ''))
+              h('div', { className: 'sim-card' },
+                h('div', { style: { fontWeight: 600, marginBottom: 4 } }, '字体与字号'),
+                h('div', { className: 'sim-hint' }, '只影响这个界面。等宽（JSON 编辑器）与古风卡片（书信／圣旨／账本）的字体保持原样。'),
+                h('div', { className: 'sim-field' },
+                  h('label', null, '字体'),
+                  h('select', { className: 'sim-select', value: uiFont, onChange: (e) => setUiPref('font', e.target.value) },
+                    FONT_OPTS.map(([v, t]) => h('option', { key: v, value: v }, t)))
                 ),
-                h(
-                  Btn,
-                  { primary: true, disabled: mmBusy || !mmPick.provider || !mmPick.model, onClick: () => applyMainModel() },
-                  mmBusy ? '切换中…' : '切换'
-                )
+                h('div', { className: 'sim-field' },
+                  h('label', null, '整体'),
+                  h('select', { className: 'sim-select', value: uiScale, onChange: (e) => setUiPref('scale', e.target.value) },
+                    Object.keys(FS_LABELS).map((k) => h('option', { key: k, value: k }, FS_LABELS[k])))
+                ),
+                h('div', { className: 'sim-field' },
+                  h('label', null, '正文'),
+                  h('select', { className: 'sim-select', value: readFs, onChange: (e) => setUiPref('readfs', e.target.value) },
+                    [['13', '偏小'], ['14', '小'], ['15.5', '标准'], ['17', '大'], ['18.5', '特大'], ['20', '巨大']].map(([v, t]) =>
+                      h('option', { key: v, value: v }, t)))
+                ),
+                h('div', { className: 'sim-hint', style: { marginTop: 10 } }, '分区微调（在整体基准上加减）'),
+                (function () {
+                  const cur = uiVars(uiFont, uiScale, uiAdj, readFs);
+                  return FS_ZONES.map(([n, name, desc]) =>
+                    h('div', { className: 'sim-field', key: n },
+                      h('label', { title: desc, style: { cursor: 'help' } }, name),
+                      h(Btn, { onClick: () => bumpFs(n, -0.5) }, '−'),
+                      h('span', { style: { minWidth: 58, textAlign: 'center', fontVariantNumeric: 'tabular-nums' } },
+                        String(cur['--sim-fs-' + n] || '').replace('px', '')),
+                      h(Btn, { onClick: () => bumpFs(n, 0.5) }, '＋'))
+                  );
+                })(),
+                h('div', { className: 'sim-acts', style: { marginTop: 8 } }, h(Btn, { onClick: resetFs }, '微调归零')),
+                h('div', { className: 'sim-hint', style: { marginTop: 6 } }, '预览：角色扮演这件事，写下来才算数。')
               ),
-              mmErr ? h('div', { className: 'sim-err' }, mmErr) : null,
-              mmOk ? h('div', { className: 'sim-ok' }, mmOk) : null,
-              h('div', { className: 'sim-hint' }, '换的就是 DSH 的主模型，正文生成跟着它走。'),
-              h('div', { className: 'sim-hint' }, '每次调用记一行在 data/workspace/simulator-api.log：用途、模型、地址、结果、耗时。'),
-              h(
-                'div',
-                { className: 'sim-hint' },
-                'AI 解析：' +
-                  (settleModelName() ? settleModelName() + '（下面「结算模型」里填的那个）' : mainModelName() + '（没有单独配解析模型，就用主模型）') +
-                  '。'
+              h('div', { className: 'sim-card' },
+                h('div', { style: { fontWeight: 600, marginBottom: 4 } }, '界面卡片'),
+                h('div', { className: 'sim-hint' }, '正文里出现 :::类型 块时会渲染成真实界面。'),
+                h('div', { className: 'sim-acts', style: { marginTop: 8 } }, h(Btn, { disabled: busy, onClick: () => setUiPrevOpen(true) }, '👁 界面预览'))
               )
             ),
-            h('div', { className: 'sim-card' },
-              h('div', { style: { fontWeight: 600, marginBottom: 4 } }, '这里的设置是全局的'),
-              h('div', { className: 'sim-hint' }, '下面的模型地址／模型名和注入规则**跨故事共用**，新开一局会自动带上；密钥存在 DSH 凭据服务里，同样全局有效。每局独立的只有剧情本身（世界观／主角／正文）。')
-            ),
-            ModelCfg({ slot: 'retrieve', title: '检索模型（上下文筛选）', sub: '挑选本轮需要哪些条目的“选择题模型”。留空则直接用当前主模型。可填便宜的快速模型。' }),
-            ModelCfg({ slot: 'settle', title: '结算模型（变量 + 小总结）', sub: '留空则跳过每轮变量结算。' }),
-            ModelCfg({ slot: 'summary', title: '总结模型' }),
-            ModelCfg({ slot: 'assistant', title: '助手模型', sub: '左侧「助手」浮窗用的模型。留空则用当前主模型。' }),
-            h(
-              'div',
-              { className: 'sim-card' },
-              h('div', { style: { fontWeight: 600, marginBottom: 4 } }, '字体与字号'),
-              h('div', { className: 'sim-hint' }, '只影响这个界面。等宽（JSON 编辑器）与古风卡片（书信／圣旨／账本）的字体保持原样。'),
-              h(
-                'div',
-                { className: 'sim-field' },
-                h('label', null, '字体'),
-                h(
-                  'select',
-                  { className: 'sim-select', value: uiFont, onChange: (e) => setUiPref('font', e.target.value) },
-                  FONT_OPTS.map(([v, t]) => h('option', { key: v, value: v }, t))
-                )
+
+            /* ── 正文输出 ── */
+            group(
+              'body',
+              '正文输出',
+              '不少于 ' + (Number(dcfg.bodyMinWords) || 1000) + ' 字 · ' + (Number(dcfg.bodyMaxWords) > (Number(dcfg.bodyMinWords) || 1000) ? '最多 ' + dcfg.bodyMaxWords : '不限'),
+              h('div', { className: 'sim-card' },
+                h('div', { style: { fontWeight: 600, marginBottom: 8 } }, '每轮字数'),
+                h('div', { className: 'sim-grid' },
+                  h(Field, {
+                    label: '最少字数',
+                    value: dcfg.bodyMinWords,
+                    onChange: (v) => {
+                      const c = Object.assign({}, dcfg);
+                      c.bodyMinWords = Math.max(200, Math.min(20000, Math.floor(Number(v) || 1000)));
+                      upd({ config: c });
+                      run(call('saveConfig', { config: c }, gameId));
+                    },
+                  }),
+                  h(Field, {
+                    label: '最多字数（0=不限）',
+                    value: dcfg.bodyMaxWords,
+                    onChange: (v) => {
+                      const c = Object.assign({}, dcfg);
+                      c.bodyMaxWords = Math.max(0, Math.min(50000, Math.floor(Number(v) || 0)));
+                      upd({ config: c });
+                      run(call('saveConfig', { config: c }, gameId));
+                    },
+                  })
+                ),
+                h('div', { className: 'sim-hint' }, '最少字数是硬要求，写不够算不合格；最多字数填 0 表示不设上限。段落数按字数自动换算。')
               ),
-              h(
-                'div',
-                { className: 'sim-field' },
-                h('label', null, '整体'),
-                h(
-                  'select',
-                  { className: 'sim-select', value: uiScale, onChange: (e) => setUiPref('scale', e.target.value) },
-                  Object.keys(FS_LABELS).map((k) => h('option', { key: k, value: k }, FS_LABELS[k]))
-                )
-              ),
-              h(
-                'div',
-                { className: 'sim-field' },
-                h('label', null, '正文'),
-                h(
-                  'select',
-                  { className: 'sim-select', value: readFs, onChange: (e) => setUiPref('readfs', e.target.value) },
-                  [['13', '偏小'], ['14', '小'], ['15.5', '标准'], ['17', '大'], ['18.5', '特大'], ['20', '巨大']].map(([v, t]) =>
-                    h('option', { key: v, value: v }, t)
-                  )
-                )
-              ),
-              h('div', { className: 'sim-hint', style: { marginTop: 10 } }, '分区微调（在整体基准上加减）'),
-              (function () {
-                const cur = uiVars(uiFont, uiScale, uiAdj, readFs);
-                return FS_ZONES.map(([n, name, desc]) =>
-                  h(
-                    'div',
-                    { className: 'sim-field', key: n },
-                    h('label', { title: desc, style: { cursor: 'help' } }, name),
-                    h(Btn, { onClick: () => bumpFs(n, -0.5) }, '−'),
-                    h(
-                      'span',
-                      { style: { minWidth: 58, textAlign: 'center', fontVariantNumeric: 'tabular-nums' } },
-                      String(cur['--sim-fs-' + n] || '').replace('px', '')
-                    ),
-                    h(Btn, { onClick: () => bumpFs(n, 0.5) }, '＋')
-                  )
-                );
-              })(),
-              h('div', { className: 'sim-acts', style: { marginTop: 8 } }, h(Btn, { onClick: resetFs }, '微调归零')),
-              h('div', { className: 'sim-hint', style: { marginTop: 6 } }, '预览：角色扮演这件事，写下来才算数。')
+              h(SoundCfg, { key: 'sound' })
             ),
-            // 必须用 h(GitCfg) 而不是 GitCfg()：它有 useState/useEffect，
-            // 直接当函数调用会把 hooks 挂到 App 自己的链上（React #310）
-            h(GitCfg, { key: 'gitcfg' }),
-            h(
-              'div',
-              { className: 'sim-card' },
-              h('div', { style: { fontWeight: 600, marginBottom: 4 } }, '界面卡片'),
-              h('div', { className: 'sim-hint' }, '正文里出现 :::类型 块时会渲染成真实界面。'),
-              h('div', { className: 'sim-acts', style: { marginTop: 8 } }, h(Btn, { disabled: busy, onClick: () => setUiPrevOpen(true) }, '👁 界面预览'))
+
+            /* ── 模型 ── */
+            group(
+              'model',
+              '模型',
+              mainModelName(),
+              h('div', { className: 'sim-card' },
+                h('div', { style: { fontWeight: 600, marginBottom: 4 } }, '主模型（生成正文）'),
+                h('div', { className: 'sim-hint' }, '当前：' + mainModelName() + '。'),
+                mmC ? null : h('div', { className: 'sim-hint' }, '正在读取可选服务…'),
+                h('div', { className: 'sim-field' },
+                  h('label', null, '服务'),
+                  h('select', { className: 'sim-select', value: mmPick.provider, onChange: (e) => pickProvider(e.target.value) },
+                    h('option', { value: '' }, '— 选择服务 —'),
+                    ((mmC && mmC.providers) || []).map((p) => h('option', { key: p.id, value: p.id }, p.name || p.id)))
+                ),
+                h('div', { className: 'sim-field' },
+                  h('label', null, '模型'),
+                  h('input', {
+                    list: 'sim-mmlist',
+                    value: mmPick.model,
+                    placeholder: '从列表选，也可以手填',
+                    onChange: (e) => setMmPick(Object.assign({}, mmPick, { model: e.target.value })),
+                  }),
+                  h('datalist', { id: 'sim-mmlist' },
+                    ((mmC && mmC.models) || []).map((m) => h('option', { key: m.id, value: m.id }, m.name || ''))),
+                  h(Btn, { primary: true, disabled: mmBusy || !mmPick.provider || !mmPick.model, onClick: () => applyMainModel() },
+                    mmBusy ? '切换中…' : '切换')
+                ),
+                mmErr ? h('div', { className: 'sim-err' }, mmErr) : null,
+                mmOk ? h('div', { className: 'sim-ok' }, mmOk) : null,
+                h('div', { className: 'sim-hint' }, '换的就是 DSH 的主模型，正文生成跟着它走。'),
+                h('div', { className: 'sim-hint' }, 'AI 解析：' + (settleModelName() ? settleModelName() + '（结算模型那一栏）' : mainModelName() + '（没单独配，就用主模型）') + '。')
+              ),
+              ModelCfg({ slot: 'retrieve', title: '检索模型（上下文筛选）', sub: '挑选本轮需要哪些条目的模型。留空则用主模型。可填便宜的快速模型。' }),
+              ModelCfg({ slot: 'settle', title: '结算模型（变量 + 小总结）', sub: '留空则跳过每轮变量结算。' }),
+              ModelCfg({ slot: 'summary', title: '总结模型' }),
+              ModelCfg({ slot: 'assistant', title: '助手模型', sub: '助手浮窗用的模型。留空则用当前主模型。' })
             ),
-            SummaryCfg(),
-            h(SoundCfg, { key: 'sound' }),
-            h(
-              'div',
-              { className: 'sim-card' },
-              h('div', { style: { fontWeight: 600, marginBottom: 8 } }, '正文生成'),
-              h(
-                'div',
-                { className: 'sim-grid' },
+
+            /* ── 上下文与记忆 ── */
+            group(
+              'ctx',
+              '上下文与记忆',
+              '基线 ' + String(dcfg.baseline || '').split(',').filter(Boolean).length + ' 项 · 附带 ' +
+                ((Number(dcfg.recentRounds) > 0 ? dcfg.recentRounds : (dcfg.summaryOpts && dcfg.summaryOpts.every) || 10)) + ' 轮',
+              h('div', { className: 'sim-card' },
+                h('div', { style: { fontWeight: 600, marginBottom: 8 } }, '注入规则'),
+                h(Field, { label: '最小基线字段', value: dcfg.baseline, ph: '姓名,性别', onChange: (v) => { const c = Object.assign({}, dcfg); c.baseline = v; upd({ config: c }); } }),
+                h(Field, { label: '单轮命中上限', value: dcfg.retrieveMax, onChange: (v) => { const c = Object.assign({}, dcfg); c.retrieveMax = Number(v) || 24; upd({ config: c }); } }),
+                h('div', { className: 'sim-hint' }, '最小基线：无论检索结果如何都会发的字段；开局那一次不受此限制（发全量）。'),
+                h('div', { className: 'sim-hint' }, '单轮命中上限：既是给检索模型的条数约束，也是硬性截断（防止上下文爆掉）。')
+              ),
+              SummaryCfg(),
+              h('div', { className: 'sim-card' },
+                h('div', { style: { fontWeight: 600, marginBottom: 8 } }, '角色列表'),
                 h(Field, {
-                  label: '最少字数',
-                  value: dcfg.bodyMinWords,
+                  label: '多久没露面就收进档案',
+                  value: dcfg.rosterArchiveRounds == null ? 20 : dcfg.rosterArchiveRounds,
                   onChange: (v) => {
                     const c = Object.assign({}, dcfg);
-                    c.bodyMinWords = Math.max(200, Math.min(20000, Math.floor(Number(v) || 1000)));
+                    c.rosterArchiveRounds = Math.max(1, Math.min(200, Math.floor(Number(v) || 20)));
                     upd({ config: c });
                     run(call('saveConfig', { config: c }, gameId));
                   },
                 }),
-                h(Field, {
-                  label: '最多字数（0=不限）',
-                  value: dcfg.bodyMaxWords,
-                  onChange: (v) => {
-                    const c = Object.assign({}, dcfg);
-                    c.bodyMaxWords = Math.max(0, Math.min(50000, Math.floor(Number(v) || 0)));
-                    upd({ config: c });
-                    run(call('saveConfig', { config: c }, gameId));
-                  },
-                })
+                h('div', { className: 'sim-hint' }, '按轮算。没标「重要」的角色超过这么多轮没露面，就收进角色页的「档案」。只是移位置，不删。')
+              )
+            ),
+
+            /* ── 本局与调试 ── */
+            group(
+              'local',
+              '本局与调试',
+              stInfo ? fmtKB(stInfo.bytes) + ' · ' + (stInfo.turns || 0) + ' 轮' : '',
+              h('div', { className: 'sim-card' },
+                h('div', { style: { fontWeight: 600, marginBottom: 4 } }, '这一局的存档'),
+                stInfo
+                  ? h('div', null,
+                      h('div', { className: 'sim-hint' },
+                        fmtKB(stInfo.bytes) + ' · ' + (stInfo.turns || 0) + ' 轮 · 平均 ' + fmtKB((stInfo.bytes || 0) / Math.max(1, stInfo.turns || 1)) + '/轮'),
+                      h('div', { className: 'sim-hint' },
+                        '备份 ' + (stInfo.bakBytes ? fmtKB(stInfo.bakBytes) : '还没生成') + ' · 每 ' + (stInfo.backupEvery || 8) + ' 轮更新一份'),
+                      h('div', { className: 'sim-hint' }, String(stInfo.file || ''))
+                    )
+                  : h('div', { className: 'sim-hint' }, '正在读取…')
               ),
-              h('div', { className: 'sim-hint' }, '最少字数是硬要求，写不够算不合格；最多字数填 0 表示不设上限。段落数按字数自动换算。'),
-              h('div', { className: 'sim-hint' }, '这一项和上面的模型配置一样是全局的，新开一局会带上。')
-            ),
-            h('div', { className: 'sim-card' },
-              h('div', { style: { fontWeight: 600, marginBottom: 8 } }, '注入规则'),
-              h(Field, { label: '最小基线字段', value: dcfg.baseline, ph: '姓名,性别', onChange: (v) => { const c = Object.assign({}, dcfg); c.baseline = v; upd({ config: c }); } }),
-              h(Field, { label: '单轮命中上限', value: dcfg.retrieveMax, onChange: (v) => { const c = Object.assign({}, dcfg); c.retrieveMax = Number(v) || 24; upd({ config: c }); } }),
-              h('div', { className: 'sim-hint' }, '最小基线：无论检索结果如何都会发的字段；开局那一次不受此限制（发全量）。'),
-              h('div', { className: 'sim-hint' }, '单轮命中上限：既是给检索模型的条数约束，也是硬性截断（防止上下文爆掉）。'),
-              h('div', { className: 'sim-hint' }, '这两项和上面的模型配置一样，是全局的，新开一局会带上。'),
-              h('div', { className: 'sim-acts' }, h(Btn, { primary: true, disabled: busy, onClick: () => run(call('saveConfig', { config: dcfg }, gameId)) }, '保存设定'))
-            ),
-            h('div', { className: 'sim-card' },
-              h('div', { style: { fontWeight: 600, marginBottom: 4 } }, '这一局的存档'),
-              stInfo
-                ? h('div', null,
-                    h('div', { className: 'sim-hint' },
-                      fmtKB(stInfo.bytes) + ' · ' + (stInfo.turns || 0) + ' 轮 · 平均 ' + fmtKB((stInfo.bytes || 0) / Math.max(1, stInfo.turns || 1)) + '/轮'
-                    ),
-                    h('div', { className: 'sim-hint' },
-                      '备份 ' + (stInfo.bakBytes ? fmtKB(stInfo.bakBytes) : '还没生成') + ' · 每 ' + (stInfo.backupEvery || 8) + ' 轮更新一份'
-                    ),
-                    h('div', { className: 'sim-hint' }, String(stInfo.file || ''))
-                  )
-                : h('div', { className: 'sim-hint' }, '正在读取…')
-            ),
-            h('div', { className: 'sim-card' },
-              h('div', { style: { fontWeight: 600, marginBottom: 4 } }, '日志'),
-              h('div', { className: 'sim-hint' }, '调用流水：每次调用用的模型、起止时刻与耗时。运行日志：结算、参考资料注入等。'),
-              h('div', { className: 'sim-acts', style: { marginTop: 8 } }, h(Btn, { onClick: () => setLogOpen(true) }, '查看日志'))
-            ),
-            h('div', { className: 'sim-card' },
-              h('div', { style: { fontWeight: 600, marginBottom: 2 } }, '上下文注入预览'),
-              h('div', { className: 'sim-hint', style: { marginBottom: 8 } }, '输入一句话，真实跑一遍检索，看本轮会发给模型哪些条目。'),
-              h('textarea', { className: 'sim-ta', style: { minHeight: 48 }, value: ctxIn, placeholder: '例如：我上到公司的第十层', onChange: (e) => setCtxIn(e.target.value) }),
-              h('div', { style: { marginTop: 8 } }, h(Btn, { disabled: busy, onClick: () => {
-                setCtxMeta('检索中…');
-                setBusy(true);
-                call('previewContext', { input: ctxIn }, gameId)
-                  .then((r) => {
-                    const tag = r.via === 'retrieve' ? '✔ AI 检索（检索模型）' : r.via === 'main' ? '✔ AI 检索（主模型）' : '⚠ 关键词兜底（模型调用失败）';
-                    setCtxMeta(tag + ' · 命中 ' + (r.ids || []).length + ' 条\n' + (r.ids || []).join('\n'));
-                    setCtxOut(r.text || '');
-                    setBusy(false);
-                  })
-                  .catch((e) => { setCtxMeta('检索失败：' + msg(e)); setBusy(false); });
-              } }, '预览本轮注入')),
-              ctxMeta ? h('div', { className: 'sim-pre', style: { marginTop: 10, maxHeight: 160 } }, ctxMeta) : null,
-              ctxOut ? h('div', { className: 'sim-pre', style: { marginTop: 10 } }, ctxOut) : null
-            ),
-            h('div', { className: 'sim-card' },
-              h('div', { style: { fontWeight: 600, marginBottom: 8 } }, '总结与重置'),
-              h(Field, { label: '触发层数 N', value: dcfg.triggerN == null ? 30 : dcfg.triggerN, onChange: (v) => { const c = Object.assign({}, dcfg); c.triggerN = Number(v) || 30; upd({ config: c }); } }),
-              h('div', { className: 'sim-acts' },
-                h(Btn, { disabled: busy, onClick: () => run(call('runSummary', {}, gameId)) }, '整理未总结的部分'),
-              h(Btn, { disabled: busy, onClick: () => run(call('mergeSummaries', {}, gameId)) }, '合并旧总结'),
-                h(Btn, { disabled: busy, onClick: () => { if (window.confirm('回到主角创建？将清空主角、NPC、技能物品与正文，保留世界观。预设不会丢。')) { setTab('setup'); run(call('resetPhase', { phase: 'character' }, gameId), true); } } }, '回到主角创建'),
-                h(Btn, { danger: true, disabled: busy, onClick: () => { if (window.confirm('完全重新开始？将清空世界观、主角与正文。预设不会丢。')) { setTab('setup'); run(call('resetPhase', { phase: 'world' }, gameId), true); } } }, '完全重新开始')
+              h('div', { className: 'sim-card' },
+                h('div', { style: { fontWeight: 600, marginBottom: 4 } }, '日志'),
+                h('div', { className: 'sim-hint' }, '调用流水：每次调用用的模型、起止时刻与耗时。运行日志：结算、参考资料注入等。'),
+                h('div', { className: 'sim-acts', style: { marginTop: 8 } }, h(Btn, { onClick: () => setLogOpen(true) }, '查看日志'))
+              ),
+              h('div', { className: 'sim-card' },
+                h('div', { style: { fontWeight: 600, marginBottom: 2 } }, '上下文注入预览'),
+                h('div', { className: 'sim-hint', style: { marginBottom: 8 } }, '输入一句话，真实跑一遍检索，看本轮会发给模型哪些条目。'),
+                h('textarea', { className: 'sim-ta', style: { minHeight: 48 }, value: ctxIn, placeholder: '例如：我上到公司的第十层', onChange: (e) => setCtxIn(e.target.value) }),
+                h('div', { style: { marginTop: 8 } }, h(Btn, { disabled: busy, onClick: () => {
+                  setCtxMeta('检索中…');
+                  setBusy(true);
+                  call('previewContext', { input: ctxIn }, gameId)
+                    .then((r) => {
+                      const tag = r.via === 'retrieve' ? '✔ AI 检索（检索模型）' : r.via === 'main' ? '✔ AI 检索（主模型）' : '⚠ 关键词兜底（模型调用失败）';
+                      setCtxMeta(tag + ' · 命中 ' + (r.ids || []).length + ' 条\n' + (r.ids || []).join('\n'));
+                      setCtxOut(r.text || '');
+                      setBusy(false);
+                    })
+                    .catch((e) => { setCtxMeta('检索失败：' + msg(e)); setBusy(false); });
+                } }, '预览本轮注入')),
+                ctxMeta ? h('div', { className: 'sim-pre', style: { marginTop: 10, maxHeight: 160 } }, ctxMeta) : null,
+                ctxOut ? h('div', { className: 'sim-pre', style: { marginTop: 10 } }, ctxOut) : null
+              ),
+              h('div', { className: 'sim-card' },
+                h('div', { style: { fontWeight: 600, marginBottom: 8 } }, '重置'),
+                h('div', { className: 'sim-acts' },
+                  h(Btn, { disabled: busy, onClick: () => run(call('runSummary', {}, gameId)) }, '整理未总结的部分'),
+                  h(Btn, { disabled: busy, onClick: () => run(call('mergeSummaries', {}, gameId)) }, '合并旧总结'),
+                  h(Btn, { disabled: busy, onClick: () => { if (window.confirm('回到主角创建？将清空主角、NPC、技能物品与正文，保留世界观。预设不会丢。')) { setTab('setup'); run(call('resetPhase', { phase: 'character' }, gameId), true); } } }, '回到主角创建'),
+                  h(Btn, { danger: true, disabled: busy, onClick: () => { if (window.confirm('完全重新开始？将清空世界观、主角与正文。预设不会丢。')) { setTab('setup'); run(call('resetPhase', { phase: 'world' }, gameId), true); } } }, '完全重新开始')
+                )
               )
             ),
-            h('div', { className: 'sim-card' },
-              h('div', { style: { fontWeight: 600, marginBottom: 6 } }, '开发用'),
-              h('div', { className: 'sim-hint' }, '清空【本局】的全部数据（世界观 / 主角 / 正文 / 资产 / NPC），回到空白创建状态。测试时反复用。'),
-              h('div', { className: 'sim-hint' }, '想开新的世界线：用 Tavern 左上角「＋ 选择人物卡 · 新开游玩」开一个新故事，插件会为它单独存档，预设是共用的。'),
-              h('div', { className: 'sim-acts' },
-                h(Btn, { danger: true, disabled: busy, onClick: () => {
-                  if (!window.confirm('清空本局数据？所有内容会被抹掉（会先留一份 .deleted 备份）。')) return;
-                  setTab('setup');
-                  run(call('resetAll', {}, gameId), true);
-                } }, '🗑 清空本局数据')
+
+            /* ── 开发 ── */
+            group(
+              'dev',
+              '开发',
+              null,
+              h(GitCfg, { key: 'gitcfg' }),
+              h('div', { className: 'sim-card' },
+                h('div', { style: { fontWeight: 600, marginBottom: 6 } }, '清空本局'),
+                h('div', { className: 'sim-hint' }, '清空【本局】的全部数据（世界观 / 主角 / 正文 / 资产 / NPC），回到空白创建状态。测试时反复用。'),
+                h('div', { className: 'sim-hint' }, '想开新的世界线：用 Tavern 左上角「＋ 选择人物卡 · 新开游玩」开一个新故事，插件会为它单独存档，预设是共用的。'),
+                h('div', { className: 'sim-acts' },
+                  h(Btn, { danger: true, disabled: busy, onClick: () => {
+                    if (!window.confirm('清空本局数据？所有内容会被抹掉（会先留一份 .deleted 备份）。')) return;
+                    setTab('setup');
+                    run(call('resetAll', {}, gameId), true);
+                  } }, '🗑 清空本局数据')
+                )
               )
-            )
+            ),
+
+            h('div', { className: 'sim-acts', style: { marginTop: 14 } },
+              h(Btn, { primary: true, disabled: busy, onClick: () => run(call('saveConfig', { config: dcfg }, gameId)) }, '保存设定'))
           );
 
           // ── 选页 ──
