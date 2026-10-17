@@ -22,7 +22,7 @@ const P = 'dsh-tavern-simulator/';
 const KEY_SLOTS = ['retrieve', 'settle', 'summary', 'assistant'];
 
 /** 每次改动宿主侧都改一下这个版本号：ping 会回报它，用来确认 Tavern 到底加载的是哪一版 */
-const REV = 'host-v42-settings-groups-20261017r';
+const REV = 'host-v43-msg-source-20261017r';
 
 /**
  * 只有这一局用的是这些卡时，插件才出现在界面上（其余卡片游玩时完全不打扰）。
@@ -1027,13 +1027,25 @@ export function apply(ctx) {
     }
     const sys = messages.find((m) => m.role === 'system');
     const rest = messages.filter((m) => m.role !== 'system');
+    /**
+     * DSH 的 llm 服务要求每条 message 带 id 与 source（source.kind 决定来源）。
+     * 我们以前只传 { role, content }，一直没出问题 —— 因为只发过 system + user，
+     * 而 adapter 对 user 比较宽容。一旦消息里出现 assistant（助手浮窗的多轮对话），
+     * 它就会读 message.source.kind 来判定来源，source 缺失直接抛
+     * 「Cannot read properties of undefined (reading 'kind')」，而且 0 秒就失败。
+     * assistant 的来源必须是 { kind: 'model', provider, model }，其余按用户输入算。
+     */
+    let msgSeq = 0;
+    const toMessage = (m) => ({
+      id: 'sim-' + Date.now().toString(36) + '-' + (msgSeq++).toString(36),
+      role: m.role,
+      content: [{ type: 'text', text: String(m.content == null ? '' : m.content) }],
+      source: m.role === 'assistant' ? { kind: 'model', provider, model } : { kind: 'user' },
+    });
     const options = {
       provider,
       model,
-      messages: rest.map((m) => ({
-        role: m.role,
-        content: [{ type: 'text', text: String(m.content == null ? '' : m.content) }],
-      })),
+      messages: rest.map(toMessage),
     };
     if (sys) options.system = String(sys.content == null ? '' : sys.content);
     if (opts.reasoningEffort != null) options.reasoningEffort = opts.reasoningEffort;
