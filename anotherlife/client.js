@@ -5820,6 +5820,10 @@ window.__ModuleLoader__.load({
             };
             let n = rank(String((slot && slot.穿着时长) || '').trim());
             if (n < 0) n = rank(String((slot && slot.气味) || '').trim());
+            // 气味写了文字、但文字里没有「刚换／半日／整日／多日」这类档位词时，
+            // 给最低档而不是 -1：-1 意味着整条气味标记都不画，看起来像「没有气味」。
+            // 袜子是唯一有气味的部位，写了就该看得见。
+            if (n < 0 && String((slot && slot.气味) || '').trim()) n = 1;
             return n;
           }
           function scentDots(slot) {
