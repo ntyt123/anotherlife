@@ -3624,6 +3624,103 @@ window.__ModuleLoader__.load({
             return out;
           }
 
+          /**
+           * 名字核对：名册里同一个关系的人，如果主角字段里已经有名字，以主角为准。
+           *
+           * 为什么需要：名册是第二次独立解析，即使提示词要求「沿用已有名字」，
+           * 它仍会给女儿另起一个（主角写「罗心悦」，名册给「罗朵朵」），
+           * 开局信息里同一批人两套名字，模型当成两拨人。
+           * 名字的权威顺序：配偶／子女字段 > 人物关系里写明的名字 > 名册自己起的。
+           */
+          function alignNpcNames(list, p) {
+            const nameOf = {}; // 关系 → 名字
+            const put = (rel, nm) => {
+              const r = String(rel || '').trim();
+              const n = String(nm || '').trim();
+              if (r && n && n !== r) nameOf[r] = n; // 名字和称呼相同说明没给名字，不算
+            };
+            // 「人物关系」里形如「妹妹罗晴」「女儿罗心悦」的都拆出来
+            parseRelationString(String((p && p.人物关系) || '')).forEach((x) => put(x.与主角关系, x.姓名));
+            // 配偶、子女是单独字段，最可靠
+            const spouse = String((p && p.配偶) || '').trim();
+            if (spouse) {
+              put('妻子', spouse);
+              put('丈夫', spouse);
+              put('老公', spouse);
+              put('老婆', spouse);
+            }
+            const kids = String((p && p.子女) || '')
+              .split(/[、,，;；\s]+/)
+              .map((x) => x.trim())
+              .filter(Boolean);
+            if (kids.length) {
+              ['女儿', '儿子', '孩子', '子女'].forEach((r) => put(r, kids[0]));
+              if (kids.length > 1) put('儿子', kids[1]);
+            }
+            return (Array.isArray(list) ? list : []).map((x) => {
+              if (!x || typeof x !== 'object') return x;
+              const rel = String(x.与主角关系 || x.关系 || '').trim();
+              const want = nameOf[rel];
+              if (!want) return x;
+              const cur = String(x.姓名 || x.名字 || '').trim();
+              if (cur === want) return x;
+              return Object.assign({}, x, { 姓名: want });
+            });
+          }
+
+          /**
+           * 对象/数组字段纠形：模型偶尔把本该是数组的字段给成对象（例如「事业」），
+           * 界面按数组读就会显示不出来。这里统一包成数组。
+           */
+          const ARRAY_FIELDS = ['事业', '住所', '交通', '债务', '凭证', '物品', '技能', '特点', '标签', '隐患', '私人关系', '代表作品', '作品履历', '主要奖项', '当前代言', '团队', '行程', '疾病与伤病', '性癖', '身体'];
+          function toArrays(o) {
+            ARRAY_FIELDS.forEach((k) => {
+              if (o && o[k] != null && !Array.isArray(o[k]) && typeof o[k] === 'object') o[k] = [o[k]];
+            });
+            return o;
+          }
+
+          /**
+           * 键名纠正：模型会打错字（「稀y度」写成带英文的、「稀有度」写成「稀度」这类），
+           * 打错的那个键界面上找不到，数据就丢了。按"与已知键名只差一个字"的规则拉回来。
+           */
+          const KNOWN_KEYS = ['物品', '稀有度', '状态', '气味', '简介', '穿着时长', '名字', '品质', '获取时间', '属性提升', '等级', '说明', '来源', '姓名', '性别', '年龄', '出生地', '身份', '与主角关系', '外貌', '特点'];
+          function fixKeys(o) {
+            if (!o || typeof o !== 'object' || Array.isArray(o)) return o;
+            Object.keys(o).forEach((k) => {
+              if (KNOWN_KEYS.indexOf(k) >= 0) return;
+              // 长度相同、且只差一个字符 → 认为是笔误
+              const hit = KNOWN_KEYS.find((g) => {
+                if (Math.abs(g.length - k.length) > 1) return false;
+                let diff = 0;
+                const a = k.split('');
+                const b = g.split('');
+                const n = Math.max(a.length, b.length);
+                for (let i = 0; i < n; i++) if (a[i] !== b[i]) diff++;
+                return diff <= 1;
+              });
+              if (hit && o[hit] == null && /^[\u4e00-\u9fa5A-Za-z]{2,6}$/.test(k)) {
+                o[hit] = o[k];
+                delete o[k];
+              }
+            });
+            // 穿着里的每个部位、以及数组里的每个对象（物品／技能…）都要纠一遍
+            if (o.穿着 && typeof o.穿着 === 'object') {
+              Object.keys(o.穿着).forEach((part) => {
+                fixKeys(o.穿着[part]);
+              });
+            }
+            Object.keys(o).forEach((k) => {
+              const v = o[k];
+              if (Array.isArray(v)) {
+                v.forEach((x) => {
+                  if (x && typeof x === 'object') fixKeys(x);
+                });
+              }
+            });
+            return o;
+          }
+
           /** 按现有结构生成一份「全空」副本：数组→[]、对象→递归、布尔原样、其余→'' */
           function blankLike(v) {
             if (Array.isArray(v)) return [];
@@ -3769,6 +3866,10 @@ window.__ModuleLoader__.load({
                   const ageStr = ageFromBirth(merged.生日, nowForAge());
                   const ageNum = Number(String(ageStr).replace(/[^\d]/g, ''));
                   if (ageNum > 0 && ageNum < 200) merged.年龄 = ageNum;
+                  // 纠形与纠键：模型偶尔把数组字段给成对象、或打错键名（「稀y度」），
+                  // 界面上找不到那个键，数据就悄悄丢了。
+                  toArrays(merged);
+                  fixKeys(merged);
                   // 「是否艺人」是界面上的开关，玩家说了算 —— 不许模型自己判断：
                   // 它会因为「顶流小生」这类描述就把整批演艺字段填上，哪怕开关没开。
                   const star = !!(backup && backup.是否艺人);
@@ -3837,12 +3938,14 @@ window.__ModuleLoader__.load({
                         cr && Array.isArray(cr.角色)
                           ? cr.角色.filter((x) => x && typeof x === 'object' && String(x.姓名 || '').trim())
                           : [];
-                      const use = dropSelf(list.length ? list : parseRelationString(String(merged.人物关系 || '')));
+                      // 名字以主角字段为准：名册自己起的名字，遇到主角那边已有的同名关系就让位。
+                      // （「女儿罗心悦」vs 名册的「罗朵朵」，以主角为准）
+                      const use = dropSelf(alignNpcNames(list.length ? list : parseRelationString(String(merged.人物关系 || '')), merged));
                       if (use.length) {
                         upd({
                           npcs: use.map((x) => {
                             const base = blankLike((Array.isArray(draft.npcs) && draft.npcs[0]) || {});
-                            return Object.assign(base, x);
+                            return fixKeys(Object.assign(base, x));
                           }),
                         });
                       }
@@ -3851,12 +3954,12 @@ window.__ModuleLoader__.load({
                       // 名册这步失败就退回兜底：从「人物关系」那句里拆
                       setParseNote('');
                       setBusy(false);
-                      const use = dropSelf(parseRelationString(String(merged.人物关系 || '')));
+                      const use = dropSelf(alignNpcNames(parseRelationString(String(merged.人物关系 || '')), merged));
                       if (use.length) {
                         upd({
                           npcs: use.map((x) => {
                             const base = blankLike((Array.isArray(draft.npcs) && draft.npcs[0]) || {});
-                            return Object.assign(base, x);
+                            return fixKeys(Object.assign(base, x));
                           }),
                         });
                       }
