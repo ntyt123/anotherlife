@@ -462,6 +462,10 @@ window.__ModuleLoader__.load({
       '.sim-grid .sim-field input,.sim-grid .sim-field textarea{min-width:0}',
       // 长文本字段（外貌／性格／当前状态…）跨整行，别挤在半列里
       '.sim-field.wide{grid-column:1 / -1}',
+      // 带单位的输入：输入框 + 框外右侧的单位（cm／kg／岁）。单位不进输入框，省得跟数字挤在一起。
+      '.sim-input-wrap{flex:1;min-width:0;display:flex;align-items:center;gap:6px}',
+      '.sim-input-wrap input{flex:1;min-width:0}',
+      '.sim-unit{flex:none;color:var(--sim-t2);font-size:var(--sim-fs-2);white-space:nowrap}',
       '.sim-ai{padding:14px;border:1px dashed var(--sim-ac);border-radius:12px;margin-bottom:6px;background:var(--sim-bg)}',
       '.sim-ta{width:100%;min-height:76px;background:var(--sim-bg);border:1px solid var(--sim-bd);border-radius:8px;color:var(--sim-t);padding:9px 11px;font-size:var(--sim-fs-3);resize:vertical;font-family:inherit}',
       '.sim-foot{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px;padding-top:14px;border-top:1px solid var(--sim-bd)}',
@@ -868,24 +872,34 @@ window.__ModuleLoader__.load({
          * 一行「标签 + 输入框」。
          * wide: true → 在 .sim-grid 里跨整行（给外貌、性格这类长文本用），
          * 否则短字段并排两三列就够，不必每个都拉满一整行。
+         * unit: 单位（cm／kg／岁），显示在**输入框外面**的右侧 —— 框里只放数字。
+         *       老数据里常写成「183cm」，显示时把尾部单位剥掉，免得跟外面的重复。
          */
         function Field(props) {
+          const stripUnit = (v) => {
+            const s = v == null ? '' : String(v);
+            if (!props.unit) return s;
+            return s.replace(new RegExp('\\s*' + props.unit + '\\s*$', 'i'), '');
+          };
+          const box = props.multiline
+            ? h('textarea', {
+                style: { minHeight: 72 },
+                value: props.value == null ? '' : String(props.value),
+                placeholder: props.ph || '',
+                onChange: (e) => props.onChange(e.target.value),
+              })
+            : h('input', {
+                value: stripUnit(props.value),
+                placeholder: props.ph || '',
+                onChange: (e) => props.onChange(e.target.value),
+              });
           return h(
             'div',
             { className: 'sim-field' + (props.wide ? ' wide' : '') },
             h('label', null, props.label),
-            props.multiline
-              ? h('textarea', {
-                  style: { minHeight: 72 },
-                  value: props.value == null ? '' : String(props.value),
-                  placeholder: props.ph || '',
-                  onChange: (e) => props.onChange(e.target.value),
-                })
-              : h('input', {
-                  value: props.value == null ? '' : String(props.value),
-                  placeholder: props.ph || '',
-                  onChange: (e) => props.onChange(e.target.value),
-                })
+            props.unit && !props.multiline
+              ? h('div', { className: 'sim-input-wrap' }, box, h('span', { className: 'sim-unit' }, props.unit))
+              : box
           );
         }
         function Btn(props) {
@@ -4407,6 +4421,8 @@ window.__ModuleLoader__.load({
            * 长文本字段：跨整行、用多行框。其余短字段在网格里并排，不再各占一整行。
            */
           const WIDE_FIELDS = ['外貌', '表性格', '里性格', '当前状态', '当前想法', '身体状态', '健康状况'];
+          /** 带单位的字段：界面上把单位显示在输入框外面，框里只填数字 */
+          const UNIT_OF = { 身高: 'cm', 体重: 'kg', 三围: 'cm', 年龄: '岁' };
           function charSec(title, fields) {
             return h(
               'div',
@@ -4423,6 +4439,8 @@ window.__ModuleLoader__.load({
                         label: f,
                         wide: WIDE_FIELDS.indexOf(f) >= 0,
                         multiline: WIDE_FIELDS.indexOf(f) >= 0,
+                        // 身高体重这类带单位的，单位显示在框外，框里只填数字
+                        unit: UNIT_OF[f],
                         // 数组字段（特点/标签/性癖/疾病）显示时连成一行；
                         // **输入时原样存**（不立刻拆回数组）—— 边输入边 split 会把刚敲的顿号吃掉。
                         // 真正拆成数组在提交前做（normalizeArrs）。
