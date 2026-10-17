@@ -212,6 +212,14 @@ window.__ModuleLoader__.load({
       '.sim-group-b{padding:14px 16px 6px}',
       '.sim-group-b .sim-card{background:var(--sim-bg);margin-bottom:10px}',
       '.sim-group-b .sim-card:last-child{margin-bottom:8px}',
+      // 模型槽位的紧凑行：名称 / 服务 / 模型 / 切换
+      '.sim-slot-row{display:grid;grid-template-columns:72px minmax(0,0.9fr) minmax(0,1.1fr) auto;gap:8px;align-items:center;margin-bottom:8px}',
+      '.sim-slot-row .k{font-size:var(--sim-fs-2);color:var(--sim-t2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:help}',
+      '.sim-slot-row select,.sim-slot-row input{min-width:0;width:100%;background:var(--sim-bg);border:1px solid var(--sim-bd);border-radius:8px;color:var(--sim-t);padding:5px 8px;font-size:var(--sim-fs-2);font-family:inherit}',
+      '.sim-slot-row select:focus,.sim-slot-row input:focus{outline:none;border-color:var(--sim-ac)}',
+      '.sim-slot-msg{grid-column:1 / -1;font-size:var(--sim-fs-1);padding-left:80px;word-break:break-all}',
+      '.sim-slot-msg.ok{color:#3f9d6a}',
+      '.sim-slot-msg.err{color:#d9534f}',
       '.sim-pcard{background:var(--sim-bg);border:1px solid var(--sim-bd);border-radius:10px;padding:10px 12px;margin-bottom:8px}',
       '.sim-field{display:flex;gap:8px;margin-bottom:8px;align-items:center;flex-wrap:wrap}',
       '.sim-field>label{width:104px;flex:none;color:var(--sim-t2);font-size:var(--sim-fs-2)}',
@@ -5993,7 +6001,7 @@ window.__ModuleLoader__.load({
            * 不必各填一份 BaseURL 与密钥。留空则用当前主模型。
            * 老配置里若还留着 baseURL，继续按老路走（下面给一句提示 + 一键清掉）。
            */
-          function ModelCfg({ slot, title, sub }) {
+          function ModelCfg({ slot, title, sub, row }) {
             const saved = (dcfg && dcfg[slot]) || { provider: '', model: '' };
             // 正在编辑的选择（还没点「切换」）。没有就用已保存的。
             const pick = slotPick[slot] || { provider: saved.provider || '', model: saved.model || '' };
@@ -6049,6 +6057,54 @@ window.__ModuleLoader__.load({
               cfg[slot] = Object.assign({}, saved, { baseURL: '' });
               upd({ config: cfg });
               run(call('saveConfig', { config: cfg }, gameId));
+            }
+            // 紧凑模式：给「模型」组里那张合表用 —— 一行放一个槽位。
+            // 说明塞进 title，鼠标悬停才看，不再每张卡都占一遍。
+            if (row) {
+              return h(
+                'div',
+                { className: 'sim-slot-row', key: slot },
+                h('span', { className: 'k', title: sub || title }, title),
+                h(
+                  'select',
+                  { className: 'sim-select', value: pick.provider || '', onChange: (e) => pickProvider(e.target.value) },
+                  h('option', { value: '' }, '用主模型'),
+                  ((mmC && mmC.providers) || []).map((p) => h('option', { key: p.id, value: p.id }, p.name || p.id))
+                ),
+                h('input', {
+                  list: 'sim-slot-r-' + slot,
+                  value: pick.model || '',
+                  placeholder: '留空则用主模型',
+                  onChange: (e) => setPick({ model: e.target.value }),
+                }),
+                h(
+                  'datalist',
+                  { id: 'sim-slot-r-' + slot },
+                  (mm.list || []).map((m) => {
+                    const id = m && m.id != null ? m.id : String(m);
+                    return h('option', { key: id, value: id });
+                  })
+                ),
+                h(
+                  Btn,
+                  { primary: dirty, disabled: busy || slotBusy === slot || !dirty, onClick: applySlot },
+                  slotBusy === slot ? '…' : dirty ? '切换' : '同'
+                ),
+                slotErr[slot]
+                  ? h('span', { className: 'sim-slot-msg err' }, slotErr[slot])
+                  : slotOk[slot]
+                    ? h('span', { className: 'sim-slot-msg ok' }, slotOk[slot])
+                    : null,
+                mm.loading ? h('span', { className: 'sim-slot-msg' }, '读取中…') : null,
+                mm.error ? h('span', { className: 'sim-slot-msg err' }, mm.error) : null,
+                saved.baseURL
+                  ? h(
+                      'span',
+                      { className: 'sim-slot-msg' },
+                      h(Btn, { disabled: busy, onClick: dropLegacy }, '同步主模型')
+                    )
+                  : null
+              );
             }
             return h(
               'div',
@@ -6250,10 +6306,14 @@ window.__ModuleLoader__.load({
                 h('div', { className: 'sim-hint' }, '换的就是 DSH 的主模型，正文生成跟着它走。'),
                 h('div', { className: 'sim-hint' }, 'AI 解析：' + (settleModelName() ? settleModelName() + '（结算模型那一栏）' : mainModelName() + '（没单独配，就用主模型）') + '。')
               ),
-              ModelCfg({ slot: 'retrieve', title: '检索模型（上下文筛选）', sub: '挑选本轮需要哪些条目的模型。留空则用主模型。可填便宜的快速模型。' }),
-              ModelCfg({ slot: 'settle', title: '结算模型（变量 + 小总结）', sub: '留空则跳过每轮变量结算。' }),
-              ModelCfg({ slot: 'summary', title: '总结模型' }),
-              ModelCfg({ slot: 'assistant', title: '助手模型', sub: '助手浮窗用的模型。留空则用当前主模型。' })
+              h('div', { className: 'sim-card' },
+                h('div', { style: { fontWeight: 600, marginBottom: 4 } }, '其它用途'),
+                h('div', { className: 'sim-hint', style: { marginBottom: 10 } }, '留空 = 用主模型。选好按「切换」才生效。'),
+                ModelCfg({ slot: 'retrieve', title: '检索', sub: '挑选本轮需要哪些条目。可填便宜的快速模型。', row: true }),
+                ModelCfg({ slot: 'settle', title: '结算', sub: '每轮的变量变化与小总结。留空则跳过结算。', row: true }),
+                ModelCfg({ slot: 'summary', title: '总结', sub: '每 N 轮把正文压成前情总结。留空则关掉总结。', row: true }),
+                ModelCfg({ slot: 'assistant', title: '助手', sub: '助手浮窗用的模型。', row: true })
+              )
             ),
 
             /* ── 上下文与记忆 ── */
