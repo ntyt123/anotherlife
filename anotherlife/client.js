@@ -4346,7 +4346,25 @@ window.__ModuleLoader__.load({
                     'div',
                     { className: 'sim-grid' },
                     fields.map((f) =>
-                      h(Field, { key: f, label: f, value: buf[f] != null ? String(buf[f]) : '', onChange: (v) => setOne(f, v) })
+                      // 稀有度／品质用下拉：手打错一个字母就掉出配色表，也不该让人背 N/R/SR/SSR/UR
+                      f === '稀有度' || f === '品质'
+                        ? h(
+                            'div',
+                            { className: 'sim-field', key: f },
+                            h('label', null, f),
+                            h(
+                              'select',
+                              {
+                                className: 'sim-select',
+                                value: buf[f] != null ? String(buf[f]) : '',
+                                onChange: (e) => setOne(f, e.target.value),
+                              },
+                              ['', 'N', 'R', 'SR', 'SSR', 'UR'].map((v) =>
+                                h('option', { key: v, value: v }, v || '（未定）')
+                              )
+                            )
+                          )
+                        : h(Field, { key: f, label: f, value: buf[f] != null ? String(buf[f]) : '', onChange: (v) => setOne(f, v) })
                     )
                   )
                 ),
@@ -4566,7 +4584,13 @@ window.__ModuleLoader__.load({
                   { key: k, className: 'sim-field' },
                   h('label', null, k),
                   h('input', { placeholder: '衣物', value: slot.物品 || '', onChange: (e) => setWear(k, '物品', e.target.value) }),
-                  h('input', { placeholder: '稀有度 N/R/SR/SSR/UR', value: slot.稀有度 || '', onChange: (e) => setWear(k, '稀有度', e.target.value) }),
+                  h('select', {
+                    className: 'sim-select',
+                    value: slot.稀有度 || '',
+                    onChange: (e) => setWear(k, '稀有度', e.target.value),
+                  },
+                    ['', 'N', 'R', 'SR', 'SSR', 'UR'].map((v) => h('option', { key: v, value: v }, v || '（未定）'))
+                  ),
                   h('input', { placeholder: '状态（正常就留空）', value: slot.状态 || '', onChange: (e) => setWear(k, '状态', e.target.value) }),
                   k === '袜子' && !isMale
                     ? h('input', { placeholder: '气味（仅女性）', value: slot.气味 || '', onChange: (e) => setWear(k, '气味', e.target.value) })
