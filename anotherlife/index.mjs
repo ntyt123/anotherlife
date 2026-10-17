@@ -22,7 +22,7 @@ const P = 'dsh-tavern-simulator/';
 const KEY_SLOTS = ['retrieve', 'settle', 'summary', 'assistant'];
 
 /** 每次改动宿主侧都改一下这个版本号：ping 会回报它，用来确认 Tavern 到底加载的是哪一版 */
-const REV = 'host-v44-opening-exempt-20261017r';
+const REV = 'host-v45-prebuilt-cast-20261017r';
 
 /**
  * 只有这一局用的是这些卡时，插件才出现在界面上（其余卡片游玩时完全不打扰）。
@@ -1497,6 +1497,49 @@ export function apply(ctx) {
       lines.push('');
       lines.push('【补充信息】');
       lines.push(String(s.extraInfo));
+    }
+    // 创角阶段就已经建好的角色与随身本事 —— 直接给出名单，不用模型再从原文里"盘点"。
+    // 这一步以前是漏的：这些数据要等第 0 轮结算时由模型自己从描述里认出来，
+    // 认漏了就意味着后面剧情永远叫不出他们的名字。
+    const npcs0 = Array.isArray(s.npcs) ? s.npcs : [];
+    if (npcs0.length) {
+      lines.push('');
+      lines.push('【已经建好的角色 —— 他们在故事开始前就存在】');
+      npcs0.forEach((n) => {
+        if (!n || typeof n !== 'object') return;
+        const bits = [];
+        const nm = String(n.姓名 || '').trim();
+        if (!nm) return;
+        const one = (k) => {
+          const v = n[k];
+          if (v == null) return '';
+          const t = typeof v === 'object' ? '' : String(v).trim();
+          return t;
+        };
+        const g = one('性别');
+        const ag = one('年龄');
+        const rel = one('与主角关系') || one('关系');
+        const id = one('身份');
+        const bp = one('出生地');
+        const looks = one('外貌');
+        if (g) bits.push(g);
+        if (ag) bits.push(ag);
+        if (id) bits.push(id);
+        if (rel) bits.push('与主角的关系：' + rel);
+        if (bp) bits.push('籍贯：' + bp);
+        lines.push('- ' + nm + (bits.length ? '（' + bits.join('·') + '）' : '') + (looks ? ' —— ' + looks : ''));
+      });
+      lines.push('这些人**已经存在**：不要再把他们重新创建一遍，名字一律照上面写，不要改写。');
+    }
+    const si0 = s.skills_items || {};
+    const sk0 = Array.isArray(si0.技能) ? si0.技能 : [];
+    const bag0 = Array.isArray(si0.背包) ? si0.背包 : [];
+    if (sk0.length || bag0.length) {
+      lines.push('');
+      lines.push('【主角已有的本事与随身物】');
+      if (sk0.length) lines.push('- 本事：' + sk0.map((x) => (typeof x === 'string' ? x : String((x && (x.名称 || x.名字)) || JSON.stringify(x)))).join('、'));
+      if (bag0.length) lines.push('- 随身：' + bag0.map((x) => (typeof x === 'string' ? x : String((x && (x.名称 || x.名字)) || JSON.stringify(x)))).join('、'));
+      lines.push('开场时这些东西已经在他身上／他会这些本事，不必再交代来历。');
     }
     lines.push('');
     lines.push('【要求】这是故事的第一幕。请开场：先确立当前时间、地点与主角当下的处境，自然带出与处境相关的世界背景与在场人物，然后在结尾按下面的规则给出 8 条行动选项。不要替主角做重大决定，不要一次性把设定全念一遍。');
@@ -3160,7 +3203,7 @@ export function apply(ctx) {
   });
 
   // ── 开局 ──
-  reg('openGame', async ({ gameId, protagonist, extraInfo }) => {
+  reg('openGame', async ({ gameId, protagonist, extraInfo, npcs, skillsItems }) => {
     const s = await loadState(gameId);
     s.protagonist = normProtag(protagonist);
     // 备注栏（补充信息）要一起收下 —— 界面上填了但它不在 protagonist 里，
@@ -3168,8 +3211,17 @@ export function apply(ctx) {
     // 传了空串表示"确实要清空"，没传（undefined）则保留原值。
     if (extraInfo != null) s.extraInfo = String(extraInfo);
     s.relationships = [];
-    s.npcs = [];
-    s.skills_items = { 技能: [], 背包: [], 状态值: {} };
+    // 角色与技能物品：创角解析阶段就已经产出了（「角色」「技能物品」两个键），
+    // 界面上还能改。这里要把它们接下来 —— 以前一律清空，等于把解析结果全扔掉，
+    // 然后指望第 0 轮结算自己从原文里再"盘点"一遍，那一步最容易漏。
+    s.npcs = Array.isArray(npcs) ? JSON.parse(JSON.stringify(npcs)) : [];
+    s.skills_items = skillsItems && typeof skillsItems === 'object'
+      ? {
+          技能: Array.isArray(skillsItems.技能) ? skillsItems.技能 : [],
+          背包: Array.isArray(skillsItems.背包) ? skillsItems.背包 : [],
+          状态值: skillsItems.状态值 && typeof skillsItems.状态值 === 'object' ? skillsItems.状态值 : {},
+        }
+      : { 技能: [], 背包: [], 状态值: {} };
     s.实体资产 = [];
     s.虚拟资产 = [];
     s.phase = 'play';
@@ -3179,6 +3231,8 @@ export function apply(ctx) {
       world: JSON.parse(JSON.stringify(s.world)),
       protagonist: JSON.parse(JSON.stringify(s.protagonist)),
       extraInfo: s.extraInfo || '',
+      npcs: JSON.parse(JSON.stringify(s.npcs)),
+      skills_items: JSON.parse(JSON.stringify(s.skills_items)),
     };
     await runTurn(s, buildOpeningMessage(s), '【开局】', { all: true });
     await saveState(s);
@@ -3405,6 +3459,9 @@ export function apply(ctx) {
             '**「人物关系」只许抄，不许编**：这一项是把描述里**已经说到的人**整理一遍，不是让你替主角设计家庭。**描述里没提父母就不要写父母，没提兄弟姐妹就不要写兄弟姐妹**；人数、姓名、身份一律照描述，不做任何扩写与脑补。**写错名字比留空更糟** —— 玩家描述里的名字会被当成事实用下去。',
             '**描述里还有装不进上面任何字段的交代，一律原样收进「额外信息」**：例如家庭情况（父母做什么的、老家还有谁）、随身物件以外的家当、某些习惯或禁忌、特殊经历、社会关系网、任何一句"关于这个人的事实"。**把描述里说了、但上面那些字段都没有对应位置的内容抄进这里**，一句一条，用分号隔开（如「父亲在老家开厂；有个堂兄在南非做工程；左耳后有疤」）。**宁可多抄，不要漏抄** —— 漏掉的东西，开局那一轮就没人知道了。描述里确实没有这类内容就留空。',
             '**人名一律照抄，不许自己改**：描述／设定／备注里已经写了名字的人，沿用原名，不要改名、不要补姓氏、不要按家族统一字辈去凑（描述写「罗婉」就写「罗婉」，不许写成「罗小婉」）。描述里只有称呼没给名字的（如「妹妹」），才按身份取一个普通名字。',
+            '**除了上面这些字段，还要另外给两个顶层键：「角色」和「技能物品」。**',
+            '  · 「角色」= 数组，把描述里提到的**每一个家人与熟人**建成独立条目，一项一个：{姓名, 性别, 年龄, 出生地, 身份, 与主角关系, 外貌(一句话), 特点(一句话)}。**父母、兄弟姐妹、配偶、子女、师父、同学、同事、朋友一个都不能漏**；描述里只写了称呼没给名字的，按身份起一个普通名字。**每人只写这 8 项就够**，不要再堆别的字段（别写粉丝数、生理周期那些）—— 堆多了整份 JSON 会被截断，反而全废。描述里没提到任何人就给 []。',
+            '  · 「技能物品」= 对象 {技能: [], 背包: [], 状态值: {}}。技能记"他会什么"（乐器、手艺、语言、运动、专业能力、超凡本事），背包记"身上／手边带着的东西"（乐器、武器、证件、相机、钥匙、宠物…），状态值记持续生效的数值状态（如 {"体力":100}）。没有就给空数组／空对象。「物品」「技能」这两个主角字段照旧要写（那里写细节），两处不必逐字重复：主角字段写细节，这两个写索引。',
             '主角的「演艺身份」由创角界面那个开关决定（protagonist.是否艺人）：',
             '  · **开关打开时**必须把演艺资料**整批**给出 —— 少一样界面上就空一格，不许挑着填：艺人咖位／定位／资源级别／经纪公司／所属组合／出道时间／合约到期／代表作品(数组)／作品履历(数组)／主要奖项(数组)／微博账号／全网粉丝数／抖音粉丝／小红书粉丝／粉丝称呼／商业价值／当前代言(数组)／商业报价／当前舆论评价／舆论来源／舆论热度／团队(数组)／团队评价／行程(数组)／隐患(数组)／私人关系(数组)。',
             '  · 数值要具体（「微博 1200 万粉丝」「代言报价约 300 万／年」「合约 2028-03 到期」）；代表作品每项形如 `《星轨》（2018 · 电视剧）`；作品履历每项形如 `{名称:星轨, 类型:电视剧, 角色:女二, 番位:女二, 进度:待播, 口碑:7.2}`；团队每项形如 `{姓名:李姐, 职位:经纪人, 状态:手上有资源}`；行程每项形如 `{时间:6月18日, 名称:品牌活动, 类型:商务}`；**隐患与私人关系由玩家自己引导，开关打开时并不要求立刻造出内容 —— 没有就留空数组。**',

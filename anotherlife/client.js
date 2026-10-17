@@ -2554,6 +2554,9 @@ window.__ModuleLoader__.load({
           const [npcOpen, setNpcOpen] = React.useState(null); // 打开的角色卡：{kind,i}
           const [editText, setEditText] = React.useState('');
           const [stage, setStage] = React.useState(null); // 当前进行到哪一步：{stage,text}
+          // 创角页最下面那份「完整数据」JSON 的编辑态（null = 还没打开/内容已同步）
+          const [preJson, setPreJson] = React.useState(null);
+          const [preJsonErr, setPreJsonErr] = React.useState('');
           // 四个模型槽位（检索/结算/总结/助手）的「选好但还没点切换」的临时选择。
           // ModelCfg 是无钩子的直呼组件，所以状态放这里，它靠闭包读。
           const [slotPick, setSlotPick] = React.useState({}); // { [slot]: {provider, model} }
@@ -2972,8 +2975,19 @@ window.__ModuleLoader__.load({
             // 备注栏（补充信息）不在 protagonist 里，必须显式一起送过去 ——
             // 原来只传了 protagonist，玩家在备注里写的东西就丢了
             // （开局信息里不会出现【补充信息】那一段，AI 也就不知道）。
+            // 「角色」「技能物品」同理：它们在存档顶层，解析阶段就已经产出、
+            // 界面上还能改，所以开局时必须一起交过去 —— 否则宿主那边会当成空表清掉。
             return run(
-              call('openGame', { protagonist: draft.protagonist, extraInfo: draft.extraInfo }, gameId)
+              call(
+                'openGame',
+                {
+                  protagonist: draft.protagonist,
+                  extraInfo: draft.extraInfo,
+                  npcs: Array.isArray(draft.npcs) ? draft.npcs : [],
+                  skillsItems: draft.skills_items || null,
+                },
+                gameId
+              )
             ).then((s) => renamePlayTitle((s && s.protagonist) || draft.protagonist));
           }
 
@@ -3568,6 +3582,60 @@ window.__ModuleLoader__.load({
             if (typeof v === 'boolean') return v;
             return '';
           }
+          /* ── 创角页最下面那份「完整数据」 ──
+           * 它就是这个存档开局时要用的全部内容，解析出来的角色、技能物品都在里面。
+           * 玩家可以直接改，改完应用回草稿 —— 比在一堆表单里翻找快。
+           */
+          function preJsonObj() {
+            return {
+              world: draft.world || {},
+              protagonist: draft.protagonist || {},
+              npcs: Array.isArray(draft.npcs) ? draft.npcs : [],
+              relationships: Array.isArray(draft.relationships) ? draft.relationships : [],
+              skills_items: draft.skills_items || { 技能: [], 背包: [], 状态值: {} },
+            };
+          }
+          function preJsonText() {
+            try {
+              return JSON.stringify(preJsonObj(), null, 2);
+            } catch (e) {
+              return '{}';
+            }
+          }
+          function applyPreJson() {
+            const src = preJson == null ? preJsonText() : preJson;
+            let o = null;
+            try {
+              o = JSON.parse(src);
+            } catch (e) {
+              setPreJsonErr('JSON 格式不对：' + ((e && e.message) || e));
+              return;
+            }
+            if (!o || typeof o !== 'object' || Array.isArray(o)) {
+              setPreJsonErr('顶层必须是一个对象 { … }');
+              return;
+            }
+            const patch = {};
+            // 结构与当前一致才收（用 blankLike 铺底，缺的字段留空而不是丢键）
+            if (o.world && typeof o.world === 'object' && !Array.isArray(o.world)) {
+              patch.world = Object.assign(blankLike(draft.world), o.world);
+            }
+            if (o.protagonist && typeof o.protagonist === 'object' && !Array.isArray(o.protagonist)) {
+              patch.protagonist = Object.assign(blankLike(draft.protagonist), o.protagonist);
+            }
+            if (Array.isArray(o.npcs)) patch.npcs = o.npcs.filter((x) => x && typeof x === 'object');
+            if (Array.isArray(o.relationships)) patch.relationships = o.relationships.filter((x) => x && typeof x === 'object');
+            if (o.skills_items && typeof o.skills_items === 'object' && !Array.isArray(o.skills_items)) {
+              patch.skills_items = {
+                技能: Array.isArray(o.skills_items.技能) ? o.skills_items.技能 : [],
+                背包: Array.isArray(o.skills_items.背包) ? o.skills_items.背包 : [],
+                状态值: o.skills_items.状态值 && typeof o.skills_items.状态值 === 'object' ? o.skills_items.状态值 : {},
+              };
+            }
+            upd(patch);
+            setPreJson(null);
+            setPreJsonErr('');
+          }
           /**
            * AI 解析：把自然语言交给模型拆成字段。
            * 点下去先**整份清空**再填 —— 否则只是"补空位"，上一局的残值会留下来，
@@ -3637,7 +3705,31 @@ window.__ModuleLoader__.load({
                       if (k !== '是否艺人') delete merged[k];
                     });
                   }
+                  const npcsIn = Array.isArray(p.角色) ? p.角色.filter((x) => x && typeof x === 'object' && String(x.姓名 || '').trim()) : [];
+                  const siIn = p.技能物品 && typeof p.技能物品 === 'object' ? p.技能物品 : null;
+                  // 「角色」「技能物品」属于存档顶层，不是主角的字段 —— 先摘出去，再写 protagonist。
+                  // 有了这份数据，开局就不用再指望模型从原文里"盘点"有哪几个人：人已经在手上了。
+                  delete merged.角色;
+                  delete merged.技能物品;
                   upd({ protagonist: merged });
+                  if (npcsIn.length) {
+                    upd({
+                      npcs: npcsIn.map((x) => {
+                        const base = blankLike((Array.isArray(draft.npcs) && draft.npcs[0]) || {});
+                        return Object.assign(base, x);
+                      }),
+                    });
+                  }
+                  if (siIn) {
+                    const cur = draft.skills_items || {};
+                    upd({
+                      skills_items: {
+                        技能: Array.isArray(siIn.技能) ? siIn.技能 : Array.isArray(cur.技能) ? cur.技能 : [],
+                        背包: Array.isArray(siIn.背包) ? siIn.背包 : Array.isArray(cur.背包) ? cur.背包 : [],
+                        状态值: siIn.状态值 && typeof siIn.状态值 === 'object' ? siIn.状态值 : cur.状态值 || {},
+                      },
+                    });
+                  }
                 }
               })
               .catch((e) => {
@@ -4064,6 +4156,35 @@ window.__ModuleLoader__.load({
                 placeholder: '可留空。这里是额外补充，会连同上面的设定一起交给 AI。',
                 onChange: (e) => upd({ extraInfo: e.target.value }),
               })
+            ),
+            // 最下面这份 JSON 就是发给开局的那份数据的原貌：
+            // 解析出来的角色、技能物品、世界，都在这里，可以直接改。
+            h(
+              'details',
+              { className: 'sim-fact', style: { marginTop: 12 } },
+              h('summary', null, '完整数据（JSON）· 可直接改'),
+              h(
+                'div',
+                { className: 'sim-hint', style: { marginTop: 6 } },
+                '上面所有内容都在这里：世界、主角、角色、技能物品。改完点「应用」，它会覆盖回上面的表单。'
+              ),
+              h('textarea', {
+                className: 'sim-ta',
+                style: { minHeight: 240, marginTop: 8, fontFamily: 'ui-monospace,Menlo,Consolas,monospace', fontSize: 12, lineHeight: 1.5 },
+                value: preJson == null ? preJsonText() : preJson,
+                spellCheck: false,
+                onChange: (e) => {
+                  setPreJson(e.target.value);
+                  setPreJsonErr('');
+                },
+              }),
+              preJsonErr ? h('div', { className: 'sim-err' }, preJsonErr) : null,
+              h(
+                'div',
+                { className: 'sim-acts', style: { marginTop: 8 } },
+                h(Btn, { primary: true, disabled: busy, onClick: () => applyPreJson() }, '应用'),
+                h(Btn, { disabled: preJson == null, onClick: () => { setPreJson(null); setPreJsonErr(''); } }, '还原')
+              )
             ),
             h(
               'div',
