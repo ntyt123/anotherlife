@@ -5207,20 +5207,26 @@ window.__ModuleLoader__.load({
           // 实测过一遍真实存档的 47 种字段，只有「印象标签」也不在这个名单里，一并补上。
           const PREF_NPC = ['出生地', '种族', '身高', '体重', '三围', '罩杯', '是否处女', '月经状态', '外貌', '表性格', '里性格', '性格', '与主角关系', '关系', '当前状况', '当前状态', '当前想法', '好感度', '信任度', '欲望', '依据', '印象标签', '备注', '曾用名', '艺人咖位', '经纪公司', '所属组合', '出道时间', '微博账号', '全网粉丝数', '主要奖项', '当前代言', '商业报价', '粉丝称呼', '当前舆论评价', '合约到期'];
 
-          /** 标/取消「重要角色」。重要的人排在角色列表最前面。 */
+          /**
+           * 标/取消「重要角色」。重要的人排在角色列表最前面。
+           * 注意 editKey 只改本地快照（那是给弹窗编辑用的，它有自己的「保存」按钮）；
+           * 这里是"点了就该立即生效"的开关，必须跟着 saveFields 落盘，否则刷新就丢。
+           */
           function toggleImportant(npc) {
             const nm = nameOf(npc);
             const arr = (Array.isArray(dps.npcs) ? dps.npcs : []).map((x) => {
               if (nameOf(x) !== nm || x !== npc) return x;
               return Object.assign({}, x, { 重要: !x.重要 });
             });
-            return editKey('npcs', arr);
+            editKey('npcs', arr);
+            return saveFields({ npcs: arr });
           }
           /** 从角色列表里删掉一个（只动本地这份 npcs，确认交给按钮那层做） */
           function removeNpc(npc) {
             const nm = nameOf(npc);
             const arr = (Array.isArray(dps.npcs) ? dps.npcs : []).filter((x) => !(nameOf(x) === nm && x === npc));
-            return editKey('npcs', arr);
+            editKey('npcs', arr);
+            return saveFields({ npcs: arr });
           }
           function npcCard(npc, rel, idx, kind) {
             const c = cardData(npc, rel);
