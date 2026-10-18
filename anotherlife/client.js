@@ -503,6 +503,8 @@ window.__ModuleLoader__.load({
       // 写作偏好：一条一行（勾选框 + 正文 + 删除）
       // 长期偏好：只读展示 Tavern 那份的内容
       '.sim-pref-text{font-size:var(--sim-fs-3);line-height:1.8;color:var(--sim-t);white-space:pre-wrap;word-break:break-word;padding:10px 12px;border:1px solid var(--sim-bd);border-radius:9px;background:var(--sim-bg);max-height:320px;overflow:auto}',
+      '.sim-pref-state{font-size:var(--sim-fs-4);font-weight:600;color:var(--sim-t2)}',
+      '.sim-pref-state.on{color:#3d9c78}',
       // ── 生理周期条 ──
       // 四段按真实天数分宽（月经5／卵泡8／排卵3／黄体12），当前段实心，竖线标当天。
       // 价值在右上角那句倒计时：剧情感兴趣的是「还有几天」，不是「第几天」。
@@ -7755,14 +7757,15 @@ function starPanel(n) {
                       h(
                         'div',
                         { className: 'sim-acts', style: { marginTop: 10 } },
+                        // 状态说清楚：这是「现在开没开」，不是按钮动作
+                        h('span', { className: 'sim-pref-state' + (prefs.on ? ' on' : '') }, prefs.on ? '✔ 正在注入' : '✗ 已关闭'),
                         h(
-                            Btn,
-                            {
-                              primary: !!prefs.on,
-                              disabled: prefs.busy,
-                              onClick: () => setPrefOn(!prefs.on),
-                            },
-                            prefs.on ? '本局注入' : '本局不注入'
+                          Btn,
+                          {
+                            disabled: prefs.busy,
+                            onClick: () => setPrefOn(!prefs.on),
+                          },
+                          prefs.on ? '关闭注入' : '开启注入'
                         ),
                         h(Btn, { disabled: prefs.busy, onClick: () => reloadPrefs() }, '重新读取'),
                       ),
