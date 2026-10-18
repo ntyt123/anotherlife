@@ -3808,6 +3808,17 @@ window.__ModuleLoader__.load({
               /* 存不了不影响本次 */
             }
           }
+          /** 双击标题栏：位置和大小一起回到默认（右下角、420×600 那一档） */
+          function asResetBox() {
+            setAsPos(null);
+            setAsSize(null);
+            try {
+              window.localStorage.removeItem('sim-as-pos');
+              window.localStorage.removeItem('sim-as-size');
+            } catch (e) {
+              /* 清不掉 localStorage 也无所谓，state 已经复位了 */
+            }
+          }
 
           /**
            * 极简 Markdown 渲染（只给助手回复用）。
@@ -8681,6 +8692,11 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
   onPointerMove: asDragMove,
   onPointerUp: asDragEnd,
   onPointerCancel: asDragEnd,
+  // 双击复位；点在按钮上不算（那两个按钮有自己的点击）
+  onDoubleClick: (e) => {
+    if (e.target.closest && e.target.closest('.sim-btn')) return;
+    asResetBox();
+  },
 },
                     h('span', { className: 'sim-as-title' }, '助手'),
                     h(Btn, { disabled: asBusy || !asLog.length, onClick: () => clearAssistant() }, '清空'),
