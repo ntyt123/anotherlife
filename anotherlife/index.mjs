@@ -4328,14 +4328,14 @@ reg('parseRealPerson', async ({ gameId, name, fields }) => {
     msgs.push({ role: 'user', content: say });
 
     const cfg = (s.config && s.config.assistant) || {};
-    const opts = { temperature: 0.7, maxTokens: 2000, tag: '助手' };
+    const opts = { temperature: 0.7, maxTokens: 2000, tag: '神谕' };
     let out;
     if (cfg.model) {
       out = await callSlot(s, 'assistant', msgs, Object.assign({ timeoutMs: 120000 }, opts));
     } else {
       // callMainModel 返回的是 { text, reasoning, finish }，不是字符串 ——
       // 忘了取 .text 就会一路变成 [object Object] 存进存档（这里踩过）。
-      const r = await callMainModel(msgs, Object.assign({ stallMs: 120000, purpose: '助手' }, opts));
+      const r = await callMainModel(msgs, Object.assign({ stallMs: 120000, purpose: '神谕' }, opts));
       out = r && typeof r === 'object' && r.text != null ? String(r.text) : String(r == null ? '' : r);
     }
     out = String(out == null ? '' : out);

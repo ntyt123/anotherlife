@@ -3848,7 +3848,7 @@ window.__ModuleLoader__.load({
             call('assistantChat', { text: text, history: past }, gameId)
               .then((r) => {
                 if (r && r.ok) done(r.reply);
-                else done('', (r && r.msg) || '助手没有回复');
+                else done('', (r && r.msg) || '神谕没有回复');
               })
               .catch((e) => done('', msg(e)));
           }
@@ -3877,14 +3877,14 @@ window.__ModuleLoader__.load({
             call('assistantChat', { text: q, history: upto.slice(0, qi) }, gameId)
               .then((r) => {
                 if (r && r.ok) done(r.reply);
-                else done('', (r && r.msg) || '助手没有回复');
+                else done('', (r && r.msg) || '神谕没有回复');
               })
               .catch((e) => done('', msg(e)));
           }
           /** 清空助手的全部对话：界面与存档一起清 */
           function clearAssistant() {
             if (asBusy) return;
-            if (!window.confirm('清空全部助手对话？')) return;
+            if (!window.confirm('清空全部神谕对话？')) return;
             setAsLog([]);
             call('assistantClear', {}, gameId).catch(() => {});
           }
@@ -4588,7 +4588,7 @@ window.__ModuleLoader__.load({
                 {
                   key: 'assistant',
                   className: 'sim-rail-tab' + (asOpen ? ' on' : ''),
-                  title: '助手',
+                  title: '神谕',
                   onClick: () => setAsOpen((v) => !v),
 // 双击页签：复位位置与大小，并确保浮窗是打开的（怕它被拖到看不见的地方）
 onDoubleClick: () => {
@@ -4597,7 +4597,7 @@ onDoubleClick: () => {
 },
                 },
                 h('span', { className: 'ic' }, '💬'),
-                h('span', { className: 'lb' }, '助手')
+                h('span', { className: 'lb' }, '神谕')
               )
             )
           );
@@ -8294,7 +8294,7 @@ function starPanel(n) {
                 ModelCfg({ slot: 'retrieve', title: '检索', sub: '挑选本轮需要哪些条目。可填便宜的快速模型。', row: true }),
                 ModelCfg({ slot: 'settle', title: '结算', sub: '每轮的变量变化与小总结。留空则跳过结算。', row: true }),
                 ModelCfg({ slot: 'summary', title: '总结', sub: '每 N 轮把正文压成前情总结。留空则关掉总结。', row: true }),
-                ModelCfg({ slot: 'assistant', title: '助手', sub: '助手浮窗用的模型。', row: true })
+                ModelCfg({ slot: 'assistant', title: '神谕', sub: '神谕浮窗用的模型。', row: true })
               )
             ),
 
@@ -8707,7 +8707,7 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
     asResetBox();
   },
 },
-                    h('span', { className: 'sim-as-title' }, '助手'),
+                    h('span', { className: 'sim-as-title' }, '神谕'),
                     h(Btn, { disabled: asBusy || !asLog.length, onClick: () => clearAssistant() }, '清空'),
                     h(Btn, { onClick: () => { setAsOpen(false); if (close) close(); } }, '切换到普通聊天')
                   ),
