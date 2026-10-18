@@ -304,6 +304,9 @@ window.__ModuleLoader__.load({
       '.sim-gal-cell img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:5px;display:block}',
       '.sim-gal-nm{font-size:var(--sim-fs-1);color:var(--sim-t2);text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
       '.sim-gal-nm:hover{color:var(--sim-ac);text-decoration:underline}',
+      '.sim-gal-in{width:100%;min-width:0;font-size:var(--sim-fs-1);text-align:center;padding:1px 3px;border:1px solid var(--sim-ac);border-radius:4px;background:var(--sim-bg2);color:var(--sim-t);font-family:inherit}',
+      '.sim-gal-in:focus{outline:none}',
+      '.sim-gal-x.edit{left:2px;right:auto;line-height:16px;font-size:10px}',
       '.sim-gal-x{position:absolute;top:2px;right:2px;width:18px;height:18px;padding:0;border-radius:50%;border:none;background:rgba(0,0,0,.55);color:#fff;font-size:11px;line-height:18px;text-align:center;cursor:pointer;opacity:0;transition:opacity .12s}',
       '.sim-gal-cell:hover .sim-gal-x{opacity:1}',
       '.sim-gal-zoom .sim-modal-b img{max-width:100%;max-height:62vh;display:block;margin:0 auto;border-radius:8px}',
@@ -2485,6 +2488,9 @@ window.__ModuleLoader__.load({
           const [busy, setBusy] = React.useState(false);
           const [err, setErr] = React.useState('');
           const [zoom, setZoom] = React.useState(null);
+          // 改名：正在编辑哪张、输入中的名字。内联编辑，不弹 prompt
+          const [editId, setEditId] = React.useState('');
+          const [editName, setEditName] = React.useState('');
           const fileRef = React.useRef(null);
           const em = (e) => (e && e.message ? e.message : String(e));
 
@@ -2561,11 +2567,16 @@ window.__ModuleLoader__.load({
               .then((r) => setZoom({ name: it.name, data: (r && r.data) || "" }))
               .catch((e) => setErr(em(e)));
           };
-          /** 重命名：点图名直接改 */
-          const rename = (it) => {
-              const nn = window.prompt('图片名称', it.name);
-              if (nn == null) return;
-              const nm = String(nn).trim();
+          /** 开始改名：把名字那一格换成输入框 */
+          const beginRename = (it) => {
+              setEditId(it.id);
+              setEditName(it.name);
+          };
+          /** 提交改名。editId 已清空就直接返回，避免 Enter 与 blur 各提交一次 */
+          const commitRename = (it) => {
+              if (editId !== it.id) return;
+              const nm = String(editName).trim();
+              setEditId('');
               if (!nm || nm === it.name) return;
               setBusy(true);
               setErr('');
@@ -2615,7 +2626,29 @@ window.__ModuleLoader__.load({
                           'div',
                           { className: 'sim-gal-cell', key: it.id },
                           h('img', { src: it.thumb, alt: it.name, onClick: () => peek(it) }),
-                          h('div', { className: 'sim-gal-nm', title: '点击改名：' + it.name, onClick: () => rename(it) }, it.name),
+                          editId === it.id
+                            ? h(
+                                  'input',
+                                  {
+                                      className: 'sim-gal-in',
+                                      value: editName,
+                                      autoFocus: true,
+                                      onChange: (e) => setEditName(e.target.value),
+                                      onKeyDown: (e) => {
+                                        if (e.key === 'Enter') {
+                                          e.preventDefault();
+                                          commitRename(it);
+                                        } else if (e.key === 'Escape') {
+                                          e.preventDefault();
+                                          setEditId('');
+                                        }
+                                      },
+                                      onBlur: () => commitRename(it),
+                                      onClick: (e) => e.stopPropagation(),
+                                  }
+                                )
+                            : h('div', { className: 'sim-gal-nm', title: '点击改名：' + it.name, onClick: () => beginRename(it) }, it.name),
+                          h('button', { className: 'sim-gal-x edit', title: '改名', onClick: () => beginRename(it) }, '✎'),
                           h('button', { className: 'sim-gal-x', title: '删掉', onClick: () => del(it) }, '✕')
                         )
                       )
