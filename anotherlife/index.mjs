@@ -22,7 +22,7 @@ const P = 'dsh-tavern-simulator/';
 const KEY_SLOTS = ['retrieve', 'settle', 'summary', 'assistant'];
 
 /** 每次改动宿主侧都改一下这个版本号：ping 会回报它，用来确认 Tavern 到底加载的是哪一版 */
-const REV = 'host-v64-person-3-20261017r';
+const REV = 'host-v65-settle-toolcall-20261017r';
 
 /**
  * 只有这一局用的是这些卡时，插件才出现在界面上（其余卡片游玩时完全不打扰）。
@@ -1176,6 +1176,51 @@ async function activeWritingSkill() {
    * 默认用当前主模型；opts.provider / opts.model 可以指定别的（槽位就用这条路，
    * 这样它们和主模型共用同一套凭据，不必各自填 BaseURL 与密钥）。
    */
+/**
+ * 结算用的工具定义。让模型**直接以结构化参数交卷**，不用在文本里拼 JSON、
+ * 也就没有 markdown 围栏、前后废话、半截 JSON 这些失败模式。
+ * 参数 schema 故意放宽（additionalProperties: true）：字段名是中文、且随卡变化，
+ * 硬约束会逼模型省字段。这里只要「它是个对象」。
+ */
+const SETTLE_TOOL = {
+  name: 'emit_state_update',
+  description: '提交这一轮的全部变量变化与一句话小总结。只写变化的字段（值写新值），没变的字段不要写；没有任何变化时也要调用，只给 summary。',
+  parameters: {
+    type: 'object',
+    properties: {
+      world: { type: 'object', description: '世界观字段级变化，键是字段名、值是新的值', additionalProperties: true },
+      protagonist: { type: 'object', description: '主角字段级变化', additionalProperties: true },
+      chars: {
+        type: 'array',
+        description: '这一轮出现过的人物；已有角色只写变化的字段（含姓名），新角色给完整条目',
+        items: { type: 'object', additionalProperties: true },
+      },
+      relationships: {
+        type: 'array',
+        description: '与主角有关的关系变化',
+        items: { type: 'object', additionalProperties: true },
+      },
+      summary: { type: 'string', description: '一句话小总结：这一轮发生了什么' },
+    },
+    required: ['summary'],
+    additionalProperties: true,
+  },
+};
+/** 从一次调用结果里取出工具参数；没有、或参数不是合法 JSON，返回 null */
+function pickToolCall(r) {
+  const calls = (r && Array.isArray(r.toolCalls)) ? r.toolCalls : [];
+  for (const c of calls) {
+    if (!c || !c.args) continue;
+    try {
+      const obj = JSON.parse(c.args);
+      if (obj && typeof obj === "object" && !Array.isArray(obj)) return obj;
+    } catch (e) {
+      /* 参数拼坏了，交给文本兜底 */
+    }
+  }
+  return null;
+}
+
   async function callMainModel(messages, opts) {
     opts = opts || {};
     if (!llm) throw new Error('当前运行时没有可用的 llm 服务');
@@ -1220,8 +1265,11 @@ async function activeWritingSkill() {
     if (opts.reasoningEffort != null) options.reasoningEffort = opts.reasoningEffort;
     if (opts.temperature != null) options.temperature = opts.temperature;
     if (opts.maxTokens) options.maxTokens = opts.maxTokens;
+    // 工具调用：让模型以结构化参数交卷，省掉「在文本里找 JSON」那一层
+    if (Array.isArray(opts.tools) && opts.tools.length) options.tools = opts.tools;
 
     const texts = {};
+    const toolCalls = {};
     const reasonings = {};
     const seen = {};
     let finish = null;
@@ -1258,8 +1306,18 @@ async function activeWritingSkill() {
       else if (c.type === 'block-end' && c.block) {
         if (c.block.type === 'text' && c.block.text != null) texts[idx] = c.block.text;
         else if (c.block.type === 'reasoning' && c.block.text != null) reasonings[idx] = c.block.text;
+      } else if (c.type === 'tool-call-delta') {
+        // 同一个 index 的 delta 拼成完整的参数 JSON
+        const cur = toolCalls[idx] || (toolCalls[idx] = { id: String(c.id || ''), name: '', args: '' });
+        if (c.id) cur.id = String(c.id);
+        if (c.name) cur.name = String(c.name);
+        cur.args += String(c.argumentsDelta || '');
       } else if (c.type === 'finish') finish = c.reason;
     }
+    const callList = Object.keys(toolCalls)
+      .sort((a, b) => Number(a) - Number(b))
+      .map((k) => toolCalls[k])
+      .filter((x) => x && (x.args || x.name));
     const joinMap = (map) =>
       Object.keys(map)
         .sort((a, b) => Number(a) - Number(b))
@@ -1267,14 +1325,14 @@ async function activeWritingSkill() {
         .join('');
     const text = joinMap(texts);
     const reasoning = joinMap(reasonings);
-    if (!text && !reasoning) {
+    if (!text && !reasoning && !callList.length) {
       const why = describeFinish(finish);
       await apiLog('[' + tag + '] ' + who + ' → 失败：' + (why || '没有返回内容（chunk 类型：' + Object.keys(seen).join(',') + '）'), t0);
       if (why) throw new Error('主模型没有返回正文：' + why);
       throw new Error('主模型没有返回内容（chunk 类型：' + Object.keys(seen).join(',') + '）');
     }
     await apiLog('[' + tag + '] ' + who + ' → ' + text.length + ' 字', t0);
-    return { text, reasoning, finish };
+    return { text, reasoning, finish, toolCalls: callList };
   }
 
   /** 走用户自填的 OpenAI 兼容端点；密钥从凭据服务实时取 */
@@ -1289,7 +1347,29 @@ async function activeWritingSkill() {
       try {
         // 注意 callMainModel 返回的是 { text, reasoning, finish }，不是字符串 ——
         // 直接往外抛会一路走到界面上显示成 [object Object]（助手上踩过）。
-        const r = await callMainModel(messages, Object.assign({}, opts, { provider: cfg.provider, model: cfg.model }));
+        let r;
+        try {
+          r = await callMainModel(messages, Object.assign({}, opts, { provider: cfg.provider, model: cfg.model }));
+        } catch (e) {
+          // 有些 provider 不认 tools，传了直接报错。去掉 tools 重试一次，
+          // 让纯文本解析那条路接管 —— 不能因为一个增强功能把结算整体搞挂。
+          if (!opts.tools) throw e;
+          await apiLog(
+            '[槽位·' + tag + '] ' + who + ' → 工具调用失败（' + String((e && e.message) || e).slice(0, 60) + '），改走纯文本',
+            t0
+          );
+          const noTools = Object.assign({}, opts);
+          delete noTools.tools;
+          r = await callMainModel(messages, Object.assign({}, noTools, { provider: cfg.provider, model: cfg.model }));
+        }
+        if (opts.wantTools) {
+          await apiLog(
+            '[槽位·' + tag + '] ' + who + ' → 工具 ' + ((r && r.toolCalls) || []).length + ' 次 / 正文 ' + String((r && r.text) || '').length + ' 字',
+            t0
+          );
+          return r;
+        }
+        // 没要工具时维持原样：只回正文
         const out = r && typeof r === 'object' && r.text != null ? String(r.text) : String(r == null ? '' : r);
         await apiLog('[槽位·' + tag + '] ' + who + ' → ' + out.length + ' 字', t0);
         return out;
@@ -3857,14 +3937,32 @@ async function activeWritingSkill() {
     }
     const scfg = (s && s.config && s.config.settle) || {};
     if (scfg.model) {
-      const raw = await callSlot(s, 'settle', msgs, { temperature: 0.2, maxTokens: 6000, timeoutMs: 180000, tag: '变量解析' });
-      const out = String(raw == null ? '' : raw).trim();
+      const r = await callSlot(s, 'settle', msgs, {
+        temperature: 0.2,
+        maxTokens: 6000,
+        timeoutMs: 180000,
+        tag: '变量解析',
+        tools: [SETTLE_TOOL],
+        wantTools: true,
+      });
+      // 首选工具调用：参数本来就是 JSON，不用防围栏和半截输出
+      const viaTool = pickToolCall(r);
+      if (viaTool) return viaTool;
+      const out = String(r && r.text != null ? r.text : r == null ? '' : r).trim();
       if (!out) throw new Error('「变量解析」模型没有返回内容');
       const parsedBySlot = parseJsonLoose(out);
       if (parsedBySlot) return parsedBySlot;
       return { _raw: out, _len: out.length, _finish: null };
     }
-    const r = await callMainModel(msgs, { temperature: 0.2, maxTokens: 6000, stallMs: 120000, purpose: '变量解析' });
+    let r = null;
+    try {
+      r = await callMainModel(msgs, { temperature: 0.2, maxTokens: 6000, stallMs: 120000, purpose: '变量解析', tools: [SETTLE_TOOL] });
+    } catch (e) {
+      // 不支持 tools 就退回纯文本 —— 不能因为增强功能把结算搞挂
+      r = await callMainModel(msgs, { temperature: 0.2, maxTokens: 6000, stallMs: 120000, purpose: '变量解析' });
+    }
+    const viaTool2 = pickToolCall(r);
+    if (viaTool2) return viaTool2;
     const out = r.text && r.text.trim() ? r.text : r.reasoning;
     if (!out || !String(out).trim()) throw new Error('主模型没有返回内容');
     const parsed = parseJsonLoose(out);
