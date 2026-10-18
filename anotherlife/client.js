@@ -3040,6 +3040,33 @@ window.__ModuleLoader__.load({
               };
           }, [tab, gameId]);
 
+          // ── 写作指导：从 Tavern 的 skills 目录里选一份注入正文，随时可换 ──
+          const [wskill, setWskill] = React.useState({ list: [], id: '', body: '', loaded: false, busy: false, note: '' });
+          const skillLoadedRef = React.useRef(false);
+          React.useEffect(() => {
+              if (tab !== 'settings' || skillLoadedRef.current) return;
+              skillLoadedRef.current = true;
+              let alive = true;
+              call('getWritingSkill', {}, gameId)
+                  .then((r) => {
+                  if (!alive) return;
+                  setWskill((p) =>
+                      Object.assign({}, p, {
+                        list: (r && r.list) || [],
+                        id: (r && r.id) || '',
+                        body: (r && r.body) || '',
+                        loaded: true,
+                      })
+                  );
+                  })
+                  .catch(() => {
+                  if (alive) setWskill((p) => Object.assign({}, p, { loaded: true }));
+                  });
+              return () => {
+                alive = false;
+              };
+          }, [tab, gameId]);
+
 
           function run(p, reload) {
             setBusy(true);
@@ -3469,6 +3496,43 @@ window.__ModuleLoader__.load({
                 )
               )
               .catch((e) => setPrefs((p) => Object.assign({}, p, { busy: false, note: msg(e) })));
+          }
+          /** 换一份写作指导（空串 = 不启用），换完立刻把正文也拉回来看 */
+          function pickSkill(id) {
+            setWskill((p) => Object.assign({}, p, { busy: true, note: '' }));
+            return call('saveWritingSkill', { id: id || '' }, gameId)
+              .then(() => call('getWritingSkill', {}, gameId))
+              .then((r) =>
+                setWskill((p) =>
+                  Object.assign({}, p, {
+                    list: (r && r.list) || p.list,
+                    id: (r && r.id) || '',
+                    body: (r && r.body) || '',
+                    loaded: true,
+                    busy: false,
+                    note: '',
+                  })
+                )
+              )
+              .catch((e) => setWskill((p) => Object.assign({}, p, { busy: false, note: msg(e) })));
+          }
+          /** 重新读一遍 skills 目录（在 Tavern 里改了内容不用重启模拟器） */
+          function reloadSkill() {
+            setWskill((p) => Object.assign({}, p, { busy: true, note: '' }));
+            return call('getWritingSkill', {}, gameId)
+              .then((r) =>
+                setWskill((p) =>
+                  Object.assign({}, p, {
+                    list: (r && r.list) || [],
+                    id: (r && r.id) || '',
+                    body: (r && r.body) || '',
+                    loaded: true,
+                    busy: false,
+                    note: '',
+                  })
+                )
+              )
+              .catch((e) => setWskill((p) => Object.assign({}, p, { busy: false, note: msg(e) })));
           }
 
           if (!state || !draft || !dps) {
@@ -7803,6 +7867,62 @@ function starPanel(n) {
                   '内容与开关都在 Tavern 那边设置，这里只决定这一局要不要用。'
                 ),
                 prefs.note ? h('div', { className: 'sim-hint' }, prefs.note) : null
+            ),
+
+            /* ── 写作指导 ── */
+            group(
+              'writing',
+              '写作指导',
+              (wskill.id ? wskill.id + ' · ' + wskill.body.length + ' 字' : '未启用'),
+              h(
+                'div',
+                { className: 'sim-card' },
+                h(
+                  'div',
+                  { className: 'sim-hint', style: { marginBottom: 8 } },
+                  '随时切换这一轮用哪份写作指导。内容来自 Tavern 的 skills 目录（SKILL.md 正文，frontmatter 不用管）。'
+                ),
+                h(
+                  'div',
+                  { className: 'sim-field' },
+                  h('label', null, '用哪一份'),
+                  h(
+                    'select',
+                    {
+                      className: 'sim-select',
+                      value: wskill.id,
+                      disabled: wskill.busy,
+                      onChange: (e) => pickSkill(e.target.value),
+                    },
+                      h('option', { value: '' }, '不启用'),
+                      wskill.list.map((x) =>
+                        h(
+                          'option',
+                          { key: x.id, value: x.id },
+                          x.id + (x.purpose && x.purpose !== 'writing' ? '（' + x.purpose + '）' : '') + ' · ' + x.chars + ' 字'
+                        )
+                      )
+                  ),
+                ),
+                wskill.body
+                  ? h(
+                      'div',
+                      { className: 'sim-pref-text', style: { marginTop: 10 } },
+                      wskill.body
+                    )
+                  : h('div', { className: 'sim-hint', style: { marginTop: 10 } }, wskill.loaded ? '没启用写作指导。' : '正在读取…'),
+                h(
+                  'div',
+                  { className: 'sim-acts', style: { marginTop: 10 } },
+                  h(Btn, { disabled: wskill.busy, onClick: () => reloadSkill() }, '重新读取'),
+                  wskill.note ? h('span', { className: 'sim-hint' }, wskill.note) : null
+                ),
+                h(
+                  'div',
+                  { className: 'sim-hint', style: { marginTop: 8 } },
+                  '列表里带括号的是非写作类 skill（purpose 不是 writing）。'
+                ),
+              ),
             ),
 
             /* ── 模型 ── */

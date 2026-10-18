@@ -22,7 +22,7 @@ const P = 'dsh-tavern-simulator/';
 const KEY_SLOTS = ['retrieve', 'settle', 'summary', 'assistant'];
 
 /** 每次改动宿主侧都改一下这个版本号：ping 会回报它，用来确认 Tavern 到底加载的是哪一版 */
-const REV = 'host-v60-prompt-preview-20261017r';
+const REV = 'host-v61-writing-skill-20261017r';
 
 /**
  * 只有这一局用的是这些卡时，插件才出现在界面上（其余卡片游玩时完全不打扰）。
@@ -611,6 +611,92 @@ async function activePreference() {
   }
   prefCache = { at: now, value };
   return value;
+}
+
+/**
+ * 写作指导（Tavern 的 skills 目录）。
+ * 路径：<Tavern数据>/skills/<id>/SKILL.md，frontmatter 里 metadata.tavern.purpose
+ * 标成 writing 的就是写作类。用户在模拟器里随时切换用哪一份。
+ */
+const SKILLS_DIR = TAVERN_DATA_DIR + 'skills/';
+
+/** 拆 SKILL.md：frontmatter 取 name／description／purpose，其余是正文 */
+function parseSkillMd(text) {
+  const t = String(text || '');
+  if (t.indexOf('---') !== 0) return { name: '', description: '', purpose: '', body: t };
+  const end = t.indexOf('\n---', 3);
+  if (end < 0) return { name: '', description: '', purpose: '', body: t };
+  const head = t.slice(3, end);
+  const body = t.slice(end + 4).replace(/^\s*\n/, '').trim();
+  const pick = (k) => {
+    const m = new RegExp('^\\s*' + k + ':\\s*(.*)$', 'm').exec(head);
+    return m ? String(m[1]).replace(/^["']|["']$/g, '').trim() : '';
+  };
+  const pm = /purpose:\s*["']?([A-Za-z_-]+)["']?/.exec(head);
+  return { name: pick('name'), description: pick('description'), purpose: pm ? pm[1] : '', body };
+}
+
+/** 列出 skills 目录下的所有 SKILL.md（写作类排前面） */
+async function listWritingSkills() {
+  let dirs = [];
+  try {
+    dirs = readdirSync(SKILLS_DIR, { withFileTypes: true })
+      .filter((d) => d.isDirectory())
+      .map((d) => d.name);
+  } catch (e) {
+    return [];
+  }
+  const out = [];
+  for (const id of dirs) {
+    try {
+      const token = await fs.resolve(SKILLS_DIR + id + '/SKILL.md');
+      const md = parseSkillMd(await fs.readText(token));
+      out.push({
+        id,
+        name: md.name || id,
+        description: md.description,
+        purpose: md.purpose,
+        chars: md.body.length,
+      });
+    } catch (e) {
+      /* 没有 SKILL.md 的目录跳过 */
+    }
+  }
+  // purpose=writing 的排前，其余按 id
+  return out.sort((x, y) => {
+    const wx = x.purpose === 'writing' ? 0 : 1;
+    const wy = y.purpose === 'writing' ? 0 : 1;
+    return wx - wy || x.id.localeCompare(y.id);
+  });
+}
+
+/** 读某一份 skill 的正文（frontmatter 已去掉） */
+async function readWritingSkillBody(id) {
+  const key = String(id || '').trim();
+  if (!key) return '';
+  try {
+    const token = await fs.resolve(SKILLS_DIR + key + '/SKILL.md');
+    return parseSkillMd(await fs.readText(token)).body;
+  } catch (e) {
+    return '';
+  }
+}
+
+/** 当前选用的写作指导（60 秒缓存，保存时清） */
+let skillCache = { at: 0, id: '', body: '' };
+async function activeWritingSkill() {
+  const now = Date.now();
+  if (now - skillCache.at < 60000) return skillCache;
+  let id = '';
+  try {
+    const g = (await readJson(SETTINGS_FILE)) || {};
+    id = String(g.writingSkillId || '').trim();
+  } catch (e) {
+    id = '';
+  }
+  const body = id ? await readWritingSkillBody(id) : '';
+  skillCache = { at: now, id, body };
+  return skillCache;
 }
 
 
@@ -1706,6 +1792,15 @@ async function activePreference() {
     head.push('【用户已确认的长期偏好】以下偏好只影响表现方式；人物卡设定和用户本轮明确要求优先。不要复述本段。');
     head.push('');
     head.push(pref.text);
+    head.push('');
+  }
+
+  // 写作指导（skills 目录里选的那一份）。只管写法，不动事实与设定
+  const skill = await activeWritingSkill();
+  if (skill.body) {
+    head.push('【写作指导 · ' + skill.id + '】下面这份指导只管「怎么写」，不改变任何事实与设定；与前文规则冲突时，以前文规则为准。');
+    head.push('');
+    head.push(skill.body);
     head.push('');
   }
   head.push(opts.all ? '【全部设定（开局）】' : '【本轮相关状态】');
@@ -3159,6 +3254,25 @@ async function activePreference() {
     await writeJson(SETTINGS_FILE, g);
     prefCache = { at: 0, value: null };
     return { ok: true, on: g.useTavernPreference };
+  });
+
+  // ── 写作指导：列出 skills 目录里的那几份，选一份注入正文 ──
+  reg('getWritingSkill', async () => {
+    const g = (await readJson(SETTINGS_FILE)) || {};
+    const id = String(g.writingSkillId || '').trim();
+    return {
+      list: await listWritingSkills(),
+      id,
+      body: id ? await readWritingSkillBody(id) : '',
+    };
+  });
+  reg('saveWritingSkill', async ({ id }) => {
+    const g = (await readJson(SETTINGS_FILE)) || {};
+    g.writingSkillId = String(id || '').trim();
+    g.updatedAt = Date.now();
+    await writeJson(SETTINGS_FILE, g);
+    skillCache = { at: 0, id: '', body: '' };
+    return { ok: true, id: g.writingSkillId };
   });
 
   reg('setSkin', async ({ gameId, skin }) => {
