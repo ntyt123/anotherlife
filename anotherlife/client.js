@@ -2739,7 +2739,7 @@ window.__ModuleLoader__.load({
           const [asPos, setAsPos] = React.useState(() => {
             try {
               const v = JSON.parse(window.localStorage.getItem('sim-as-pos') || 'null');
-              if (v && typeof v.x === 'number' && typeof v.y === 'number') return v;
+              if (v && Number.isFinite(v.x) && Number.isFinite(v.y)) return v;
             } catch (e) {
               /* 存坏了就当没存过 */
             }
@@ -2750,7 +2750,7 @@ window.__ModuleLoader__.load({
           const [asSize, setAsSize] = React.useState(() => {
             try {
               const v = JSON.parse(window.localStorage.getItem('sim-as-size') || 'null');
-              if (v && typeof v.w === 'number' && typeof v.h === 'number') return v;
+              if (v && Number.isFinite(v.w) && Number.isFinite(v.h)) return v;
             } catch (e) {
               /* 存坏了当没存过 */
             }
@@ -3744,12 +3744,16 @@ window.__ModuleLoader__.load({
             const m = 4;
             const dw = Math.min(420, window.innerWidth * 0.42);
             const dh = Math.min(600, window.innerHeight * 0.78);
-            const w = Math.round(Math.max(AS_MIN_W, Math.min(window.innerWidth - m * 2, asSize ? asSize.w : dw)));
-            const h = Math.round(Math.max(AS_MIN_H, Math.min(window.innerHeight - m * 2, asSize ? asSize.h : dh)));
-            const x = asPos
+            // 先取「用户设的 vs 最小宽」里大的，再和「视口能给的」取小的 ——
+            // 反过来（先 min 后 max）会在窗口比最小宽还窄时算出超出视口的宽度
+            const w = Math.round(Math.min(window.innerWidth - m * 2, Math.max(AS_MIN_W, asSize ? asSize.w : dw)));
+            const h = Math.round(Math.min(window.innerHeight - m * 2, Math.max(AS_MIN_H, asSize ? asSize.h : dh)));
+            // asPos 里万一是 NaN（localStorage 被手改过之类），退回默认的右下角位置
+            const okPos = asPos && Number.isFinite(asPos.x) && Number.isFinite(asPos.y);
+            const x = okPos
               ? Math.max(m, Math.min(window.innerWidth - w - m, asPos.x))
               : Math.max(m, window.innerWidth - w - 22);
-            const y = asPos
+            const y = okPos
               ? Math.max(m, Math.min(window.innerHeight - h - m, asPos.y))
               : Math.max(m, window.innerHeight - h - 22);
             return {
@@ -4586,6 +4590,11 @@ window.__ModuleLoader__.load({
                   className: 'sim-rail-tab' + (asOpen ? ' on' : ''),
                   title: '助手',
                   onClick: () => setAsOpen((v) => !v),
+// 双击页签：复位位置与大小，并确保浮窗是打开的（怕它被拖到看不见的地方）
+onDoubleClick: () => {
+  asResetBox();
+  setAsOpen(true);
+},
                 },
                 h('span', { className: 'ic' }, '💬'),
                 h('span', { className: 'lb' }, '助手')
