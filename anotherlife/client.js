@@ -296,6 +296,16 @@ window.__ModuleLoader__.load({
       '.sim-av-pick:hover{border-color:var(--sim-ac);box-shadow:0 0 0 3px color-mix(in srgb,var(--sim-ac) 20%,transparent)}',
       // 换头像弹窗
       '.sim-avm-tabs{display:flex;gap:6px;margin-bottom:12px}',
+      // 图库：网格缩略图（页面里与换头像弹窗里共用）
+      '.sim-gal-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:8px;margin-top:12px}',
+      '.sim-gal-grid.pick{grid-template-columns:repeat(auto-fill,minmax(70px,1fr));margin-top:0;max-height:230px;overflow-y:auto;padding:2px}',
+      '.sim-gal-cell{position:relative;display:flex;flex-direction:column;gap:4px;border:1px solid var(--sim-bd);border-radius:8px;padding:4px;background:var(--sim-bg);cursor:pointer;transition:border-color .12s}',
+      '.sim-gal-cell:hover{border-color:var(--sim-ac)}',
+      '.sim-gal-cell img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:5px;display:block}',
+      '.sim-gal-nm{font-size:var(--sim-fs-1);color:var(--sim-t2);text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+      '.sim-gal-x{position:absolute;top:2px;right:2px;width:18px;height:18px;padding:0;border-radius:50%;border:none;background:rgba(0,0,0,.55);color:#fff;font-size:11px;line-height:18px;text-align:center;cursor:pointer;opacity:0;transition:opacity .12s}',
+      '.sim-gal-cell:hover .sim-gal-x{opacity:1}',
+      '.sim-gal-zoom .sim-modal-b img{max-width:100%;max-height:62vh;display:block;margin:0 auto;border-radius:8px}',
       '.sim-avm-row{display:flex;align-items:center;gap:14px}',
       '.sim-avm-big{width:112px;height:112px;flex:0 0 auto;border-radius:16px;overflow:hidden;border:1px solid var(--sim-bd);background:var(--sim-bg2);display:flex;align-items:center;justify-content:center;font-size:38px}',
       '.sim-avm-big img{width:100%;height:100%;object-fit:cover;display:block}',
@@ -2307,6 +2317,36 @@ window.__ModuleLoader__.load({
             setPrompt('');
             setErr('');
           }, [key]);
+          // 图库页：切过去才加载（列表回的是缩略图，不占带宽）
+          const [gal, setGal] = React.useState({ list: [], loaded: false, busy: false });
+          React.useEffect(() => {
+              if (tab !== 'gallery' || gal.loaded) return;
+              let alive = true;
+              Promise.resolve(props.listGallery ? props.listGallery() : { items: [] })
+                .then((r) => {
+                  if (alive) setGal({ list: (r && r.items) || [], loaded: true, busy: false });
+                })
+                .catch(() => {
+                  if (alive) setGal({ list: [], loaded: true, busy: false });
+                });
+              return () => {
+                alive = false;
+              };
+          }, [tab]);
+          /** 从图库挑一张：取回全尺寸数据放进 draft，保存时走同一个 onSave */
+          const pickGallery = (id) => {
+              setErr('');
+              setGal((p) => Object.assign({}, p, { busy: true }));
+              Promise.resolve(props.getGallery ? props.getGallery(id) : null)
+                .then((r) => {
+                  setDraft(String((r && r.data) || ''));
+                  setGal((p) => Object.assign({}, p, { busy: false }));
+                })
+                .catch((e) => {
+                  setErr(e && e.message ? e.message : String(e));
+                  setGal((p) => Object.assign({}, p, { busy: false }));
+                });
+          };
           if (!cfg) return null;
           const cur = String(props.current || '');
           const shown = draft || cur;
@@ -2354,7 +2394,8 @@ window.__ModuleLoader__.load({
                   'div',
                   { className: 'sim-avm-tabs' },
                   h('button', { className: 'sim-btn' + (tab === 'local' ? ' primary' : ''), onClick: () => setTab('local') }, '本地图片'),
-                  h('button', { className: 'sim-btn' + (tab === 'ai' ? ' primary' : ''), onClick: () => setTab('ai') }, 'AI 生成')
+                  h('button', { className: 'sim-btn' + (tab === 'ai' ? ' primary' : ''), onClick: () => setTab('ai') }, 'AI 生成'),
+                  h('button', { className: 'sim-btn' + (tab === 'gallery' ? ' primary' : ''), onClick: () => setTab('gallery') }, '图库'),
                 ),
                 tab === 'local'
                   ? h(
@@ -2363,6 +2404,25 @@ window.__ModuleLoader__.load({
                       h('div', { className: 'sim-avm-pick', onClick: pick }, draft ? '重新选一张' : '点击选择本地图片'),
                       h('input', { ref: fileRef, type: 'file', accept: 'image/*', style: { display: 'none' }, onChange: onFile })
                     )
+                  : tab === 'gallery'
+                  ? h(
+                        'div',
+                        null,
+                          gal.list.length
+                              ? h(
+                                  'div',
+                                  { className: 'sim-gal-grid pick' },
+                                  gal.list.map((it) =>
+                                    h(
+                                      'div',
+                                      { className: 'sim-gal-cell', key: it.id, title: it.name, onClick: () => pickGallery(it.id) },
+                                      h('img', { src: it.thumb, alt: it.name }),
+                                      h('div', { className: 'sim-gal-nm' }, it.name)
+                                    )
+                                  )
+                                )
+                              : h('div', { className: 'sim-avm-note' }, gal.loaded ? '图库还是空的，去「图库」页签上传。' : '正在读取…'),
+                      )
                   : h(
                       'div',
                       null,
@@ -2409,6 +2469,156 @@ window.__ModuleLoader__.load({
                 )
               )
             )
+          );
+        }
+
+        /**
+         * 图库页：上传本地图片、浏览、删除。
+         * 独立组件（自带 hooks），不受 App「没加载好就 return」的影响。
+         * 图片存两份：512 长边的全图给头像用，96 的缩略图给这个列表用。
+         */
+        function GalleryView(props) {
+          const [items, setItems] = React.useState([]);
+          const [max, setMax] = React.useState(40);
+          const [loaded, setLoaded] = React.useState(false);
+          const [busy, setBusy] = React.useState(false);
+          const [err, setErr] = React.useState('');
+          const [zoom, setZoom] = React.useState(null);
+          const fileRef = React.useRef(null);
+          const em = (e) => (e && e.message ? e.message : String(e));
+
+          const load = () => {
+            setBusy(true);
+            setErr('');
+            Promise.resolve(props.list())
+                .then((r) => {
+                  setItems((r && r.items) || []);
+                  setMax((r && r.max) || 40);
+                  setLoaded(true);
+                  setBusy(false);
+                })
+                .catch((e) => {
+                  setErr(em(e));
+                  setLoaded(true);
+                  setBusy(false);
+                });
+          };
+          React.useEffect(() => {
+            load();
+          }, []);
+
+          const onFile = (e) => {
+            const f = e && e.target && e.target.files && e.target.files[0];
+            if (e && e.target) e.target.value = "";
+            if (!f) return;
+            setBusy(true);
+            setErr('');
+            // 同一个 File 读两遍：一遍全图、一遍缩略图
+            shrinkImage(
+              f,
+              512,
+              (full) => {
+                shrinkImage(
+                  f,
+                  96,
+                  (thumb) => {
+                    Promise.resolve(
+                      props.add({ name: String(f.name || "").replace(/\.[^.]+$/, ""), data: full, thumb: thumb })
+                    )
+                      .then(() => load())
+                      .catch((e2) => {
+                        setErr(em(e2));
+                        setBusy(false);
+                      });
+                  },
+                  (m) => {
+                    setErr(m);
+                    setBusy(false);
+                  }
+                );
+              },
+              (m) => {
+                setErr(m);
+                setBusy(false);
+              }
+            );
+          };
+
+          const del = (it) => {
+            if (!window.confirm('从图库删掉「' + it.name + '」？')) return;
+            setBusy(true);
+            Promise.resolve(props.remove(it.id))
+              .then(() => load())
+              .catch((e) => {
+                setErr(em(e));
+                setBusy(false);
+              });
+          };
+
+          const peek = (it) => {
+            Promise.resolve(props.get(it.id))
+              .then((r) => setZoom({ name: it.name, data: (r && r.data) || "" }))
+              .catch((e) => setErr(em(e)));
+          };
+
+          return h(
+            'div',
+            null,
+            h(
+              'div',
+              { className: 'sim-hint', style: { marginBottom: 10 } },
+              '上传的图片存在工作目录里，跨故事共用。编辑角色头像时可以从这里挑。'
+            ),
+            h(
+              'div',
+              { className: 'sim-card' },
+              h(
+                'div',
+                { className: 'sim-acts', style: { justifyContent: 'space-between' } },
+                h(
+                  Btn,
+                  { primary: true, disabled: busy, onClick: () => fileRef.current && fileRef.current.click() },
+                  busy ? '处理中…' : '上传图片'
+                ),
+                h('span', { className: 'sim-hint' }, items.length + ' / ' + max)
+              ),
+              h('input', {
+                  type: 'file',
+                  accept: 'image/*',
+                  ref: fileRef,
+                  style: { display: 'none' },
+                  onChange: onFile,
+              }),
+              err ? h('div', { className: 'sim-err', style: { marginTop: 8 } }, err) : null,
+              items.length
+                  ? h(
+                      'div',
+                      { className: 'sim-gal-grid' },
+                      items.map((it) =>
+                        h(
+                          'div',
+                          { className: 'sim-gal-cell', key: it.id },
+                          h('img', { src: it.thumb, alt: it.name, onClick: () => peek(it) }),
+                          h('div', { className: 'sim-gal-nm', title: it.name }, it.name),
+                          h('button', { className: 'sim-gal-x', title: '删掉', onClick: () => del(it) }, '✕')
+                        )
+                      )
+                    )
+                  : h('div', { className: 'sim-hint', style: { marginTop: 12 } }, loaded ? '图库还是空的。' : '正在读取…'),
+            ),
+            zoom
+                ? h(
+                    'div',
+                    { className: 'sim-mask', onClick: () => setZoom(null) },
+                    h(
+                      'div',
+                      { className: 'sim-modal sim-gal-zoom', onClick: (e) => e.stopPropagation() },
+                      h('div', { className: 'sim-modal-h' }, h('div', { className: 'who' }, h('div', { className: 'nm' }, zoom.name)),
+                        h('button', { className: 'sim-modal-x', title: '关闭', onClick: () => setZoom(null) }, '✕')),
+                      h('div', { className: 'sim-modal-b' }, h('img', { src: zoom.data, alt: zoom.name }))
+                    )
+                  )
+                : null
           );
         }
 
@@ -4598,7 +4808,19 @@ onDoubleClick: () => {
                 },
                 h('span', { className: 'ic' }, '💬'),
                 h('span', { className: 'lb' }, '神谕')
-              )
+              ),
+              // 图库：切换成一个页面（不是浮窗），上传与挑选图片
+              h(
+                'button',
+                {
+                  key: 'gallery',
+                  className: 'sim-rail-tab' + (tab === 'gallery' ? ' on' : ''),
+                  title: '图库',
+                  onClick: () => goTab('gallery'),
+                },
+                h('span', { className: 'ic' }, '🖼️'),
+                h('span', { className: 'lb' }, '图库')
+              ),
             )
           );
 
@@ -8457,6 +8679,12 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
           else if (tab === 'protagonist') view = protEditor;
           else if (tab === 'star') view = starEditor;
           else if (tab === 'world') view = worldEditor;
+          else if (tab === 'gallery') view = h(GalleryView, {
+            list: () => call('galleryList', {}, gameId),
+            get: (id) => call('galleryGet', { id }, gameId),
+            add: (it) => call('galleryAdd', it, gameId),
+            remove: (id) => call('galleryRemove', { id }, gameId),
+          });
           else if (tab === 'npcs') view = npcEditor;
           else if (tab === 'skills') view = assetEditor;
           // 兜底：任何没匹配上的页签都不要留白屏（历史上踩过一次：正文阶段 tab='setup' → 全不匹配）
@@ -8669,6 +8897,8 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
             UiPreviewModal(uiPrevOpen, () => setUiPrevOpen(false)),
             h(AvatarModal, {
               cfg: avatarEdit,
+  listGallery: () => call('galleryList', {}, gameId),
+  getGallery: (id) => call('galleryGet', { id }, gameId),
               current: avatarEdit ? avatarsMap()[avatarEdit.key] || '' : '',
               onClose: () => setAvatarEdit(null),
               onSave: (key, dataUrl) => {

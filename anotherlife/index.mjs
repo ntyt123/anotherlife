@@ -22,7 +22,7 @@ const P = 'dsh-tavern-simulator/';
 const KEY_SLOTS = ['retrieve', 'settle', 'summary', 'assistant'];
 
 /** 每次改动宿主侧都改一下这个版本号：ping 会回报它，用来确认 Tavern 到底加载的是哪一版 */
-const REV = 'host-v66-jailbreak-20261018r';
+const REV = 'host-v67-gallery-20261018r';
 
 /**
  * 只有这一局用的是这些卡时，插件才出现在界面上（其余卡片游玩时完全不打扰）。
@@ -4187,6 +4187,66 @@ reg('parseRealPerson', async ({ gameId, name, fields }) => {
     }
     await saveState(s);
     return withKeyStatus(s);
+  });
+
+  // ── 图库：跨局共用的一份图片，存 workspace/simulator-gallery.json ──
+  // 插件的 fs 服务只有文本读写、写不了二进制，所以图片以 dataUrl 存；
+  // 每张存两份：data（长边 512，贴头像用）与 thumb（长边 96，列表用）。
+  // 列表只回 thumb，否则一次二十张图能把界面卡住。
+  const GALLERY_FILE = STORE_DIR + 'simulator-gallery.json';
+  const GALLERY_MAX_ITEMS = 40;
+  const GALLERY_MAX_ONE = 500 * 1024;
+  /** 读图库；坏文件当空库，不抛 */
+  async function readGallery() {
+    const g = await readJson(GALLERY_FILE);
+    const items = g && Array.isArray(g.items) ? g.items : [];
+    return items.filter((x) => x && x.id && x.data);
+  }
+  async function writeGallery(items) {
+    await writeJson(GALLERY_FILE, { items });
+  }
+  reg('galleryList', async () => {
+    const items = await readGallery();
+    return {
+      items: items.map((x) => ({
+        id: String(x.id),
+        name: String(x.name || ''),
+        at: Number(x.at) || 0,
+        thumb: String(x.thumb || x.data || ''),
+      })),
+      max: GALLERY_MAX_ITEMS,
+    };
+  });
+  reg('galleryGet', async ({ id }) => {
+    const items = await readGallery();
+    const it = items.find((x) => String(x.id) === String(id));
+    if (!it) throw new Error('这张图已经不在了');
+    return { id: String(it.id), name: String(it.name || ''), data: String(it.data) };
+  });
+  reg('galleryAdd', async ({ name, data, thumb }) => {
+    const v = String(data || '');
+    if (v.indexOf('data:image/') !== 0) throw new Error('只认图片数据');
+    if (v.length > GALLERY_MAX_ONE) throw new Error('图片太大（压缩后仍超过 500KB）');
+    const items = await readGallery();
+    if (items.length >= GALLERY_MAX_ITEMS) throw new Error('图库满了（最多 ' + GALLERY_MAX_ITEMS + ' 张）');
+    const id = 'g' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    const it = {
+      id,
+      name: String(name || '').trim().slice(0, 40) || '未命名',
+      data: v,
+      thumb: String(thumb || '').indexOf('data:image/') === 0 ? String(thumb) : v,
+      at: Date.now(),
+    };
+    items.push(it);
+    await writeGallery(items);
+    return { ok: true, id, total: items.length };
+  });
+  reg('galleryRemove', async ({ id }) => {
+    const items = await readGallery();
+    const next = items.filter((x) => String(x.id) !== String(id));
+    if (next.length === items.length) throw new Error('这张图已经不在了');
+    await writeGallery(next);
+    return { ok: true, total: next.length };
   });
 
   reg('deleteFrom', async ({ gameId, seq }) => {
