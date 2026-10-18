@@ -7767,7 +7767,7 @@ function starPanel(n) {
             group(
               'person',
               '人称',
-              person === '2' ? '第二人称' : '第三人称',
+              person === '1' ? '第一人称' : person === '2' ? '第二人称' : '第三人称',
               h(
                 'div',
                 { className: 'sim-card' },
@@ -7782,6 +7782,7 @@ function starPanel(n) {
                       value: person,
                       onChange: (e) => pickPerson(e.target.value),
                     },
+                    h('option', { value: '1' }, '第一人称（我）'),
                     h('option', { value: '3' }, '第三人称（名字／他／她）'),
                     h('option', { value: '2' }, '第二人称（你）')
                   ),
@@ -7789,7 +7790,9 @@ function starPanel(n) {
                 h(
                   'div',
                   { className: 'sim-hint' },
-                  person === '2'
+                  person === '1'
+                    ? '正文以「我」的口吻写，玩家输入当作「我」要做的事。'
+                    : person === '2'
                     ? '正文把主角写成「你」。其他角色仍是第三人称。'
                     : '正文用主角的姓名或「他／她」来写，不用「你」。'
                 ),

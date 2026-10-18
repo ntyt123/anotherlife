@@ -22,7 +22,7 @@ const P = 'dsh-tavern-simulator/';
 const KEY_SLOTS = ['retrieve', 'settle', 'summary', 'assistant'];
 
 /** 每次改动宿主侧都改一下这个版本号：ping 会回报它，用来确认 Tavern 到底加载的是哪一版 */
-const REV = 'host-v63-person-config-20261017r';
+const REV = 'host-v64-person-3-20261017r';
 
 /**
  * 只有这一局用的是这些卡时，插件才出现在界面上（其余卡片游玩时完全不打扰）。
@@ -604,7 +604,8 @@ const PERSON_DEFAULT = '3';
 async function activePerson() {
   try {
     const g = (await readJson(SETTINGS_FILE)) || {};
-    return String(g.person || PERSON_DEFAULT) === '2' ? '2' : '3';
+    const v = String(g.person || PERSON_DEFAULT);
+    return v === '1' || v === '2' || v === '3' ? v : PERSON_DEFAULT;
   } catch (e) {
     return PERSON_DEFAULT;
   }
@@ -613,6 +614,13 @@ async function activePerson() {
 function personLineOf(p) {
   const tail =
     '这条不受任何写作指导、长期偏好或玩家备注的改写 —— 它们只能影响文风，不能改人称。';
+  if (p === '1') {
+    return (
+      '叙述用**第一人称**：主角一律写「我」，用「我」的视角和口吻叙述；其他角色用第三人称（他／她／名字）。' +
+      '玩家本轮的输入当作「我」要做的动作或想说的话，由你接着往下写，不要改成「你」。' +
+      tail
+    );
+  }
   if (p === '2') {
     return (
       '叙述用**第二人称**：主角一律写「你」，不要写成「我」，也不要改用主角姓名做主语；' +
@@ -1830,7 +1838,7 @@ async function activeWritingSkill() {
   // 写作指导（skills 目录里选的那一份）。只管写法，不动事实与设定
   const skill = await activeWritingSkill();
   if (skill.body) {
-    head.push('【写作指导 · ' + skill.id + '】下面这份指导只管「怎么写」，不改变任何事实与设定，**也不改变叙述人称** —— 一律按前文规定的' + (person === '2' ? '第二人称' : '第三人称') + '写；指导里若要求别的视角（例如第一人称），那一条直接忽略，其余细节照做。与其他规则冲突时，一律以前文为准。');
+    head.push('【写作指导 · ' + skill.id + '】下面这份指导只管「怎么写」，不改变任何事实与设定，**也不改变叙述人称** —— 一律按前文规定的' + (person === '1' ? '第一人称' : person === '2' ? '第二人称' : '第三人称') + '写；指导里若要求别的视角（例如第一人称），那一条直接忽略，其余细节照做。与其他规则冲突时，一律以前文为准。');
     head.push('');
     head.push(skill.body);
     head.push('');
@@ -3289,7 +3297,8 @@ async function activeWritingSkill() {
   });
 
   // ── 写作指导：列出 skills 目录里的那几份，选一份注入正文 ──
-  // ── 叙述人称：全局设置，跨局共用 ──  reg('getPerson', async () => ({ person: await activePerson() }));  reg('savePerson', async ({ person }) => {    const g = (await readJson(SETTINGS_FILE)) || {};    g.person = String(person || '') === '2' ? '2' : PERSON_DEFAULT;    g.updatedAt = Date.now();    await writeJson(SETTINGS_FILE, g);    return { ok: true, person: g.person };  });  reg('getWritingSkill', async () => {
+  // ── 叙述人称：全局设置，跨局共用 ──  reg('getPerson', async () => ({ person: await activePerson() }));  reg('savePerson', async ({ person }) => {    const g = (await readJson(SETTINGS_FILE)) || {};    const v = String(person || '');
+    g.person = v === '1' || v === '2' || v === '3' ? v : PERSON_DEFAULT;    g.updatedAt = Date.now();    await writeJson(SETTINGS_FILE, g);    return { ok: true, person: g.person };  });  reg('getWritingSkill', async () => {
     const g = (await readJson(SETTINGS_FILE)) || {};
     const id = String(g.writingSkillId || '').trim();
     return {
