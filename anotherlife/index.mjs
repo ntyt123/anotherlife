@@ -22,7 +22,7 @@ const P = 'dsh-tavern-simulator/';
 const KEY_SLOTS = ['retrieve', 'settle', 'summary', 'assistant'];
 
 /** 每次改动宿主侧都改一下这个版本号：ping 会回报它，用来确认 Tavern 到底加载的是哪一版 */
-const REV = 'host-v59-tavern-pref-20261017r';
+const REV = 'host-v60-prompt-preview-20261017r';
 
 /**
  * 只有这一局用的是这些卡时，插件才出现在界面上（其余卡片游玩时完全不打扰）。
@@ -3266,6 +3266,17 @@ async function activePreference() {
   reg('previewContext', async ({ gameId, input }) => {
     const s = await loadState(gameId);
     return buildStoryContext(s, input || '', {});
+  });
+
+  // 完整系统提示词预览：不调模型，只把这一轮真正要发出去的 sys 拼出来。
+  // 用来核对长期偏好、状态表、参考资料这些有没有真的进去。
+  reg('previewSystemPrompt', async ({ gameId, input }) => {
+    const s = await loadState(gameId);
+    const r = await storySystemPrompt(s, String(input || '').trim(), {});
+    const text = Array.isArray(r) ? r.join('\n') : String(r == null ? '' : r);
+    const i = text.indexOf('【用户已确认的长期偏好】');
+    const pref = i < 0 ? '' : text.slice(i, i + 900);
+    return { text, hasPref: i >= 0, pref: pref.trim(), length: text.length };
   });
 
   // ── 预设（跨局共享） ──

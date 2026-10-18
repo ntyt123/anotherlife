@@ -2678,6 +2678,9 @@ window.__ModuleLoader__.load({
           const [ctxIn, setCtxIn] = React.useState('');
           const [ctxOut, setCtxOut] = React.useState('');
           const [ctxMeta, setCtxMeta] = React.useState('');
+          const [sysOut, setSysOut] = React.useState('');
+          const [sysMeta, setSysMeta] = React.useState('');
+          const [sysHasPref, setSysHasPref] = React.useState(null);
           const [keyDraft, setKeyDraft] = React.useState({});
           const [jsonKey, setJsonKey] = React.useState(0);
           const [dps, setDps] = React.useState(null); // 角色/资产等面板的可编辑副本
@@ -7886,7 +7889,34 @@ function starPanel(n) {
                     .catch((e) => { setCtxMeta('检索失败：' + msg(e)); setBusy(false); });
                 } }, '预览本轮注入')),
                 ctxMeta ? h('div', { className: 'sim-pre', style: { marginTop: 10, maxHeight: 160 } }, ctxMeta) : null,
-                ctxOut ? h('div', { className: 'sim-pre', style: { marginTop: 10 } }, ctxOut) : null
+                ctxOut ? h('div', { className: 'sim-pre', style: { marginTop: 10 } }, ctxOut) : null,
+                h(
+                  'div',
+                  { style: { marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--sim-bd)' } },
+                  h('div', { style: { fontWeight: 600, marginBottom: 4 } }, '完整系统提示词'),
+                  h('div', { className: 'sim-hint', style: { marginBottom: 8 } }, '拼出这一轮真正要发的 sys（会走一遍条目检索，但不生成正文）。用来看长期偏好有没有真的进去。'),
+                  h(
+                    'div',
+                    { className: 'sim-acts' },
+                    h(Btn, {
+                      disabled: busy,
+                      onClick: () => {
+                        setSysMeta('拼接中…');
+                        setBusy(true);
+                        call('previewSystemPrompt', { input: ctxIn }, gameId)
+                          .then((r) => {
+                            setSysHasPref(!!(r && r.hasPref));
+                            setSysMeta(!r ? '没有返回' : (r.hasPref ? '✔ 已注入长期偏好' : '⚠ 没有注入长期偏好') + ' · 共 ' + r.length + ' 字');
+                            setSysOut(String((r && r.text) || ''));
+                            setBusy(false);
+                          })
+                          .catch((e) => { setSysMeta('失败：' + msg(e)); setSysHasPref(null); setBusy(false); });
+                      },
+                    }, '预览系统提示词'),
+                  ),
+                  sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8, color: sysHasPref === false ? '#c34a4a' : undefined } }, sysMeta) : null,
+                  sysOut ? h('div', { className: 'sim-pre', style: { marginTop: 10, maxHeight: 420 } }, sysOut) : null
+                ),
               ),
               h('div', { className: 'sim-card' },
                 h('div', { style: { fontWeight: 600, marginBottom: 8 } }, '重置'),
