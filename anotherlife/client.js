@@ -6168,10 +6168,10 @@ onDoubleClick: () => {
               NSFW_KEYS.indexOf(k) < 0 && // 性癖／敏感点／底线／经验 走「私密」面板
               TAGROW_KEYS.indexOf(k) < 0 // 标签这类短词数组 单独一排小标签
           );
-          const protNarrow = protVisible
-            .filter((k) => WIDE_KEYS.indexOf(k) < 0)
-            // 分组之外的字段（AI 自己加的）补在最后
-            .concat(Object.keys(draft.protagonist).filter((k) => PROT_KNOWN.indexOf(k) < 0 && hasVal(draft.protagonist[k])));
+          // 只放「分组里认识、且不是长字段」的那些。
+          // 别在这里补「AI 自己加的字段」—— 下面「其他字段」那一块专门渲染它们，
+          // 两边都补就会每个额外字段显示两遍（用户报过「很多条目重复」）。
+          const protNarrow = protVisible.filter((k) => WIDE_KEYS.indexOf(k) < 0);
           const protWide = protVisible.filter((k) => WIDE_KEYS.indexOf(k) >= 0);
 
           /**
@@ -7406,7 +7406,13 @@ function starPanel(n) {
                               (hasVal(src[k]) && NPC_STAR_KEYS.indexOf(k) < 0 && k !== '生理周期');
                             const keys = HEAD_KEYS.concat(
                               PREF_NPC.filter(
-                                (k) => WIDE_KEYS.indexOf(k) < 0 && !(ancient && MODERN_ONLY_KEYS.indexOf(k) >= 0) && keep(k)
+                                (k) =>
+                                  // 姓名/性别/年龄/身份/关系 已经由 HEAD_KEYS 渲染，
+                                  // PREF_NPC 里还留着「年龄」「关系」两个同名项 —— 不排掉就是两遍
+                                  HEAD_KEYS.indexOf(k) < 0 &&
+                                  WIDE_KEYS.indexOf(k) < 0 &&
+                                  !(ancient && MODERN_ONLY_KEYS.indexOf(k) >= 0) &&
+                                  keep(k)
                               )
                             );
                             return keys.map((k) =>
