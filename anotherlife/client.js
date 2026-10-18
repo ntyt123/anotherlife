@@ -31,6 +31,8 @@ window.__ModuleLoader__.load({
       // 用 position:fixed：既能压在任意页上方，也不会被外层滚动/裁剪容器切掉
       '.sim-as{position:fixed;right:22px;bottom:22px;width:min(420px,42vw);height:min(600px,78vh);display:flex;flex-direction:column;background:var(--sim-bg2);border:1px solid var(--sim-bd);border-radius:12px;box-shadow:0 14px 44px rgba(0,0,0,.24);z-index:70;overflow:hidden}',
       '.sim-as-top{display:flex;align-items:center;gap:8px;padding:10px 12px;min-height:44px;border-bottom:1px solid var(--sim-bd)}',
+      '.sim-as-top{cursor:move;touch-action:none;user-select:none}',
+      '.sim-as-top .sim-btn{cursor:pointer}',
       '.sim-as-title{flex:1 1 auto;font-weight:600;font-size:var(--sim-fs-4)}',
       '.sim-as-body{flex:1 1 auto;min-height:0;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:10px}',
       '.sim-as-empty{color:var(--sim-mut);font-size:var(--sim-fs-3);text-align:center;padding:30px 8px;line-height:1.7}',
@@ -2729,6 +2731,17 @@ window.__ModuleLoader__.load({
           const [asBusy, setAsBusy] = React.useState(false); // 助手正在等回复
           const asBodyRef = React.useRef(null); // 助手消息区（新消息来了滚到底）
           const asLoadedRef = React.useRef(false); // 存档里的助手对话只装一次
+          // 助手浮窗的位置（拖标题栏改）。存 localStorage，刷新后还在
+          const [asPos, setAsPos] = React.useState(() => {
+            try {
+              const v = JSON.parse(window.localStorage.getItem('sim-as-pos') || 'null');
+              if (v && typeof v.x === 'number' && typeof v.y === 'number') return v;
+            } catch (e) {
+              /* 存坏了就当没存过 */
+            }
+            return null;
+          });
+          const asDragRef = React.useRef(null);
           const lastAssistRef = React.useRef(null); // 上一轮已提示过的正文序号（提示音用）
           const dingRef = React.useRef(false); // 这一轮生成完成后要响一声（重新生成这种「序号没变但正文换了」的情况靠它）
           const [editingKey, setEditingKey] = React.useState(''); // 正在编辑哪一段：role-seq
@@ -3663,6 +3676,63 @@ window.__ModuleLoader__.load({
             }
             return String(v);
           }
+          /**
+           * 助手浮窗拖拽：按住标题栏移动，松手把位置存进 localStorage。
+           * 用 pointer 事件 + setPointerCapture，拖到窗口外也不会丢跟随；
+           * 位置夹在视口内（留 4px），窗口变小后重新打开也不会跑到屏幕外。
+           */
+          function asDragStart(e) {
+            if (e.target.closest && e.target.closest('.sim-btn')) return;
+            const panel = e.currentTarget.parentElement;
+            if (!panel) return;
+            const box = panel.getBoundingClientRect();
+            asDragRef.current = {
+              dx: e.clientX - box.left,
+              dy: e.clientY - box.top,
+              w: box.width,
+              h: box.height,
+              last: null,
+            };
+            try {
+              e.currentTarget.setPointerCapture(e.pointerId);
+            } catch (e2) {
+              /* 老浏览器不支持就算了，不影响拖动 */
+            }
+            e.preventDefault();
+          }
+          function asDragMove(e) {
+            const d = asDragRef.current;
+            if (!d) return;
+            const m = 4;
+            const x = Math.max(m, Math.min(window.innerWidth - d.w - m, e.clientX - d.dx));
+            const y = Math.max(m, Math.min(window.innerHeight - d.h - m, e.clientY - d.dy));
+            d.last = { x: Math.round(x), y: Math.round(y) };
+            setAsPos(d.last);
+          }
+          function asDragEnd() {
+            const d = asDragRef.current;
+            asDragRef.current = null;
+            if (!d || !d.last) return;
+            try {
+              window.localStorage.setItem('sim-as-pos', JSON.stringify(d.last));
+            } catch (e) {
+              /* 存不了就算了，这一轮照样能拖 */
+            }
+          }
+          /** 浮窗实际用的定位样式：拖过就用 left/top，没拖过保持默认的右下角 */
+          function asBoxStyle() {
+            if (!asPos) return null;
+            const m = 4;
+            const w = Math.min(420, window.innerWidth * 0.42);
+            const h = Math.min(600, window.innerHeight * 0.78);
+            return {
+              left: Math.max(m, Math.min(window.innerWidth - w - m, asPos.x)) + 'px',
+              top: Math.max(m, Math.min(window.innerHeight - h - m, asPos.y)) + 'px',
+              right: 'auto',
+              bottom: 'auto',
+            };
+          }
+
           /**
            * 极简 Markdown 渲染（只给助手回复用）。
            * 处理：**粗体**、*斜体*、`代码`、# 标题、- / 1. 列表、> 引用、空行分段。
@@ -8526,10 +8596,16 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
             asOpen
               ? h(
                   'div',
-                  { className: 'sim-as' },
+                  { className: 'sim-as', style: asBoxStyle() },
                   h(
                     'div',
-                    { className: 'sim-as-top' },
+                    {
+  className: 'sim-as-top',
+  onPointerDown: asDragStart,
+  onPointerMove: asDragMove,
+  onPointerUp: asDragEnd,
+  onPointerCancel: asDragEnd,
+},
                     h('span', { className: 'sim-as-title' }, '助手'),
                     h(Btn, { disabled: asBusy || !asLog.length, onClick: () => clearAssistant() }, '清空'),
                     h(Btn, { onClick: () => { setAsOpen(false); if (close) close(); } }, '切换到普通聊天')
