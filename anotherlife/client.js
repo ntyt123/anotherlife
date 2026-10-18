@@ -506,6 +506,8 @@ window.__ModuleLoader__.load({
       // 写作偏好：一条一行（勾选框 + 正文 + 删除）
       // 长期偏好：只读展示 Tavern 那份的内容
       '.sim-pref-text{font-size:var(--sim-fs-3);line-height:1.8;color:var(--sim-t);white-space:pre-wrap;word-break:break-word;padding:10px 12px;border:1px solid var(--sim-bd);border-radius:9px;background:var(--sim-bg);max-height:320px;overflow:auto}',
+      '.sim-seg{font-size:var(--sim-fs-2);padding:2px 8px;border-radius:99px;border:1px solid var(--sim-bd);color:var(--sim-t3);background:var(--sim-bg)}',
+      '.sim-seg.on{color:var(--sim-good);border-color:color-mix(in srgb,var(--sim-good) 40%,transparent)}',
       '.sim-pref-state{font-size:var(--sim-fs-4);font-weight:600;color:var(--sim-t2)}',
       '.sim-pref-state.on{color:#3d9c78}',
       // ── 生理周期条 ──
@@ -2710,7 +2712,7 @@ window.__ModuleLoader__.load({
           const [ctxMeta, setCtxMeta] = React.useState('');
           const [sysOut, setSysOut] = React.useState('');
           const [sysMeta, setSysMeta] = React.useState('');
-          const [sysHasPref, setSysHasPref] = React.useState(null);
+          const [sysSteps, setSysSteps] = React.useState([]);
           const [keyDraft, setKeyDraft] = React.useState({});
           const [jsonKey, setJsonKey] = React.useState(0);
           const [dps, setDps] = React.useState(null); // 角色/资产等面板的可编辑副本
@@ -8215,16 +8217,32 @@ function starPanel(n) {
                         setBusy(true);
                         call('previewSystemPrompt', { input: ctxIn }, gameId)
                           .then((r) => {
-                            setSysHasPref(!!(r && r.hasPref));
-                            setSysMeta(!r ? '没有返回' : (r.hasPref ? '✔ 已注入长期偏好' : '⚠ 没有注入长期偏好') + ' · ' + r.length + ' 字 · 约 ' + fmtTok(estimateTokens(r.text)) + ' token');
-                            setSysOut(String((r && r.text) || ''));
-                            setBusy(false);
+                  if (!r || !r.ok) {
+                    setSysSteps([]);
+                    setSysMeta(!r ? '没有返回' : String(r.error || '失败'));
+                    setSysOut('');
+                    setBusy(false);
+                    return;
+                  }
+                  setSysSteps(Array.isArray(r.steps) ? r.steps : []);
+                  setSysMeta('共 ' + r.length + ' 字 · 约 ' + fmtTok(estimateTokens(r.text)) + ' token');
+                  setSysOut(String(r.text || ''));
+                  setBusy(false);
                           })
-                          .catch((e) => { setSysMeta('失败：' + msg(e)); setSysHasPref(null); setBusy(false); });
+                          .catch((e) => { setSysMeta('失败：' + msg(e)); setSysSteps([]); setBusy(false); });
                       },
                     }, '预览系统提示词'),
                   ),
-                  sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8, color: sysHasPref === false ? '#c34a4a' : undefined } }, sysMeta) : null,
+                  sysSteps.length
+  ? h(
+      'div',
+      { className: 'sim-acts', style: { marginTop: 8, flexWrap: 'wrap', gap: 6 } },
+      sysSteps.map((x, i) =>
+        h('span', { key: i, className: 'sim-seg' + (x.on ? ' on' : '') }, (x.on ? '✔ ' : '✗ ') + x.k)
+      )
+    )
+  : null,
+sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) : null,
                   sysOut ? h('div', { className: 'sim-pre', style: { marginTop: 10, maxHeight: 420 } }, sysOut) : null
                 ),
               ),

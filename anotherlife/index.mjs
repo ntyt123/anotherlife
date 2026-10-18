@@ -3559,13 +3559,35 @@ function pickToolCall(r) {
 
   // 完整系统提示词预览：不调模型，只把这一轮真正要发出去的 sys 拼出来。
   // 用来核对长期偏好、状态表、参考资料这些有没有真的进去。
+  // 完整系统提示词预览：不调正文模型，只把这一轮要发的 sys 拼出来。
+  // 通用功能 —— 不针对某个模块做「有没有生效」的判断，只看这份文本里各段在不在。
   reg('previewSystemPrompt', async ({ gameId, input }) => {
-    const s = await loadState(gameId);
-    const r = await storySystemPrompt(s, String(input || '').trim(), {});
-    const text = Array.isArray(r) ? r.join('\n') : String(r == null ? '' : r);
+    let s = null;
+    try {
+      s = await loadState(gameId);
+    } catch (e) {
+      return { ok: false, error: '读存档失败：' + String((e && e.message) || e), text: '', steps: [] };
+    }
+    let text = '';
+    try {
+      const r = await storySystemPrompt(s, String(input || '').trim(), {});
+      text = Array.isArray(r) ? r.join('\n') : String(r == null ? '' : r);
+    } catch (e) {
+      return { ok: false, error: '拼提示词时出错：' + String((e && e.message) || e), text: '', steps: [] };
+    }
+    // 各段在不在 —— 只做事实陈述，不判定「应不应该」
+    const has = (t) => text.indexOf(t) >= 0;
+    const steps = [
+      { k: '状态表', on: has('【本轮相关状态】') || has('【全部设定（开局）】') },
+      { k: '最近正文', on: has('【最近剧情（逐轮原文）】') },
+      { k: '长期偏好', on: has('【用户已确认的长期偏好】') },
+      { k: '写作指导', on: has('【写作指导 · ') },
+      { k: '破限词', on: has('【附加要求 · 玩家提供') },
+      { k: '衣柜参考', on: has('【衣着与鞋袜参考') },
+      { k: '输出格式', on: has('【输出格式】') },
+    ];
     const i = text.indexOf('【用户已确认的长期偏好】');
-    const pref = i < 0 ? '' : text.slice(i, i + 900);
-    return { text, hasPref: i >= 0, pref: pref.trim(), length: text.length };
+    return { ok: true, text, steps, hasPref: i >= 0, length: text.length };
   });
 
   // ── 预设（跨局共享） ──
