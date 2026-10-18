@@ -303,6 +303,7 @@ window.__ModuleLoader__.load({
       '.sim-gal-cell:hover{border-color:var(--sim-ac)}',
       '.sim-gal-cell img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:5px;display:block}',
       '.sim-gal-nm{font-size:var(--sim-fs-1);color:var(--sim-t2);text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+      '.sim-gal-nm:hover{color:var(--sim-ac);text-decoration:underline}',
       '.sim-gal-x{position:absolute;top:2px;right:2px;width:18px;height:18px;padding:0;border-radius:50%;border:none;background:rgba(0,0,0,.55);color:#fff;font-size:11px;line-height:18px;text-align:center;cursor:pointer;opacity:0;transition:opacity .12s}',
       '.sim-gal-cell:hover .sim-gal-x{opacity:1}',
       '.sim-gal-zoom .sim-modal-b img{max-width:100%;max-height:62vh;display:block;margin:0 auto;border-radius:8px}',
@@ -2560,6 +2561,21 @@ window.__ModuleLoader__.load({
               .then((r) => setZoom({ name: it.name, data: (r && r.data) || "" }))
               .catch((e) => setErr(em(e)));
           };
+          /** 重命名：点图名直接改 */
+          const rename = (it) => {
+              const nn = window.prompt('图片名称', it.name);
+              if (nn == null) return;
+              const nm = String(nn).trim();
+              if (!nm || nm === it.name) return;
+              setBusy(true);
+              setErr('');
+              Promise.resolve(props.rename ? props.rename(it.id, nm) : null)
+                .then(() => load())
+                .catch((e) => {
+                  setErr(em(e));
+                  setBusy(false);
+                });
+          };
 
           return h(
             'div',
@@ -2599,7 +2615,7 @@ window.__ModuleLoader__.load({
                           'div',
                           { className: 'sim-gal-cell', key: it.id },
                           h('img', { src: it.thumb, alt: it.name, onClick: () => peek(it) }),
-                          h('div', { className: 'sim-gal-nm', title: it.name }, it.name),
+                          h('div', { className: 'sim-gal-nm', title: '点击改名：' + it.name, onClick: () => rename(it) }, it.name),
                           h('button', { className: 'sim-gal-x', title: '删掉', onClick: () => del(it) }, '✕')
                         )
                       )
@@ -8684,6 +8700,7 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
             get: (id) => call('galleryGet', { id }, gameId),
             add: (it) => call('galleryAdd', it, gameId),
             remove: (id) => call('galleryRemove', { id }, gameId),
+  rename: (id, name) => call('galleryRename', { id, name }, gameId),
           });
           else if (tab === 'npcs') view = npcEditor;
           else if (tab === 'skills') view = assetEditor;

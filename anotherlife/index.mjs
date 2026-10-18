@@ -22,7 +22,7 @@ const P = 'dsh-tavern-simulator/';
 const KEY_SLOTS = ['retrieve', 'settle', 'summary', 'assistant'];
 
 /** 每次改动宿主侧都改一下这个版本号：ping 会回报它，用来确认 Tavern 到底加载的是哪一版 */
-const REV = 'host-v67-gallery-20261018r';
+const REV = 'host-v68-gallery-rename-20261018r';
 
 /**
  * 只有这一局用的是这些卡时，插件才出现在界面上（其余卡片游玩时完全不打扰）。
@@ -4241,6 +4241,17 @@ reg('parseRealPerson', async ({ gameId, name, fields }) => {
     await writeGallery(items);
     return { ok: true, id, total: items.length };
   });
+  reg('galleryRename', async ({ id, name }) => {
+    const items = await readGallery();
+    const it = items.find((x) => String(x.id) === String(id));
+    if (!it) throw new Error('这张图已经不在了');
+    const nm = String(name == null ? '' : name).trim().slice(0, 40);
+    if (!nm) throw new Error('名字不能为空');
+    it.name = nm;
+    await writeGallery(items);
+    return { ok: true, name: nm };
+  });
+
   reg('galleryRemove', async ({ id }) => {
     const items = await readGallery();
     const next = items.filter((x) => String(x.id) !== String(id));
