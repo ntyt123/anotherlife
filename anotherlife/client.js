@@ -6965,6 +6965,16 @@ function cycleBar(obj, compact) {
             );
           }
 
+          /**
+           * 关系的「当前状况」只留数值那一行。
+           * 老数据里有「好感 强 · 信任 强 · 欲望 中 —— 她刚替他挡了酒」这种写法，
+           * 破折号后面是「当前状态」的内容，卡上会重复显示一遍。宿主的 settleToDiffs
+           * 已经会在写入时截掉，这里再截一次是为了让已有存档也显示干净。
+           */
+          function relLine(v) {
+            const s = String(v == null ? '' : v);
+            return s.split(/\s*[—–]{1,2}\s*|\s*--\s*/)[0].trim();
+          }
           /** 把 npc + 对应关系合成一张卡的数据 */
           function cardData(npc, rel) {
             const nm = nameOf(npc) || nameOf(rel) || '未命名';
@@ -6974,7 +6984,7 @@ function cycleBar(obj, compact) {
             const des = desireOf(npc, rel);
             const st = statusLine(npc) || statusLine(rel);
             const desc = [];
-            [npc && npc.身份, npc && npc.年龄 && '年龄 ' + npc.年龄, rel && rel.关系, npc && (npc.当前状况 || npc.状态), rel && rel.当前状况]
+            [npc && npc.身份, npc && npc.年龄 && '年龄 ' + npc.年龄, rel && rel.关系, npc && (relLine(npc.当前状况) || npc.状态), rel && relLine(rel.当前状况)]
               .filter((x) => x != null && String(x).trim())
               .forEach((x) => {
                 const t = String(x).trim();
