@@ -22,7 +22,7 @@ const P = 'dsh-tavern-simulator/';
 const KEY_SLOTS = ['retrieve', 'settle', 'summary', 'assistant'];
 
 /** 每次改动宿主侧都改一下这个版本号：ping 会回报它，用来确认 Tavern 到底加载的是哪一版 */
-const REV = 'host-v58-writing-prefs-20261017r';
+const REV = 'host-v59-tavern-pref-20261017r';
 
 /**
  * 只有这一局用的是这些卡时，插件才出现在界面上（其余卡片游玩时完全不打扰）。
@@ -574,48 +574,43 @@ export function apply(ctx) {
   }
 
 /**
- * 玩家的长期偏好（Tavern 的 user-profile skill 写的那份，跨卡复用）。
- * 模拟器不参与 Tavern 的提示词管线，所以自己读文件、自己决定注入哪几条。
+ * Tavern 的「长期偏好」：user-preference-profile.json（v3 结构）。
+ * defaultProfileId 指向默认启用的那套（空串 = 没启用）；每套的
+ * data.confirmed.injectionText 就是 Tavern 自己注入正文的那段文本。
+ * 模拟器不参与 Tavern 的提示词管线，所以自己读这个文件、自己注入。
  */
-const USER_PREFS_FILE = TAVERN_DATA_DIR + 'card-memory/preferences/runtime/USER.md';
+const USER_PREF_FILE = TAVERN_DATA_DIR + 'user-preference-profile.json';
 
-/** 用内容算稳定 id：Tavern 那边改了字 id 就变，勾选状态自然失效，不会串到别的条目上 */
-function prefId(text) {
-  let hsh = 0;
-  for (let i = 0; i < text.length; i++) hsh = (hsh * 31 + text.charCodeAt(i)) | 0;
-  return 'w' + Math.abs(hsh).toString(36);
+/** 读默认启用的那套长期偏好；没建过 / 没启用 / 没确认，一律返回 null */
+async function readTavernPreference() {
+  const j = await readJson(USER_PREF_FILE);
+  if (!j || !Array.isArray(j.profiles)) return null;
+  const id = String(j.defaultProfileId || '');
+  if (!id) return null;
+  const item = j.profiles.find((x) => x && x.id === id);
+  const conf = item && item.data && item.data.confirmed;
+  if (!conf) return null;
+  // 先 trim 再判断：injectionText 是几个空格时，'`'` || summary' 会取到空格、
+  // 结果整条偏好被当成空的。Tavern 自己那边也是这样，这里做得稳一点。
+  const text = String(conf.injectionText || '').trim() || String(conf.summary || '').trim();
+  if (!text) return null;
+  return { id, name: String(item.name || '长期偏好').trim(), text };
 }
 
-/** 读 Tavern 的长期偏好，条目之间用 § 分隔 */
-async function readUserPrefs() {
-  try {
-    const t = await fs.resolve(USER_PREFS_FILE);
-    const text = await fs.readText(t);
-    return String(text || '')
-      .split('\u00a7')
-      .map((x) => x.trim())
-      .filter(Boolean)
-      .map((x) => ({ id: prefId(x), text: x }));
-  } catch (e) {
-    return [];
-  }
-}
-
-/** 当前要注入正文的偏好（已勾选且非空）。60 秒缓存，改完由 saveWritingPrefs 主动清掉 */
-let prefsCache = { at: 0, list: [] };
-async function activeWritingPrefs() {
+/** 本局实际要注入的偏好（设定页可整体关掉）。60 秒缓存，保存设置时清掉 */
+let prefCache = { at: 0, value: null };
+async function activePreference() {
   const now = Date.now();
-  if (now - prefsCache.at < 60000) return prefsCache.list;
-  let list = [];
+  if (now - prefCache.at < 60000) return prefCache.value;
+  let value = null;
   try {
     const g = (await readJson(SETTINGS_FILE)) || {};
-    const all = Array.isArray(g.writingPrefs) ? g.writingPrefs : [];
-    list = all.filter((x) => x && x.on && String(x.text || '').trim()).map((x) => String(x.text).trim());
+    if (g.useTavernPreference !== false) value = await readTavernPreference();
   } catch (e) {
-    list = [];
+    value = null;
   }
-  prefsCache = { at: now, list };
-  return list;
+  prefCache = { at: now, value };
+  return value;
 }
 
 
@@ -1705,11 +1700,12 @@ async function activeWritingPrefs() {
       '写情事时按下面注入的【情事写作引擎】【情事用词表】【情事桥段结构】执行；没注入这几项说明这一轮不是情事，别硬写。',
     ];
     head.push('');
-    // 玩家长期偏好：跨故事共用的写作口味，和这一局的剧情无关
-  const prefLines = await activeWritingPrefs();
-  if (prefLines.length) {
-    head.push('【玩家写作偏好】适用于**所有**正文，与当前剧情无关，也不是世界观设定的一部分；写的时候照着做，但正文里不要提到这些偏好本身。');
-    for (let i = 0; i < prefLines.length; i++) head.push(String(i + 1) + '. ' + prefLines[i]);
+    // 用户在 Tavern 里启用过的长期偏好：措辞照抄 Tavern 自己的 stableContext，别自创一套
+  const pref = await activePreference();
+  if (pref) {
+    head.push('【用户已确认的长期偏好】以下偏好只影响表现方式；人物卡设定和用户本轮明确要求优先。不要复述本段。');
+    head.push('');
+    head.push(pref.text);
     head.push('');
   }
   head.push(opts.all ? '【全部设定（开局）】' : '【本轮相关状态】');
@@ -3151,28 +3147,18 @@ async function activeWritingPrefs() {
     return { ok: true, head: head.ok ? head.out : '' };
   });
 
-  // ── 玩家写作偏好：从 Tavern 的长期偏好同步过来，可增删、可逐条开关 ──
+  // ── 长期偏好：直接跟随 Tavern 的设置，只留一个总开关 ──
   reg('getWritingPrefs', async () => {
     const g = (await readJson(SETTINGS_FILE)) || {};
-    return {
-      list: Array.isArray(g.writingPrefs) ? g.writingPrefs : [],
-      tavern: await readUserPrefs(),
-    };
+    return { on: g.useTavernPreference !== false, profile: await readTavernPreference() };
   });
-  reg('saveWritingPrefs', async ({ list }) => {
+  reg('saveWritingPrefs', async ({ on }) => {
     const g = (await readJson(SETTINGS_FILE)) || {};
-    g.writingPrefs = (Array.isArray(list) ? list : [])
-      .map((x) => ({
-        id: String((x && x.id) || ''),
-        text: String((x && x.text) || '').trim().slice(0, 800),
-        on: !!(x && x.on),
-        src: x && x.src === 'tavern' ? 'tavern' : 'local',
-      }))
-      .filter((x) => x.text);
+    g.useTavernPreference = on !== false;
     g.updatedAt = Date.now();
     await writeJson(SETTINGS_FILE, g);
-    prefsCache = { at: 0, list: [] };
-    return { ok: true, list: g.writingPrefs };
+    prefCache = { at: 0, value: null };
+    return { ok: true, on: g.useTavernPreference };
   });
 
   reg('setSkin', async ({ gameId, skin }) => {
