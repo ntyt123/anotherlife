@@ -2902,10 +2902,7 @@ window.__ModuleLoader__.load({
                           {
                             primary: true,
                             disabled: busy,
-                            onClick: () => {
-                              if (saveTimer.current) window.clearTimeout(saveTimer.current);
-                              persist(open).then(() => load());
-                            },
+                            onClick: closeNote,
                           },
                           '保存'
                         )
