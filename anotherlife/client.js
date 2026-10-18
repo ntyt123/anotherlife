@@ -3220,6 +3220,8 @@ window.__ModuleLoader__.load({
           const [asLog, setAsLog] = React.useState([]); // 助手的对话记录
           const [asIn, setAsIn] = React.useState(''); // 助手输入框
           const [asBusy, setAsBusy] = React.useState(false); // 助手正在等回复
+          // 哪条回答刚存成笔记（按钮上闪一下「已存 ✓」）
+          const [asNoteAt, setAsNoteAt] = React.useState(-1);
           const asBodyRef = React.useRef(null); // 助手消息区（新消息来了滚到底）
           const asLoadedRef = React.useRef(false); // 存档里的助手对话只装一次
           // 助手浮窗的位置（拖标题栏改）。存 localStorage，刷新后还在
@@ -4420,6 +4422,36 @@ window.__ModuleLoader__.load({
                 else done('', (r && r.msg) || '神谕没有回复');
               })
               .catch((e) => done('', msg(e)));
+          }
+          /**
+           * 把某条回答存成笔记：标题用「它对应的那个提问」，正文是这条回答。
+           * 往前找最近一条用户消息当标题 —— 神谕的多轮里就是这样一问一答排下来的。
+           */
+          function saveAsNote(i) {
+              const m = asLog[i];
+              if (!m) return;
+              let q = '';
+              for (let k = i - 1; k >= 0; k--) {
+                if (asLog[k] && asLog[k].role === 'user') {
+                  q = String(asLog[k].content || '');
+                  break;
+                }
+              }
+              const title = String(q || '神谕的回答').replace(/\s+/g, ' ').trim().slice(0, 60);
+              const body = String(m.content || '');
+              if (!body.trim()) return;
+              call('notesSave', { id: '', title: title, body: body }, gameId)
+                .then(() => {
+                  setAsNoteAt(i);
+                  window.setTimeout(() => setAsNoteAt(-1), 2000);
+                })
+                .catch((e) =>
+                  setAsLog((log) =>
+                    log.map((x, k) =>
+                      k === i ? Object.assign({}, x, { err: '存笔记失败：' + msg(e) }) : x
+                    )
+                  )
+                );
           }
           /** 清空助手的全部对话：界面与存档一起清 */
           function clearAssistant() {
@@ -9398,7 +9430,8 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
                               : h(
                                   'div',
                                   { className: 'sim-as-acts' },
-                                  h('button', { className: 'sim-btn mini', disabled: asBusy, onClick: () => regenAssistant(i) }, '重新生成')
+                                  h('button', { className: 'sim-btn mini', disabled: asBusy, onClick: () => regenAssistant(i) }, '重新生成'),
+                                  h('button', { className: 'sim-btn mini', disabled: asBusy, onClick: () => saveAsNote(i) }, asNoteAt === i ? '已存 ✓' : '存为笔记')
                                 )
                           )
                         )
