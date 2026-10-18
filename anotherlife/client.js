@@ -327,6 +327,8 @@ window.__ModuleLoader__.load({
       '.sim-note-body:focus{outline:none;border-color:var(--sim-ac)}',
       '.sim-note-prev{flex:1;min-height:50vh;max-height:50vh;overflow-y:auto;padding:12px;line-height:1.9;font-size:var(--sim-fs-4);border:1px solid var(--sim-bd);border-radius:10px;background:var(--sim-bg)}',
       '.sim-note-foot{display:flex;align-items:center;gap:8px;padding-top:10px}',
+      '.sim-ask{max-width:400px}',
+      '.sim-ask-txt{font-size:var(--sim-fs-4);line-height:1.8;white-space:pre-wrap;word-break:break-word}',
       '.sim-avm-row{display:flex;align-items:center;gap:14px}',
       '.sim-avm-big{width:112px;height:112px;flex:0 0 auto;border-radius:16px;overflow:hidden;border:1px solid var(--sim-bd);background:var(--sim-bg2);display:flex;align-items:center;justify-content:center;font-size:38px}',
       '.sim-avm-big img{width:100%;height:100%;object-fit:cover;display:block}',
@@ -2569,13 +2571,15 @@ window.__ModuleLoader__.load({
           };
 
           const del = (it) => {
-            if (!window.confirm('从图库删掉「' + it.name + '」？')) return;
+            props.ask('从图库删掉「' + it.name + '」？').then((ok) => {
+              if (!ok) return;
             setBusy(true);
             Promise.resolve(props.remove(it.id))
               .then(() => load())
               .catch((e) => {
                 setErr(em(e));
                 setBusy(false);
+              });
               });
           };
 
@@ -2794,7 +2798,8 @@ window.__ModuleLoader__.load({
           };
 
           const del = (o) => {
-            if (!window.confirm('删掉这篇笔记？不可恢复。')) return;
+            props.ask('删掉这篇笔记？不可恢复。').then((ok) => {
+              if (!ok) return;
             setBusy(true);
             Promise.resolve(props.remove(o.id))
               .then(() => {
@@ -2806,6 +2811,7 @@ window.__ModuleLoader__.load({
               .catch((e) => {
                 setErr(em(e));
                 setBusy(false);
+              });
               });
           };
 
@@ -3291,6 +3297,40 @@ window.__ModuleLoader__.load({
           // 每个槽位的模型支持哪些思考强度（DSH 的 reasoningEffort 是模型自己声明的枚举，
           // 各模型不同，传错会报错 —— 所以只能选了模型之后去问）
           const [reasonOpts, setReasonOpts] = React.useState({});
+          // ── 自己的确认框 ──
+          // 不用 window.confirm：webview 里它弹的是原生模态，关掉之后焦点不会还回页面，
+          // 表现是「删完东西以后所有输入框都点不进去，要重开界面」。
+          const [askState, setAskState] = React.useState(null); // { text, resolve }
+          const ask = React.useCallback(
+              (text) =>
+                new Promise((resolve) => {
+                  setAskState({ text: String(text || ''), resolve });
+                }),
+            []
+          );
+          const answerAsk = (ok) => {
+              const s = askState;
+              setAskState(null);
+              if (s && s.resolve) s.resolve(!!ok);
+          };
+          // 带输入框的版本（原名 window.prompt，同样因为原生模态会丢焦点）
+          const [promptState, setPromptState] = React.useState(null); // { text, value, resolve }
+          const inputAsk = React.useCallback(
+              (text, def) =>
+                new Promise((resolve) => {
+                  setPromptState({
+                    text: String(text || ''),
+                    value: String(def == null ? '' : def),
+                    resolve,
+                  });
+                }),
+            []
+          );
+          const answerPrompt = (v) => {
+              const s = promptState;
+              setPromptState(null);
+              if (s && s.resolve) s.resolve(v);
+          };
           const [slotOk, setSlotOk] = React.useState({}); // { [slot]: '✓ 已切换' }
           const [slotErr, setSlotErr] = React.useState({}); // { [slot]: 错误文字 }
           const stageAtRef = React.useRef(''); // 最近一次已知的阶段名（出错时用来标是哪一步挂的）
@@ -3947,24 +3987,27 @@ window.__ModuleLoader__.load({
             return run(call('editTurnBody', { seq: t.seq, role: t.role, body: v }, gameId), true);
           }
           function deleteFrom(t) {
-            if (!window.confirm('删除第 ' + t.seq + ' 轮及之后的全部内容？不可恢复。')) return;
-            return run(call('deleteFrom', { seq: t.seq }, gameId), true);
+            ask('删除第 ' + t.seq + ' 轮及之后的全部内容？不可恢复。').then((ok) => {
+              if (!ok) return;
+              run(call('deleteFrom', { seq: t.seq }, gameId), true);
+            });
           }
           function regenTurn(t) {
             const what = t.role === 'user' ? '重发这一轮' : '重新生成这一轮';
             const keep = bodyRef.current ? bodyRef.current.scrollTop : 0;
-            const yes = window.confirm(what + '？第 ' + t.seq + ' 轮及之后的内容会被覆盖。');
-            if (!yes) return;
-            // 确定那一刻的位置当作起点：生成期间位置被清掉时，就按它放回去
-            if (keep > 0) keepScrollRef.current = keep;
-            dingRef.current = Date.now(); // 覆盖同一轮，序号不会变，完成后要手动响一声
-            return runTurnCall(run(call('regenFrom', { seq: t.seq }, gameId), true)).then(
-              (r) => r,
-              (e) => {
-                dingRef.current = 0;
-                throw e;
-              }
-            );
+            return ask(what + '？第 ' + t.seq + ' 轮及之后的内容会被覆盖。').then((yes) => {
+              if (!yes) return;
+              // 确定那一刻的位置当作起点：生成期间位置被清掉时，就按它放回去
+              if (keep > 0) keepScrollRef.current = keep;
+              dingRef.current = Date.now(); // 覆盖同一轮，序号不会变，完成后要手动响一声
+              return runTurnCall(run(call('regenFrom', { seq: t.seq }, gameId), true)).then(
+                (r) => r,
+                (e) => {
+                  dingRef.current = 0;
+                  throw e;
+                }
+              );
+            });
           }
           /**
            * 滚动位置记录。
@@ -4483,9 +4526,11 @@ window.__ModuleLoader__.load({
           /** 清空助手的全部对话：界面与存档一起清 */
           function clearAssistant() {
             if (asBusy) return;
-            if (!window.confirm('清空全部神谕对话？')) return;
+            ask('清空全部神谕对话？').then((ok) => {
+              if (!ok) return;
             setAsLog([]);
             call('assistantClear', {}, gameId).catch(() => {});
+            });
           }
 
           function setProtag(k, v) {
@@ -6030,10 +6075,10 @@ onDoubleClick: () => {
                 'div',
                 { className: 'sim-acts' },
                 h(Btn, { disabled: busy, onClick: () => { setTab('setup'); run(call('applyPreset', { id: p.id, mode: 'form' }, gameId), true); } }, '📥 载入到表单'),
-                h(Btn, { primary: true, disabled: busy, onClick: () => { if (window.confirm('直接用「' + p.name + '」开局？当前正文会被清空并自动生成开场。')) startGameFromPreset(p); } }, '⚡ 直接开局'),
-                h(Btn, { disabled: busy, onClick: () => { const nn = window.prompt('新名称', p.name); if (nn && nn.trim()) runLight(call('savePreset', { id: p.id, name: nn.trim() }, gameId)).then(refreshPresets); } }, '✏️ 改名'),
-                h(Btn, { disabled: busy, onClick: () => { const d = sourceData(); if (window.confirm('用当前内容覆盖「' + p.name + '」？')) runLight(call('savePreset', { id: p.id, name: p.name, world: d.world, protagonist: d.protagonist, extraInfo: d.extraInfo }, gameId)).then(refreshPresets); } }, '♻ 覆盖'),
-                h(Btn, { danger: true, disabled: busy, onClick: () => { if (window.confirm('删除预设「' + p.name + '」？不可恢复。')) runLight(call('deletePreset', { id: p.id }, gameId)).then(refreshPresets); } }, '🗑 删除')
+                h(Btn, { primary: true, disabled: busy, onClick: () => { ask('直接用「' + p.name + '」开局？当前正文会被清空并自动生成开场。').then((ok) => { if (ok) startGameFromPreset(p); }); } }, '⚡ 直接开局'),
+                h(Btn, { disabled: busy, onClick: () => { inputAsk('新名称', p.name).then((nn) => { if (nn && nn.trim()) runLight(call('savePreset', { id: p.id, name: nn.trim() }, gameId)).then(refreshPresets); }); } }, '✏️ 改名'),
+                h(Btn, { disabled: busy, onClick: () => { const d = sourceData(); ask('用当前内容覆盖「' + p.name + '」？').then((ok) => { if (ok) runLight(call('savePreset', { id: p.id, name: p.name, world: d.world, protagonist: d.protagonist, extraInfo: d.extraInfo }, gameId)).then(refreshPresets); }); } }, '♻ 覆盖'),
+                h(Btn, { danger: true, disabled: busy, onClick: () => { ask('删除预设「' + p.name + '」？不可恢复。').then((ok) => { if (ok) runLight(call('deletePreset', { id: p.id }, gameId)).then(refreshPresets); }); } }, '🗑 删除')
               )
             )
           );
@@ -7458,7 +7503,9 @@ function starPanel(n) {
                         title: '从这个列表里删掉这个人',
                         onClick: (e) => {
                           e.stopPropagation();
-                          if (window.confirm('从角色列表里删掉「' + c.nm + '」？')) removeNpc(npc);
+                          ask('从角色列表里删掉「' + c.nm + '」？').then((ok) => {
+                            if (ok) removeNpc(npc);
+                          });
                         },
                       }, '✕')
                     : null
@@ -7697,9 +7744,11 @@ function starPanel(n) {
                         className: 'sim-npc-del on-modal',
                         title: '从这个列表里删掉这个人',
                         onClick: () => {
-                          if (!window.confirm('从角色列表里删掉「' + c.nm + '」？')) return;
+                          ask('从角色列表里删掉「' + c.nm + '」？').then((ok) => {
+                            if (!ok) return;
                           removeNpc(npc);
                           setNpcOpen(null);
+                          });
                         },
                       }, '删除')
                     : null,
@@ -8225,8 +8274,13 @@ function starPanel(n) {
             pull();
           }, []);
 
-          function act(name, args, label, ask) {
-            if (ask && !window.confirm(ask)) return;
+          function act(name, args, label, confirmText) {
+            if (confirmText) {
+              ask(confirmText).then((ok) => {
+                if (ok) act(name, args, label, '');
+              });
+              return;
+            }
             setBusy(label);
             setOut('');
             Promise.resolve(call(name, args))
@@ -9133,8 +9187,8 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
                 h('div', { className: 'sim-acts' },
                   h(Btn, { disabled: busy, onClick: () => run(call('runSummary', {}, gameId)) }, '整理未总结的部分'),
                   h(Btn, { disabled: busy, onClick: () => run(call('mergeSummaries', {}, gameId)) }, '合并旧总结'),
-                  h(Btn, { disabled: busy, onClick: () => { if (window.confirm('回到主角创建？将清空主角、NPC、技能物品与正文，保留世界观。预设不会丢。')) { setTab('setup'); run(call('resetPhase', { phase: 'character' }, gameId), true); } } }, '回到主角创建'),
-                  h(Btn, { danger: true, disabled: busy, onClick: () => { if (window.confirm('完全重新开始？将清空世界观、主角与正文。预设不会丢。')) { setTab('setup'); run(call('resetPhase', { phase: 'world' }, gameId), true); } } }, '完全重新开始')
+                  h(Btn, { disabled: busy, onClick: () => { ask('回到主角创建？将清空主角、NPC、技能物品与正文，保留世界观。预设不会丢。').then((ok) => { if (!ok) return; setTab('setup'); run(call('resetPhase', { phase: 'character' }, gameId), true); }); } }, '回到主角创建'),
+                  h(Btn, { danger: true, disabled: busy, onClick: () => { ask('完全重新开始？将清空世界观、主角与正文。预设不会丢。').then((ok) => { if (!ok) return; setTab('setup'); run(call('resetPhase', { phase: 'world' }, gameId), true); }); } }, '完全重新开始')
                 )
               )
             ),
@@ -9151,9 +9205,11 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
                 h('div', { className: 'sim-hint' }, '想开新的世界线：用 Tavern 左上角「＋ 选择人物卡 · 新开游玩」开一个新故事，插件会为它单独存档，预设是共用的。'),
                 h('div', { className: 'sim-acts' },
                   h(Btn, { danger: true, disabled: busy, onClick: () => {
-                    if (!window.confirm('清空本局数据？所有内容会被抹掉（会先留一份 .deleted 备份）。')) return;
-                    setTab('setup');
-                    run(call('resetAll', {}, gameId), true);
+                    ask('清空本局数据？所有内容会被抹掉（会先留一份 .deleted 备份）。').then((ok) => {
+                      if (!ok) return;
+                      setTab('setup');
+                      run(call('resetAll', {}, gameId), true);
+                    });
                   } }, '🗑 清空本局数据')
                 )
               )
@@ -9174,6 +9230,7 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
           else if (tab === 'star') view = starEditor;
           else if (tab === 'world') view = worldEditor;
           else if (tab === 'gallery') view = h(GalleryView, {
+  ask: ask,
             list: () => call('galleryList', {}, gameId),
             get: (id) => call('galleryGet', { id }, gameId),
             add: (it) => call('galleryAdd', it, gameId),
@@ -9181,6 +9238,7 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
   rename: (id, name) => call('galleryRename', { id, name }, gameId),
           });
           else if (tab === 'notes') view = h(NotesView, {
+  ask: ask,
             list: () => call('notesList', {}, gameId),
             get: (id) => call('notesGet', { id }, gameId),
             save: (it) => call('notesSave', it, gameId),
@@ -9396,6 +9454,61 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
             itemModalView(),
             objEditModal(),
             UiPreviewModal(uiPrevOpen, () => setUiPrevOpen(false)),
+            // 自己的确认框（替代 window.confirm —— 后者在 webview 里会把焦点弄丢）
+            askState
+              ? h(
+                    'div',
+                    { className: 'sim-mask', style: { zIndex: 95 }, onClick: () => answerAsk(false) },
+                    h(
+                      'div',
+                      { className: 'sim-modal sim-ask', onClick: (e) => e.stopPropagation() },
+                      h(
+                        'div',
+                        { className: 'sim-modal-b' },
+                        h('div', { className: 'sim-ask-txt' }, askState.text)
+                      ),
+                      h(
+                        'div',
+                        { className: 'sim-modal-f' },
+                        h(Btn, { onClick: () => answerAsk(false) }, '取消'),
+                        h(Btn, { primary: true, onClick: () => answerAsk(true) }, '确定')
+                      )
+                    )
+                  )
+                  : null,
+                        // 带输入框的弹窗
+                        promptState
+                            ? h(
+                                  'div',
+                                  { className: 'sim-mask', style: { zIndex: 96 }, onClick: () => answerPrompt(null) },
+                                  h(
+                                    'div',
+                                    { className: 'sim-modal sim-ask', onClick: (e) => e.stopPropagation() },
+                                    h(
+                                      'div',
+                                      { className: 'sim-modal-b' },
+                                      h('div', { className: 'sim-ask-txt' }, promptState.text),
+                                      h('input', {
+                                        className: 'sim-input',
+                                        style: { marginTop: 10, width: '100%' },
+                                        value: promptState.value,
+                                        autoFocus: true,
+                                        onChange: (e) => setPromptState((s) => (s ? Object.assign({}, s, { value: e.target.value }) : s)),
+                                        onKeyDown: (e) => {
+                                          if (e.key === 'Enter') answerPrompt(promptState.value);
+                                          else if (e.key === 'Escape') answerPrompt(null);
+                                        },
+                                      })
+                                    ),
+                                    h(
+                                      'div',
+                                      { className: 'sim-modal-f' },
+                                      h(Btn, { onClick: () => answerPrompt(null) }, '取消'),
+                                      h(Btn, { primary: true, onClick: () => answerPrompt(promptState.value) }, '确定')
+                                    )
+                                  )
+                                )
+                              : null,
             h(AvatarModal, {
               cfg: avatarEdit,
   listGallery: () => call('galleryList', {}, gameId),
@@ -9591,7 +9704,7 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
             const m = e && e.message ? e.message : String(e);
             console.error('[dsh-tavern-simulator] openOverlay 失败', e);
             try {
-              window.alert('模拟器打开失败：' + m);
+              setErr('模拟器打开失败：' + m);
             } catch (_) {
               /* 忽略 */
             }
