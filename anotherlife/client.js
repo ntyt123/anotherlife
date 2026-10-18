@@ -2701,6 +2701,9 @@ window.__ModuleLoader__.load({
           const [savedAt, setSavedAt] = React.useState(0);
           const saveTimer = React.useRef(null);
           const openRef = React.useRef(null);
+          // 编辑器的「第几次打开」。拿它当 key，每次打开都强制重建 DOM ——
+          // 否则删掉再新建时 React 会复用同一个 textarea，焦点/输入法状态会残留，点了没光标。
+          const [openSeq, setOpenSeq] = React.useState(0);
           const em = (e) => (e && e.message ? e.message : String(e));
 
           const load = () => {
@@ -2728,6 +2731,10 @@ window.__ModuleLoader__.load({
 
           /** 真正写盘。全空的不存，免得列表里堆一堆空条目 */
           const persist = (o) => {
+            if (saveTimer.current) {
+              window.clearTimeout(saveTimer.current);
+              saveTimer.current = null;
+            }
             if (!o) return Promise.resolve(null);
             const t = String(o.title || '').trim();
             const bd = String(o.body || '').trim();
@@ -2751,6 +2758,7 @@ window.__ModuleLoader__.load({
           };
 
           const openNote = (it) => {
+            setOpenSeq((n) => n + 1);
             setPreview(false);
             setErr('');
             if (!it) {
@@ -2842,7 +2850,7 @@ window.__ModuleLoader__.load({
             open
                 ? h(
                     'div',
-                    { className: 'sim-mask', onClick: closeNote },
+                    { key: 'note-' + openSeq, className: 'sim-mask', onClick: closeNote },
                     h(
                       'div',
                       { className: 'sim-modal sim-note-edit', onClick: (e) => e.stopPropagation() },
@@ -2866,6 +2874,7 @@ window.__ModuleLoader__.load({
                           ? h('div', { className: 'sim-note-prev' }, open.body ? mdNodes(open.body) : h('div', { className: 'sim-hint' }, '（空）'))
                           : h('textarea', {
                               className: 'sim-note-body',
+                              autoFocus: true,
                               value: open.body,
                               placeholder: '写点什么……支持 Markdown（# 标题、- 列表、**粗体**）',
                               onChange: (e) => touch({ body: e.target.value }),
