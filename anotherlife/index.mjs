@@ -22,7 +22,7 @@ const P = 'dsh-tavern-simulator/';
 const KEY_SLOTS = ['retrieve', 'settle', 'summary', 'assistant'];
 
 /** 每次改动宿主侧都改一下这个版本号：ping 会回报它，用来确认 Tavern 到底加载的是哪一版 */
-const REV = 'host-v68-gallery-rename-20261018r';
+const REV = 'host-v69-reasoning-20261018r';
 
 /**
  * 只有这一局用的是这些卡时，插件才出现在界面上（其余卡片游玩时完全不打扰）。
@@ -1358,6 +1358,18 @@ function pickToolCall(r) {
   }
 
   /** 走用户自填的 OpenAI 兼容端点；密钥从凭据服务实时取 */
+  /**
+   * 每个槽位自己的「思考强度」。存在 config.reasoning 里（和模型槽位同处，换模型时
+   * 能一起调整），空串 = 不传，让模型用它自己的默认值。
+   * 注意：DSH 的 reasoningEffort 是模型自己声明的枚举（ReasoningEffortId），
+   * 每个模型支持的档位不同，传错会直接报错 —— 所以前端要从 reasoningOptions 拿选项。
+   */
+  async function reasoningOf(s, slot) {
+    const r = (s && s.config && s.config.reasoning) || {};
+    const v = String(r[slot] || '').trim();
+    return v || undefined;
+  }
+
   async function callSlot(s, slot, messages, opts) {
     opts = opts || {};
     const cfg = (s.config && s.config[slot]) || {};
@@ -1624,7 +1636,7 @@ function pickToolCall(r) {
       const r = await callMainModel([{ role: 'system', content: sys }, { role: 'user', content: usr }], { temperature: 0, maxTokens: 1200, purpose: '检索' });
       raw = r.text && r.text.trim() ? r.text : r.reasoning;
     } else {
-      raw = await callSlot(s, 'retrieve', [{ role: 'system', content: sys }, { role: 'user', content: usr }], { json: true, maxTokens: 1200, temperature: 0, tag: '检索' });
+      raw = await callSlot(s, 'retrieve', [{ role: 'system', content: sys }, { role: 'user', content: usr }], { json: true, reasoningEffort: await reasoningOf(s, 'retrieve'), maxTokens: 1200, temperature: 0, tag: '检索' });
     }
     const ids = parseIds(raw);
     if (!ids) return null;
@@ -2668,6 +2680,10 @@ function pickToolCall(r) {
       setProg(gid, 'story', '生成正文中 · 已收到 ' + n + ' 字（' + sec + 's）');
     };
     const storyOpts = { maxTokens: 4500, onChunk, firstChunkMs: 420000, idleMs: 600000, purpose: opts.all ? '开场' : '正文' };
+
+        const bodyEffort = await reasoningOf(s, 'body');
+
+        if (bodyEffort) storyOpts.reasoningEffort = bodyEffort;
     let r = await callMainModel([{ role: 'system', content: sys }, { role: 'user', content: userContent }], storyOpts);
     let sp = splitStory(r.text);
     // 有些模型／中转会把内容全塞进「思考」通道，正文一条都不给。
@@ -2710,6 +2726,9 @@ function pickToolCall(r) {
           tag: '结算',
           tools: [SETTLE_TOOL],
           wantTools: true,
+            // 思考强度：模型会先在自己的 reasoning 通道里把角色逐个过一遍，
+            // 不占工具参数那点输出空间（正文只有几十字时尤其明显）
+            reasoningEffort: await reasoningOf(s, 'settle'),
         });
         const settleRaw = String(settleRes && settleRes.text != null ? settleRes.text : settleRes == null ? '' : settleRes);
         const sj = pickToolCall(settleRes) || parseJsonLoose(settleRaw);
@@ -3187,6 +3206,42 @@ function pickToolCall(r) {
     });
     await saveState(s);
     return withKeyStatus(s);
+  });
+
+  // 这个模型支持哪些思考强度档位。DSH 的 llm.resolveModelInfo 会给出 id+name 列表；
+  // 不支持思考的模型返回空数组，前端就只显示「不设置」。
+  // 存某局的思考强度（三个槽位各自一档）。空串 = 不传，用模型默认。
+  reg('saveReasoning', async ({ gameId, reasoning }) => {
+    const s = await loadState(gameId);
+    if (!s.config || typeof s.config !== 'object') s.config = {};
+    const r = reasoning && typeof reasoning === 'object' ? reasoning : {};
+    s.config.reasoning = {
+      body: String(r.body || '').trim(),
+      settle: String(r.settle || '').trim(),
+      retrieve: String(r.retrieve || '').trim(),
+    };
+    await saveState(s);
+    return withKeyStatus(s);
+  });
+
+  reg('reasoningOptions', async ({ provider, model }) => {
+    const pid = String(provider || '').trim();
+    const mid = String(model || '').trim();
+    if (!pid || !mid) return { ok: false, efforts: [], error: '先选服务和模型' };
+    if (!llm || typeof llm.resolveModelInfo !== 'function') {
+      return { ok: false, efforts: [], error: '当前运行时没有 llm 服务' };
+    }
+    try {
+      const info = await llm.resolveModelInfo(pid, mid);
+      const r = info && info.reasoning;
+      const efforts = (r && Array.isArray(r.efforts) ? r.efforts : []).map((x) => ({
+        id: String(x.id),
+        name: String(x.name || x.id),
+      }));
+      return { ok: true, efforts, default: r && r.defaultEffort ? String(r.defaultEffort) : '' };
+    } catch (e) {
+      return { ok: false, efforts: [], error: String((e && e.message) || e) };
+    }
   });
 
   reg('saveConfig', async ({ gameId, config }) => {
@@ -4329,6 +4384,7 @@ reg('parseRealPerson', async ({ gameId, name, fields }) => {
       tag: '重算结算',
       tools: [SETTLE_TOOL],
       wantTools: true,
+        reasoningEffort: await reasoningOf(s, 'settle'),
     });
     const raw = String(res2 && res2.text != null ? res2.text : res2 == null ? '' : res2);
     const sj = pickToolCall(res2) || parseJsonLoose(raw);

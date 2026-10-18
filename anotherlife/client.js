@@ -223,7 +223,7 @@ window.__ModuleLoader__.load({
       '.sim-group-b .sim-card{background:var(--sim-bg);margin-bottom:10px}',
       '.sim-group-b .sim-card:last-child{margin-bottom:8px}',
       // 模型槽位的紧凑行：名称 / 服务 / 模型 / 切换
-      '.sim-slot-row{display:grid;grid-template-columns:72px minmax(0,0.9fr) minmax(0,1.1fr) auto;gap:8px;align-items:center;margin-bottom:8px}',
+      '.sim-slot-row{display:grid;grid-template-columns:64px minmax(0,0.8fr) minmax(0,0.9fr) minmax(0,0.7fr) auto;gap:8px;align-items:center;margin-bottom:8px}',
       '.sim-slot-row .k{font-size:var(--sim-fs-2);color:var(--sim-t2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:help}',
       '.sim-slot-row select,.sim-slot-row input{min-width:0;width:100%;background:var(--sim-bg);border:1px solid var(--sim-bd);border-radius:8px;color:var(--sim-t);padding:5px 8px;font-size:var(--sim-fs-2);font-family:inherit}',
       '.sim-slot-row select:focus,.sim-slot-row input:focus{outline:none;border-color:var(--sim-ac)}',
@@ -3044,6 +3044,59 @@ window.__ModuleLoader__.load({
           // ModelCfg 是无钩子的直呼组件，所以状态放这里，它靠闭包读。
           const [slotPick, setSlotPick] = React.useState({}); // { [slot]: {provider, model} }
           const [slotBusy, setSlotBusy] = React.useState(''); // 正在切换哪个槽位
+          // 每个槽位的模型支持哪些思考强度（DSH 的 reasoningEffort 是模型自己声明的枚举，
+          // 各模型不同，传错会报错 —— 所以只能选了模型之后去问）
+          const [reasonOpts, setReasonOpts] = React.useState({});
+          // 每个「槽位|服务|模型」只问一次，避免每次 config 变动都打一遍
+          const reasonFetchedRef = React.useRef({});
+          React.useEffect(() => {
+              if (tab !== 'settings') return;
+              ['retrieve', 'settle', 'summary', 'assistant'].forEach((sl) => {
+                  const c = (dcfg || {})[sl] || {};
+                  if (!c.provider || !c.model) return;
+                  const key = sl + '|' + c.provider + '|' + c.model;
+                  if (reasonFetchedRef.current[key]) return;
+                  reasonFetchedRef.current[key] = 1;
+                  call('reasoningOptions', { provider: c.provider, model: c.model }, gameId)
+                      .then((r) =>
+                        setReasonOpts((o) =>
+                          Object.assign({}, o, {
+                            [sl]: {
+                              efforts: (r && r.efforts) || [],
+                              def: (r && r.default) || '',
+                              error: (r && r.error) || '',
+                            },
+                          })
+                        )
+                      )
+                      .catch(() => {
+                        reasonFetchedRef.current[key] = 0;
+                      });
+                    // 主模型（正文生成）单独一档
+                    const mv = mainModel || {};
+                    if (mv.provider && mv.model) {
+                      const mk = 'main|' + mv.provider + '|' + mv.model;
+                      if (!reasonFetchedRef.current[mk]) {
+                        reasonFetchedRef.current[mk] = 1;
+                        call('reasoningOptions', { provider: mv.provider, model: mv.model }, gameId)
+                                .then((r) =>
+                                  setReasonOpts((o) =>
+                                    Object.assign({}, o, {
+                                      main: {
+                                        efforts: (r && r.efforts) || [],
+                                        def: (r && r.default) || '',
+                                        error: (r && r.error) || '',
+                                      },
+                                    })
+                                  )
+                                )
+                                .catch(() => {
+                                  reasonFetchedRef.current[mk] = 0;
+                                });
+                      }
+                    }
+              });
+          }, [tab, dcfg, gameId]);
           const [slotOk, setSlotOk] = React.useState({}); // { [slot]: '✓ 已切换' }
           const [slotErr, setSlotErr] = React.useState({}); // { [slot]: 错误文字 }
           const stageAtRef = React.useRef(''); // 最近一次已知的阶段名（出错时用来标是哪一步挂的）
@@ -8089,6 +8142,24 @@ function starPanel(n) {
              * 「切换」= 把这个槽位的服务与模型写进配置并立即落盘。
              * 和主模型那一块一致：选完要按一下，才知道到底成没成。
              */
+            /** 改思考强度：立即落盘（这个字段小，不必像模型那样点「切换」） */
+            function pickReason(v) {
+                const cfg = Object.assign({}, dcfg);
+                const r = Object.assign({}, cfg.reasoning || {});
+                r[slot] = v;
+                cfg.reasoning = r;
+                upd({ config: cfg });
+                return run(call('saveReasoning', { reasoning: r }, gameId));
+            }
+            /** 正文的思考强度（主模型那一档） */
+            function pickBodyReason(v) {
+                const cfg = Object.assign({}, dcfg);
+                const r = Object.assign({}, cfg.reasoning || {});
+                r.body = v;
+                cfg.reasoning = r;
+                upd({ config: cfg });
+                return run(call('saveReasoning', { reasoning: r }, gameId));
+            }
             function applySlot() {
               setSlotBusy(slot);
               setSlotErr((o) => Object.assign({}, o, { [slot]: '' }));
@@ -8109,6 +8180,20 @@ function starPanel(n) {
                   // 切换成功后，把这个槽位的临时选择清掉 —— 之后一律以已保存的为准
                   setSlotPick((all) => Object.assign({}, all, { [slot]: null }));
                   setModels(Object.assign({}, models, { [slot]: { loading: false, list: mm.list || [], error: '' } }));
+                  // 模型定了，顺手问一下它支持哪些思考强度
+                  call('reasoningOptions', { provider: String(pick.provider || ''), model: String(pick.model || '') }, gameId)
+                    .then((r) =>
+                      setReasonOpts((o) =>
+                        Object.assign({}, o, {
+                          [slot]: {
+                            efforts: (r && r.efforts) || [],
+                            def: (r && r.default) || '',
+                            error: (r && r.error) || '',
+                          },
+                        })
+                      )
+                    )
+                    .catch(() => setReasonOpts((o) => Object.assign({}, o, { [slot]: { efforts: [], def: '', error: '' } })));
                   setSlotOk((o) => Object.assign({}, o, { [slot]: '✓ 已切换' }));
                   window.setTimeout(() => setSlotOk((o) => Object.assign({}, o, { [slot]: '' })), 2500);
                 })
@@ -8159,6 +8244,26 @@ function starPanel(n) {
                     const id = m && m.id != null ? m.id : String(m);
                     return h('option', { key: id, value: id });
                   })
+                ),
+                h(
+                    'select',
+                    {
+                      className: 'sim-select',
+                      title: (() => {
+                        const ro = reasonOpts[slot];
+                        if (!ro) return '先点「切换」确定模型，再选思考强度';
+                        if (ro.error) return ro.error;
+                        const n = (ro.efforts || []).length;
+                        return n ? '思考强度（这个模型支持 ' + n + ' 档）' : '这个模型没有可调的思考强度';
+                      })(),
+                      value: (dcfg.reasoning && dcfg.reasoning[slot]) || '',
+                      onChange: (e) => pickReason(e.target.value),
+                      disabled: !(reasonOpts[slot] && (reasonOpts[slot].efforts || []).length),
+                    },
+                    h('option', { value: '' }, '思考 · 默认'),
+                    ((reasonOpts[slot] && reasonOpts[slot].efforts) || []).map((x) =>
+                      h('option', { key: x.id, value: x.id }, '思考 · ' + x.name)
+                    )
                 ),
                 h(
                   Btn,
@@ -8572,6 +8677,31 @@ function starPanel(n) {
                 ),
                 mmErr ? h('div', { className: 'sim-err' }, mmErr) : null,
                 mmOk ? h('div', { className: 'sim-ok' }, mmOk) : null,
+                h(
+                  'div',
+                  { className: 'sim-field' },
+                  h('label', null, '思考强度'),
+                  h(
+                    'select',
+                    {
+                      className: 'sim-select',
+                      title: (() => {
+                        const ro = reasonOpts.main;
+                        if (!ro) return '正在读取这个模型支持的档位…';
+                        if (ro.error) return ro.error;
+                        const n = (ro.efforts || []).length;
+                        return n ? '正文生成时的思考强度' : '这个模型没有可调的思考强度';
+                      })(),
+                      value: (dcfg.reasoning && dcfg.reasoning.body) || '',
+                      onChange: (e) => pickBodyReason(e.target.value),
+                      disabled: !(reasonOpts.main && (reasonOpts.main.efforts || []).length),
+                    },
+                    h('option', { value: '' }, '默认'),
+                    ((reasonOpts.main && reasonOpts.main.efforts) || []).map((x) =>
+                      h('option', { key: x.id, value: x.id }, x.name)
+                    )
+                  )
+                ),
                 h('div', { className: 'sim-hint' }, '换的就是 DSH 的主模型，正文生成跟着它走。'),
                 h('div', { className: 'sim-hint' }, 'AI 解析：' + (settleModelName() ? settleModelName() + '（结算模型那一栏）' : mainModelName() + '（没单独配，就用主模型）') + '。')
               ),
