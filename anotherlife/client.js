@@ -312,8 +312,11 @@ window.__ModuleLoader__.load({
       '.sim-gal-zoom .sim-modal-b img{max-width:100%;max-height:62vh;display:block;margin:0 auto;border-radius:8px}',
       // 笔记：列表卡片 + 全屏编辑器
       '.sim-note-list{display:flex;flex-direction:column;gap:8px;margin-top:12px}',
-      '.sim-note-card{border:1px solid var(--sim-bd);border-radius:10px;padding:10px 12px;background:var(--sim-bg);cursor:pointer;transition:border-color .12s}',
+      '.sim-note-card{position:relative;border:1px solid var(--sim-bd);border-radius:10px;padding:10px 32px 10px 12px;background:var(--sim-bg);cursor:pointer;transition:border-color .12s}',
       '.sim-note-card:hover{border-color:var(--sim-ac)}',
+      '.sim-note-del{position:absolute;top:8px;right:8px;width:20px;height:20px;padding:0;border:none;border-radius:50%;background:rgba(0,0,0,.42);color:#fff;font-size:11px;line-height:20px;text-align:center;cursor:pointer;opacity:0;transition:opacity .12s}',
+      '.sim-note-card:hover .sim-note-del{opacity:1}',
+      '.sim-note-del:hover{background:var(--sim-err)}',
       '.sim-note-h{font-weight:600;font-size:var(--sim-fs-4);margin-bottom:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
       '.sim-note-x{font-size:var(--sim-fs-2);color:var(--sim-t2);line-height:1.6;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}',
       '.sim-note-m{margin-top:6px;font-size:var(--sim-fs-1);color:var(--sim-t3)}',
@@ -2841,7 +2844,15 @@ window.__ModuleLoader__.load({
                           { className: 'sim-note-card', key: it.id, onClick: () => openNote(it) },
                           h('div', { className: 'sim-note-h' }, it.title || '（无标题）'),
                           it.excerpt ? h('div', { className: 'sim-note-x' }, it.excerpt) : null,
-                          h('div', { className: 'sim-note-m' }, it.len + ' 字 · ' + fmtTime(it.updatedAt))
+                          h('div', { className: 'sim-note-m' }, it.len + ' 字 · ' + fmtTime(it.updatedAt)),
+                          h('button', {
+                            className: 'sim-note-del',
+                            title: '删掉',
+                            onClick: (e) => {
+                              e.stopPropagation();
+                              del(it);
+                            },
+                          }, '✕')
                         )
                       )
                     )
@@ -2886,9 +2897,6 @@ window.__ModuleLoader__.load({
                         h('span', { className: 'sim-hint' }, String(open.body || '').length + ' 字' + (savedAt ? ' · 已保存' : '')),
                         h('span', { style: { flex: 1 } }),
                         h(Btn, { onClick: () => setPreview((v) => !v) }, preview ? '编辑' : '预览'),
-                        open.id
-                          ? h(Btn, { danger: true, disabled: busy, onClick: () => del(open) }, '删除')
-                          : null,
                         h(
                           Btn,
                           {
