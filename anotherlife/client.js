@@ -3540,12 +3540,21 @@ window.__ModuleLoader__.load({
             }
           }, [gameId, !!state, txLen, txStamp]);
 
-          // 助手有新消息就滚到底。
+          // 助手有新消息时，滚到**最后一条的开头**（不是底部）：
+          // 回答往往很长，滚到底等于让你从结尾往回找开头，每次都得多翻一屏。
+          // 已经在视野里（短消息）就不动，免得凭空跳一下。
           // 注意：这个必须和其他 hooks 待在一起 —— App 里有个「没加载好就 return 加载中」的
           // 提前返回，hooks 写在它之后会让两次渲染的 hooks 数量不一致，React 直接抛 #310。
           React.useEffect(() => {
             const el = asBodyRef.current;
-            if (el) el.scrollTop = el.scrollHeight;
+            if (!el) return;
+            const last = el.lastElementChild;
+            if (!last) return;
+            const er = el.getBoundingClientRect();
+            const lr = last.getBoundingClientRect();
+            // 整条都在可视区内就不用动
+            if (lr.top >= er.top && lr.bottom <= er.bottom) return;
+            el.scrollTop += lr.top - er.top;
           }, [asLog, asBusy, asOpen]);
 
           // 第一次打开浮窗时，把存档里存的助手对话装进来（之后以本地这份为准）
