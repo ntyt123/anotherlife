@@ -22,7 +22,7 @@ const P = 'dsh-tavern-simulator/';
 const KEY_SLOTS = ['retrieve', 'settle', 'summary', 'assistant'];
 
 /** 每次改动宿主侧都改一下这个版本号：ping 会回报它，用来确认 Tavern 到底加载的是哪一版 */
-const REV = 'host-v57-story-idle-600-20261017r';
+const REV = 'host-v58-writing-prefs-20261017r';
 
 /**
  * 只有这一局用的是这些卡时，插件才出现在界面上（其余卡片游玩时完全不打扰）。
@@ -572,6 +572,52 @@ export function apply(ctx) {
     }
     throw lastErr || new Error('无法写入 ' + path);
   }
+
+/**
+ * 玩家的长期偏好（Tavern 的 user-profile skill 写的那份，跨卡复用）。
+ * 模拟器不参与 Tavern 的提示词管线，所以自己读文件、自己决定注入哪几条。
+ */
+const USER_PREFS_FILE = TAVERN_DATA_DIR + 'card-memory/preferences/runtime/USER.md';
+
+/** 用内容算稳定 id：Tavern 那边改了字 id 就变，勾选状态自然失效，不会串到别的条目上 */
+function prefId(text) {
+  let hsh = 0;
+  for (let i = 0; i < text.length; i++) hsh = (hsh * 31 + text.charCodeAt(i)) | 0;
+  return 'w' + Math.abs(hsh).toString(36);
+}
+
+/** 读 Tavern 的长期偏好，条目之间用 § 分隔 */
+async function readUserPrefs() {
+  try {
+    const t = await fs.resolve(USER_PREFS_FILE);
+    const text = await fs.readText(t);
+    return String(text || '')
+      .split('\u00a7')
+      .map((x) => x.trim())
+      .filter(Boolean)
+      .map((x) => ({ id: prefId(x), text: x }));
+  } catch (e) {
+    return [];
+  }
+}
+
+/** 当前要注入正文的偏好（已勾选且非空）。60 秒缓存，改完由 saveWritingPrefs 主动清掉 */
+let prefsCache = { at: 0, list: [] };
+async function activeWritingPrefs() {
+  const now = Date.now();
+  if (now - prefsCache.at < 60000) return prefsCache.list;
+  let list = [];
+  try {
+    const g = (await readJson(SETTINGS_FILE)) || {};
+    const all = Array.isArray(g.writingPrefs) ? g.writingPrefs : [];
+    list = all.filter((x) => x && x.on && String(x.text || '').trim()).map((x) => String(x.text).trim());
+  } catch (e) {
+    list = [];
+  }
+  prefsCache = { at: now, list };
+  return list;
+}
+
 
   async function loadState(gameId) {
     let raw = await readJson(statePath(gameId));
@@ -1659,7 +1705,14 @@ export function apply(ctx) {
       '写情事时按下面注入的【情事写作引擎】【情事用词表】【情事桥段结构】执行；没注入这几项说明这一轮不是情事，别硬写。',
     ];
     head.push('');
-    head.push(opts.all ? '【全部设定（开局）】' : '【本轮相关状态】');
+    // 玩家长期偏好：跨故事共用的写作口味，和这一局的剧情无关
+  const prefLines = await activeWritingPrefs();
+  if (prefLines.length) {
+    head.push('【玩家写作偏好】适用于**所有**正文，与当前剧情无关，也不是世界观设定的一部分；写的时候照着做，但正文里不要提到这些偏好本身。');
+    for (let i = 0; i < prefLines.length; i++) head.push(String(i + 1) + '. ' + prefLines[i]);
+    head.push('');
+  }
+  head.push(opts.all ? '【全部设定（开局）】' : '【本轮相关状态】');
     head.push(ctxText.text);
     head.push('');
     // 最近几轮的原文：接在状态之后。前情总结管更早的，这段管最近的，首尾相接。
@@ -3096,6 +3149,30 @@ export function apply(ctx) {
     if (!g.ok) return { ok: false, error: '克隆失败：' + (g.err || g.out || '未知原因') };
     const head = gitRun(d, ['rev-parse', '--short', 'HEAD']);
     return { ok: true, head: head.ok ? head.out : '' };
+  });
+
+  // ── 玩家写作偏好：从 Tavern 的长期偏好同步过来，可增删、可逐条开关 ──
+  reg('getWritingPrefs', async () => {
+    const g = (await readJson(SETTINGS_FILE)) || {};
+    return {
+      list: Array.isArray(g.writingPrefs) ? g.writingPrefs : [],
+      tavern: await readUserPrefs(),
+    };
+  });
+  reg('saveWritingPrefs', async ({ list }) => {
+    const g = (await readJson(SETTINGS_FILE)) || {};
+    g.writingPrefs = (Array.isArray(list) ? list : [])
+      .map((x) => ({
+        id: String((x && x.id) || ''),
+        text: String((x && x.text) || '').trim().slice(0, 800),
+        on: !!(x && x.on),
+        src: x && x.src === 'tavern' ? 'tavern' : 'local',
+      }))
+      .filter((x) => x.text);
+    g.updatedAt = Date.now();
+    await writeJson(SETTINGS_FILE, g);
+    prefsCache = { at: 0, list: [] };
+    return { ok: true, list: g.writingPrefs };
   });
 
   reg('setSkin', async ({ gameId, skin }) => {

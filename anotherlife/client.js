@@ -500,6 +500,15 @@ window.__ModuleLoader__.load({
       '.sim-star-row{display:flex;gap:14px;align-items:baseline}',
       '.sim-star-k{flex:0 0 92px;color:var(--sim-t2);font-size:var(--sim-fs-4);white-space:nowrap}',
       '.sim-star-v{flex:1 1 auto;min-width:0;font-size:var(--sim-fs-5);line-height:1.6;word-break:break-word;color:var(--sim-t)}',
+      // 写作偏好：一条一行（勾选框 + 正文 + 删除）
+      '.sim-pref-list{display:flex;flex-direction:column;gap:8px;margin-top:10px}',
+      '.sim-pref-row{display:flex;align-items:flex-start;gap:9px;padding:8px 10px;border:1px solid var(--sim-bd);border-radius:9px;background:var(--sim-bg)}',
+      '.sim-pref-row.on{border-color:var(--sim-ac);background:var(--sim-bg2)}',
+      '.sim-pref-row input[type=checkbox]{flex:none;margin:3px 0 0;padding:0;border:none;background:none;accent-color:var(--sim-ac);cursor:pointer}',
+      '.sim-pref-t{flex:1 1 auto;min-width:0;font-size:var(--sim-fs-3);line-height:1.65;color:var(--sim-t);white-space:pre-wrap;word-break:break-word}',
+      '.sim-pref-x{flex:none;border:none;background:none;color:var(--sim-t3);cursor:pointer;font-size:var(--sim-fs-3);padding:0 2px;line-height:1.6}',
+      '.sim-pref-x:hover{color:#c34a4a}',
+      '.sim-pref-in{flex:1 1 auto;min-width:0}',
       // ── 生理周期条 ──
       // 四段按真实天数分宽（月经5／卵泡8／排卵3／黄体12），当前段实心，竖线标当天。
       // 价值在右上角那句倒计时：剧情感兴趣的是「还有几天」，不是「第几天」。
@@ -2981,6 +2990,33 @@ window.__ModuleLoader__.load({
           }, [gameId]);
 
           const msg = (e) => (e && e.message ? e.message : String(e));
+  // ── 玩家写作偏好：来源是 Tavern 的长期偏好（USER.md），勾哪条就注入哪条 ──
+  const [prefs, setPrefs] = React.useState({ list: [], tavern: [], loaded: false, busy: false, note: '' });
+  const [prefDraft, setPrefDraft] = React.useState('');
+  const prefsLoadedRef = React.useRef(false);
+  React.useEffect(() => {
+    if (tab !== 'settings' || prefsLoadedRef.current) return;
+    prefsLoadedRef.current = true;
+    let alive = true;
+    call('getWritingPrefs', {}, gameId)
+      .then((r) => {
+        if (!alive) return;
+        setPrefs((p) =>
+          Object.assign({}, p, {
+            list: (r && r.list) || [],
+            tavern: (r && r.tavern) || [],
+            loaded: true,
+          })
+        );
+      })
+      .catch(() => {
+        if (alive) setPrefs((p) => Object.assign({}, p, { loaded: true }));
+      });
+    return () => {
+      alive = false;
+    };
+  }, [tab, gameId]);
+
 
           function run(p, reload) {
             setBusy(true);
@@ -3385,6 +3421,41 @@ window.__ModuleLoader__.load({
            */
           function upd(patch) {
             setDraft((prev) => Object.assign({}, prev, patch));
+          }
+
+          /** 保存写作偏好（改了就存，不设手动保存按钮） */
+          function savePrefs(next) {
+            setPrefs((p) => Object.assign({}, p, { list: next, busy: true, note: '' }));
+            return call('saveWritingPrefs', { list: next }, gameId)
+              .then((r) => setPrefs((p) => Object.assign({}, p, { list: (r && r.list) || next, busy: false })))
+              .catch((e) => setPrefs((p) => Object.assign({}, p, { busy: false, note: msg(e) })));
+          }
+          /** 勾 / 取消一条 */
+          function togglePref(i) {
+            savePrefs(prefs.list.map((x, j) => (j === i ? Object.assign({}, x, { on: !x.on }) : x)));
+          }
+          /** 删掉一条 */
+          function removePref(i) {
+            savePrefs(prefs.list.filter((x, j) => j !== i));
+          }
+          /** 直接加一条（不用先进 Tavern） */
+          function addPref() {
+            const t = String(prefDraft || '').trim();
+            if (!t) return;
+            setPrefDraft('');
+            savePrefs(prefs.list.concat([{ id: 'l' + Date.now().toString(36), text: t, on: true, src: 'local' }]));
+          }
+          /** 从 Tavern 的长期偏好拉一份：已有的跳过，新条目默认不勾（由你决定要不要用） */
+          function syncPrefs() {
+            const have = prefs.list.map((y) => String(y.text || '').trim());
+            const add = (prefs.tavern || [])
+              .filter((x) => have.indexOf(String(x.text || '').trim()) < 0)
+              .map((x) => ({ id: x.id, text: x.text, on: false, src: 'tavern' }));
+            if (!add.length) {
+              setPrefs((p) => Object.assign({}, p, { note: '没有新条目' }));
+              return;
+            }
+            savePrefs(prefs.list.concat(add));
           }
 
           if (!state || !draft || !dps) {
@@ -7673,6 +7744,62 @@ function starPanel(n) {
                 h('div', { className: 'sim-hint' }, '最少字数是硬要求，写不够算不合格；最多字数填 0 表示不设上限。段落数按字数自动换算。')
               ),
               h(SoundCfg, { key: 'sound' })
+            ),
+
+            /* ── 写作偏好 ── */
+            group(
+              'prefs',
+              '写作偏好',
+              prefs.list.filter((x) => x.on).length + ' 条生效',
+              h(
+                'div',
+                { className: 'sim-card' },
+                h(
+                  'div',
+                  { className: 'sim-hint' },
+                  '勾上的条目会注入每一轮正文。来源是 Tavern 的长期偏好（跨卡复用），也可以在这里直接加。'
+                ),
+                h(
+                  'div',
+                  { className: 'sim-acts', style: { marginTop: 8 } },
+                  h(Btn, { disabled: prefs.busy, onClick: () => syncPrefs() }, '从 Tavern 同步'),
+                  prefs.note ? h('span', { className: 'sim-hint' }, prefs.note) : null
+                ),
+                prefs.list.length
+                  ? h(
+                    'div',
+                    { className: 'sim-pref-list' },
+                    prefs.list.map((x, i) =>
+                      h(
+                        'div',
+                        { className: 'sim-pref-row' + (x.on ? ' on' : ''), key: x.id || 'p' + i },
+                        h('input', {
+                          type: 'checkbox',
+                          checked: !!x.on,
+                          onChange: () => togglePref(i),
+                          title: x.on ? '取消注入' : '注入到正文',
+                        }),
+                        h('div', { className: 'sim-pref-t' }, x.text),
+                        h('button', { className: 'sim-pref-x', title: '删掉这条', onClick: () => removePref(i) }, '✕')
+                      )
+                      )
+                    )
+                  : h('div', { className: 'sim-hint', style: { marginTop: 10 } }, '还没有条目。点「从 Tavern 同步」拉一份，或在下面直接加。'),
+                h(
+                  'div',
+                  { className: 'sim-acts', style: { marginTop: 10 } },
+                  h('input', {
+                    className: 'sim-pref-in',
+                    value: prefDraft,
+                    placeholder: '再加一条，例如：别用「一丝」「一抹」这类词',
+                    onChange: (e) => setPrefDraft(e.target.value),
+                    onKeyDown: (e) => {
+                      if (e.key === 'Enter') addPref();
+                    },
+                  }),
+                  h(Btn, { disabled: !String(prefDraft).trim() || prefs.busy, onClick: () => addPref() }, '添加')
+                )
+              )
             ),
 
             /* ── 模型 ── */
