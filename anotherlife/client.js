@@ -41,6 +41,7 @@ window.__ModuleLoader__.load({
       '.sim-md-p:last-child{margin-bottom:0}',
       // 对白：整段以引号开头 → 单独配色，和叙述一眼分开（取自界面里的蓝）
       '.sim-md-p.say{color:var(--sim-say)}',
+      '.sim-md-p .sim-say,.sim-md-block .sim-md-p .sim-say,.sim-as-txt .sim-md-p .sim-say{color:var(--sim-say)}',
       // 标题：原来 lv3（14px）比正文还小，层次出不来。现在按 # 的个数拉开字号与间距。
       '.sim-md-h{font-weight:700;margin:16px 0 9px;line-height:1.45}',
       '.sim-md-h.lv1{font-size:calc(var(--sim-fs-6) + 5px)}',
@@ -1989,8 +1990,8 @@ window.__ModuleLoader__.load({
             out.push(
               h(
                 'div',
-                // 整段以引号开头 → 当作对白，单独配色，和叙述一眼分开
-                { key: i, className: 'sim-md-p' + (/^[“"「『]/.test(t) ? ' say' : '') },
+                // 对白不按「整段」判 —— 由 mdInline 把引号里的内容单独配色，
+                { key: i, className: 'sim-md-p' },
                 mdInline(t)
               )
             );
@@ -1999,7 +2000,29 @@ window.__ModuleLoader__.load({
           return out;
         }
         /** 行内：**粗**、*斜*、`代码` */
+        /**
+         * 行内渲染：先按引号把对白切出来单独染色，其余交给 mdInlineCore。
+         * 之前是「整段以引号开头就整段变蓝」，导致一段里叙述和对话一起变蓝 ——
+         * 而正文里最常见的恰恰是「”罗伊？“门被推开…」这种叙述夹对话的段落。
+         */
         function mdInline(s) {
+          const str = String(s == null ? '' : s);
+          if (!/[“"「『]/.test(str)) return mdInlineCore(str);
+          const SAY_RE = /“[^”]*”|"[^"]*"|「[^」]*」|『[^』]*』/g;
+          const out = [];
+          let last = 0;
+          let m;
+          let k = 0;
+          while ((m = SAY_RE.exec(str))) {
+            if (m.index > last) out.push(...mdInlineCore(str.slice(last, m.index)));
+            out.push(h('span', { key: 'say' + k++, className: 'sim-say' }, m[0]));
+            last = m.index + m[0].length;
+          }
+          if (last < str.length) out.push(...mdInlineCore(str.slice(last)));
+          return out.length ? out : mdInlineCore(str);
+        }
+        
+        function mdInlineCore(s) {
           const str = String(s == null ? '' : s);
           const parts = [];
           const re = /\*\*([^*]+)\*\*|`([^`]+)`|\*([^*\s][^*]*)\*/g;
