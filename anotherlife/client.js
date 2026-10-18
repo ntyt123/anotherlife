@@ -3277,56 +3277,6 @@ window.__ModuleLoader__.load({
           // 每个槽位的模型支持哪些思考强度（DSH 的 reasoningEffort 是模型自己声明的枚举，
           // 各模型不同，传错会报错 —— 所以只能选了模型之后去问）
           const [reasonOpts, setReasonOpts] = React.useState({});
-          // 每个「槽位|服务|模型」只问一次，避免每次 config 变动都打一遍
-          const reasonFetchedRef = React.useRef({});
-          React.useEffect(() => {
-              if (tab !== 'settings') return;
-              ['retrieve', 'settle', 'summary', 'assistant'].forEach((sl) => {
-                  const c = (dcfg || {})[sl] || {};
-                  if (!c.provider || !c.model) return;
-                  const key = sl + '|' + c.provider + '|' + c.model;
-                  if (reasonFetchedRef.current[key]) return;
-                  reasonFetchedRef.current[key] = 1;
-                  call('reasoningOptions', { provider: c.provider, model: c.model }, gameId)
-                      .then((r) =>
-                        setReasonOpts((o) =>
-                          Object.assign({}, o, {
-                            [sl]: {
-                              efforts: (r && r.efforts) || [],
-                              def: (r && r.default) || '',
-                              error: (r && r.error) || '',
-                            },
-                          })
-                        )
-                      )
-                      .catch(() => {
-                        reasonFetchedRef.current[key] = 0;
-                      });
-                    // 主模型（正文生成）单独一档
-                    const mv = mainModel || {};
-                    if (mv.provider && mv.model) {
-                      const mk = 'main|' + mv.provider + '|' + mv.model;
-                      if (!reasonFetchedRef.current[mk]) {
-                        reasonFetchedRef.current[mk] = 1;
-                        call('reasoningOptions', { provider: mv.provider, model: mv.model }, gameId)
-                                .then((r) =>
-                                  setReasonOpts((o) =>
-                                    Object.assign({}, o, {
-                                      main: {
-                                        efforts: (r && r.efforts) || [],
-                                        def: (r && r.default) || '',
-                                        error: (r && r.error) || '',
-                                      },
-                                    })
-                                  )
-                                )
-                                .catch(() => {
-                                  reasonFetchedRef.current[mk] = 0;
-                                });
-                      }
-                    }
-              });
-          }, [tab, dcfg, gameId]);
           const [slotOk, setSlotOk] = React.useState({}); // { [slot]: '✓ 已切换' }
           const [slotErr, setSlotErr] = React.useState({}); // { [slot]: 错误文字 }
           const stageAtRef = React.useRef(''); // 最近一次已知的阶段名（出错时用来标是哪一步挂的）
@@ -3336,6 +3286,59 @@ window.__ModuleLoader__.load({
           const parseTimer = React.useRef(0);
           const PARSE_LIMIT_MS = 300000;
           const [mainModel, setMainModel] = React.useState(null); // 当前主模型（设定页显示）
+
+          // 每个「槽位|服务|模型」只问一次，避免每次 config 变动都打一遍
+          const reasonFetchedRef = React.useRef({});
+          // 这里只能用 state / draft（在它们之后声明）—— dcfg 在提前 return 之后才定义，
+          // 写进依赖数组会在首渲染时抛 Cannot access dcfg before initialization。
+          React.useEffect(() => {
+              if (tab !== 'settings') return;
+              const cfg = (state && state.config) || {};
+              ['retrieve', 'settle', 'summary', 'assistant'].forEach((sl) => {
+                  const c = cfg[sl] || {};
+                  if (!c.provider || !c.model) return;
+                  const key = sl + '|' + c.provider + '|' + c.model;
+                  if (reasonFetchedRef.current[key]) return;
+                  reasonFetchedRef.current[key] = 1;
+                  call('reasoningOptions', { provider: c.provider, model: c.model }, gameId)
+                    .then((r) =>
+                      setReasonOpts((o) =>
+                        Object.assign({}, o, {
+                          [sl]: {
+                            efforts: (r && r.efforts) || [],
+                            def: (r && r.default) || '',
+                            error: (r && r.error) || '',
+                          },
+                        })
+                      )
+                    )
+                    .catch(() => {
+                      reasonFetchedRef.current[key] = 0;
+                    });
+              });
+              const mv = mainModel || {};
+              if (mv.provider && mv.model) {
+                  const mk = 'main|' + mv.provider + '|' + mv.model;
+                  if (!reasonFetchedRef.current[mk]) {
+                    reasonFetchedRef.current[mk] = 1;
+                    call('reasoningOptions', { provider: mv.provider, model: mv.model }, gameId)
+                        .then((r) =>
+                          setReasonOpts((o) =>
+                            Object.assign({}, o, {
+                              main: {
+                                efforts: (r && r.efforts) || [],
+                                def: (r && r.default) || '',
+                                error: (r && r.error) || '',
+                              },
+                            })
+                          )
+                        )
+                        .catch(() => {
+                          reasonFetchedRef.current[mk] = 0;
+                        });
+                  }
+              }
+          }, [tab, state, gameId, mainModel]);
           // 设定页的「主模型」切换：候选来自 DSH 已注册的 provider 与它们提供的模型
           const [mmC, setMmC] = React.useState(null); // { current, providers, models }
           const [mmPick, setMmPick] = React.useState({ provider: '', model: '' });
@@ -4197,6 +4200,7 @@ window.__ModuleLoader__.load({
             baseline: '姓名,性别',
             retrieveMax: 24,
           };
+
           const skin = state.skin || 'paper';
           const phase = state.phase || 'world';
           const ks = state.keyStatus || {};
