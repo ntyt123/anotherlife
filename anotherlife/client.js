@@ -411,6 +411,9 @@ window.__ModuleLoader__.load({
       '.sim-opts{display:flex;flex-direction:column;gap:6px;margin-top:6px}',
       '.sim-opt{padding:8px 10px;border-radius:8px;border:1px dashed var(--sim-bd);cursor:pointer;font-size:var(--sim-fs-2);background:transparent;color:var(--sim-t);font-family:inherit;width:100%}',
       '.sim-input-wrap{position:relative;flex:none;border-top:1px solid var(--sim-bd);display:flex;flex-direction:column}',
+      // 进度条贴在输入框上方：去掉外框与圆角，只留一条虚线和底色
+      '.sim-input-wrap > .sim-stage{margin:0;padding:7px 12px;border:none;border-bottom:1px dashed var(--sim-bd);border-radius:0;background:var(--sim-bg2);gap:5px}',
+      '.sim-input-wrap > .sim-stage .sim-stage-txt{font-size:var(--sim-fs-1)}',
       '.sim-input{display:flex;gap:8px;padding:10px 12px;align-items:flex-start}',
       '.sim-opts-btn{flex:0 0 auto;width:42px;height:44px;border-radius:10px;border:1px solid var(--sim-bd);background:transparent;color:var(--sim-t);font-size:var(--sim-fs-6);cursor:pointer;line-height:1;font-family:inherit}',
       '.sim-opts-btn:hover{border-color:var(--sim-ac)}',
@@ -5178,8 +5181,7 @@ window.__ModuleLoader__.load({
                 )
               );
             })(),
-            // 生成阶段进度：放正文末尾（内容变长不会改变正文容器尺寸，所以不会把滚动位置顶掉）
-            busy || stage ? stageBar() : null
+            // 进度条已移到输入框上方 —— 生成时不用翻到正文末尾去看
           );
 
           // ── 预设 ──
@@ -8317,6 +8319,7 @@ function starPanel(n) {
               ? h(
                   'div',
                   { className: 'sim-input-wrap' },
+                  busy || stage ? stageBar() : null,
                   optsPanel,
                   h(
                     'div',
