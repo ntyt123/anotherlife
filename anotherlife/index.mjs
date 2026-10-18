@@ -2662,8 +2662,15 @@ function pickToolCall(r) {
         // 这里**只花一次调用**：世界/主角/角色档案/关系/技能资产全在这一次里。
         // 不加 response_format=json_object —— 要先让它写检查清单（逐项点名），
         // 只要求「输出 JSON」时模型常常只丢一个日期就交卷。
-        const settleRaw = await callSlot(s, 'settle', msgs, { maxTokens: 6000, tag: '结算' });
-        const sj = parseJsonLoose(settleRaw);
+        // 首选工具调用：参数由 API 层保证是结构化对象；拿不到再走文本解析（兼容不支持 tools 的模型）
+        const settleRes = await callSlot(s, 'settle', msgs, {
+          maxTokens: 6000,
+          tag: '结算',
+          tools: [SETTLE_TOOL],
+          wantTools: true,
+        });
+        const settleRaw = String(settleRes && settleRes.text != null ? settleRes.text : settleRes == null ? '' : settleRes);
+        const sj = pickToolCall(settleRes) || parseJsonLoose(settleRaw);
         if (sj) {
           diffs = settleToDiffs(s, sj);
           summary = String(sj.summary || '');
@@ -4165,8 +4172,14 @@ reg('parseRealPerson', async ({ gameId, name, fields }) => {
       { role: 'system', content: await settleSystemPrompt(s, gameId, latest.body) },
       { role: 'user', content: '本轮正文：\n' + latest.body },
     ];
-    const raw = await callSlot(s, 'settle', msgs, { maxTokens: 6000, tag: '重算结算' });
-    const sj = parseJsonLoose(raw);
+    const res2 = await callSlot(s, 'settle', msgs, {
+      maxTokens: 6000,
+      tag: '重算结算',
+      tools: [SETTLE_TOOL],
+      wantTools: true,
+    });
+    const raw = String(res2 && res2.text != null ? res2.text : res2 == null ? '' : res2);
+    const sj = pickToolCall(res2) || parseJsonLoose(raw);
     if (!sj) throw new Error('结算模型未返回有效 JSON');
     // 先把这个旧轮已经应用过的变量改动退回去，再按新结果重新算 —— 否则是叠加两次
     rollbackDiffs(s, latest.diffs || []);
