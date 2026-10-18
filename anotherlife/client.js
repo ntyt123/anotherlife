@@ -310,6 +310,20 @@ window.__ModuleLoader__.load({
       '.sim-gal-x{position:absolute;top:2px;right:2px;width:18px;height:18px;padding:0;border-radius:50%;border:none;background:rgba(0,0,0,.55);color:#fff;font-size:11px;line-height:18px;text-align:center;cursor:pointer;opacity:0;transition:opacity .12s}',
       '.sim-gal-cell:hover .sim-gal-x{opacity:1}',
       '.sim-gal-zoom .sim-modal-b img{max-width:100%;max-height:62vh;display:block;margin:0 auto;border-radius:8px}',
+      // 笔记：列表卡片 + 全屏编辑器
+      '.sim-note-list{display:flex;flex-direction:column;gap:8px;margin-top:12px}',
+      '.sim-note-card{border:1px solid var(--sim-bd);border-radius:10px;padding:10px 12px;background:var(--sim-bg);cursor:pointer;transition:border-color .12s}',
+      '.sim-note-card:hover{border-color:var(--sim-ac)}',
+      '.sim-note-h{font-weight:600;font-size:var(--sim-fs-4);margin-bottom:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+      '.sim-note-x{font-size:var(--sim-fs-2);color:var(--sim-t2);line-height:1.6;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}',
+      '.sim-note-m{margin-top:6px;font-size:var(--sim-fs-1);color:var(--sim-t3)}',
+      '.sim-note-edit{width:min(780px,94vw);max-height:88vh;display:flex;flex-direction:column}',
+      '.sim-note-title{width:100%;background:transparent;border:none;outline:none;color:var(--sim-t);font-size:var(--sim-fs-5);font-weight:600;font-family:inherit;padding:2px 0}',
+      '.sim-note-b{display:flex;flex-direction:column;min-height:0;flex:1}',
+      '.sim-note-body{flex:1;min-height:50vh;resize:none;padding:12px;line-height:1.9;font-size:var(--sim-fs-4);background:var(--sim-bg);border:1px solid var(--sim-bd);border-radius:10px;color:var(--sim-t);font-family:inherit}',
+      '.sim-note-body:focus{outline:none;border-color:var(--sim-ac)}',
+      '.sim-note-prev{flex:1;min-height:50vh;max-height:50vh;overflow-y:auto;padding:12px;line-height:1.9;font-size:var(--sim-fs-4);border:1px solid var(--sim-bd);border-radius:10px;background:var(--sim-bg)}',
+      '.sim-note-foot{display:flex;align-items:center;gap:8px;padding-top:10px}',
       '.sim-avm-row{display:flex;align-items:center;gap:14px}',
       '.sim-avm-big{width:112px;height:112px;flex:0 0 auto;border-radius:16px;overflow:hidden;border:1px solid var(--sim-bd);background:var(--sim-bg2);display:flex;align-items:center;justify-content:center;font-size:38px}',
       '.sim-avm-big img{width:100%;height:100%;object-fit:cover;display:block}',
@@ -2672,6 +2686,220 @@ window.__ModuleLoader__.load({
         }
 
         /**
+         * 笔记页：列表 + 全屏编辑器。
+         * 编辑器自动保存（停手 1.2 秒后存），也能手动存；支持 Markdown 预览。
+         * 独立组件（自带 hooks），不受 App「没加载好就 return」影响。
+         */
+        function NotesView(props) {
+          const [items, setItems] = React.useState([]);
+          const [max, setMax] = React.useState(300);
+          const [loaded, setLoaded] = React.useState(false);
+          const [busy, setBusy] = React.useState(false);
+          const [err, setErr] = React.useState('');
+          const [open, setOpen] = React.useState(null); // {id,title,body}
+          const [preview, setPreview] = React.useState(false);
+          const [savedAt, setSavedAt] = React.useState(0);
+          const saveTimer = React.useRef(null);
+          const openRef = React.useRef(null);
+          const em = (e) => (e && e.message ? e.message : String(e));
+
+          const load = () => {
+            setBusy(true);
+            setErr('');
+            return Promise.resolve(props.list())
+              .then((r) => {
+                setItems((r && r.items) || []);
+                setMax((r && r.max) || 300);
+                setLoaded(true);
+                setBusy(false);
+              })
+              .catch((e) => {
+                setErr(em(e));
+                setLoaded(true);
+                setBusy(false);
+              });
+          };
+          React.useEffect(() => {
+            load();
+          }, []);
+          React.useEffect(() => {
+            openRef.current = open;
+          }, [open]);
+
+          /** 真正写盘。全空的不存，免得列表里堆一堆空条目 */
+          const persist = (o) => {
+            if (!o) return Promise.resolve(null);
+            const t = String(o.title || '').trim();
+            const bd = String(o.body || '').trim();
+            if (!t && !bd) return Promise.resolve(null);
+            return Promise.resolve(props.save({ id: o.id, title: o.title, body: o.body }))
+              .then((r) => {
+                // 新建的拿到 id，之后就是更新同一篇
+                if (r && r.id) setOpen((p) => (p ? Object.assign({}, p, { id: String(r.id) }) : p));
+                setSavedAt(Date.now());
+                return r;
+              })
+              .catch((e) => setErr(em(e)));
+          };
+
+          /** 改内容：更新界面 + 排一次自动保存 */
+          const touch = (patch) => {
+            setOpen((p) => Object.assign({}, p, patch));
+            setSavedAt(0);
+            if (saveTimer.current) window.clearTimeout(saveTimer.current);
+            saveTimer.current = window.setTimeout(() => persist(openRef.current), 1200);
+          };
+
+          const openNote = (it) => {
+            setPreview(false);
+            setErr('');
+            if (!it) {
+              setOpen({ id: '', title: '', body: '' });
+              return;
+            }
+            setBusy(true);
+            Promise.resolve(props.get(it.id))
+              .then((r) => {
+                setOpen({
+                  id: String((r && r.id) || it.id),
+                  title: String((r && r.title) || it.title || ''),
+                  body: String((r && r.body) || ''),
+                });
+                setBusy(false);
+              })
+              .catch((e) => {
+                setErr(em(e));
+                setBusy(false);
+              });
+          };
+
+          const closeNote = () => {
+            if (saveTimer.current) window.clearTimeout(saveTimer.current);
+            const o = openRef.current;
+            setOpen(null);
+            setPreview(false);
+            // 关掉时把没来得及自动保存的存一次，再刷新列表
+            Promise.resolve(o && String(o.title || o.body || '').trim() ? persist(o) : null).then(() => load());
+          };
+
+          const del = (o) => {
+            if (!window.confirm('删掉这篇笔记？不可恢复。')) return;
+            setBusy(true);
+            Promise.resolve(props.remove(o.id))
+              .then(() => {
+                if (saveTimer.current) window.clearTimeout(saveTimer.current);
+                setOpen(null);
+                setPreview(false);
+                return load();
+              })
+              .catch((e) => {
+                setErr(em(e));
+                setBusy(false);
+              });
+          };
+
+          const fmtTime = (t) => {
+            if (!t) return '';
+            const d = new Date(t);
+            const p = (n) => (n < 10 ? '0' + n : String(n));
+            return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+          };
+
+          return h(
+            'div',
+            null,
+            h(
+              'div',
+              { className: 'sim-hint', style: { marginBottom: 10 } },
+              '记录这一局的线索、计划、待办。停手一秒自动保存。'
+            ),
+            h(
+              'div',
+              { className: 'sim-card' },
+              h(
+                'div',
+                { className: 'sim-acts', style: { justifyContent: 'space-between' } },
+                h(Btn, { primary: true, disabled: busy, onClick: () => openNote(null) }, '+ 新建笔记'),
+                h('span', { className: 'sim-hint' }, items.length + ' / ' + max)
+              ),
+              err ? h('div', { className: 'sim-err', style: { marginTop: 8 } }, err) : null,
+              items.length
+                  ? h(
+                      'div',
+                      { className: 'sim-note-list' },
+                      items.map((it) =>
+                        h(
+                          'div',
+                          { className: 'sim-note-card', key: it.id, onClick: () => openNote(it) },
+                          h('div', { className: 'sim-note-h' }, it.title || '（无标题）'),
+                          it.excerpt ? h('div', { className: 'sim-note-x' }, it.excerpt) : null,
+                          h('div', { className: 'sim-note-m' }, it.len + ' 字 · ' + fmtTime(it.updatedAt))
+                        )
+                      )
+                    )
+                  : h('div', { className: 'sim-hint', style: { marginTop: 12 } }, loaded ? '还没有笔记。' : '正在读取…'),
+            ),
+            open
+                ? h(
+                    'div',
+                    { className: 'sim-mask', onClick: closeNote },
+                    h(
+                      'div',
+                      { className: 'sim-modal sim-note-edit', onClick: (e) => e.stopPropagation() },
+                      h(
+                        'div',
+                        { className: 'sim-modal-h' },
+                        h('div', { className: 'who', style: { flex: 1, minWidth: 0 } },
+                          h('input', {
+                            className: 'sim-note-title',
+                            value: open.title,
+                            placeholder: '标题',
+                            onChange: (e) => touch({ title: e.target.value }),
+                          })
+                        ),
+                        h('button', { className: 'sim-modal-x', title: '关闭', onClick: closeNote }, '✕')
+                      ),
+                      h(
+                        'div',
+                        { className: 'sim-modal-b sim-note-b' },
+                        preview
+                          ? h('div', { className: 'sim-note-prev' }, open.body ? mdNodes(open.body) : h('div', { className: 'sim-hint' }, '（空）'))
+                          : h('textarea', {
+                              className: 'sim-note-body',
+                              value: open.body,
+                              placeholder: '写点什么……支持 Markdown（# 标题、- 列表、**粗体**）',
+                              onChange: (e) => touch({ body: e.target.value }),
+                            })
+                      ),
+                      h(
+                        'div',
+                        { className: 'sim-note-foot' },
+                        h('span', { className: 'sim-hint' }, String(open.body || '').length + ' 字' + (savedAt ? ' · 已保存' : '')),
+                        h('span', { style: { flex: 1 } }),
+                        h(Btn, { onClick: () => setPreview((v) => !v) }, preview ? '编辑' : '预览'),
+                        open.id
+                          ? h(Btn, { danger: true, disabled: busy, onClick: () => del(open) }, '删除')
+                          : null,
+                        h(
+                          Btn,
+                          {
+                            primary: true,
+                            disabled: busy,
+                            onClick: () => {
+                              if (saveTimer.current) window.clearTimeout(saveTimer.current);
+                              persist(open).then(() => load());
+                            },
+                          },
+                          '保存'
+                        )
+                      )
+                    )
+                  )
+                : null
+          );
+        }
+
+        /**
          * 把「没有名为 xxx 的插件处理函数」翻成人话。
          * 这句话看着像插件坏了，其实多半是刚加的功能还没被 DSH 加载（宿主侧跑的是旧模块）。
          */
@@ -4922,6 +5150,18 @@ onDoubleClick: () => {
                 },
                 h('span', { className: 'ic' }, '🖼️'),
                 h('span', { className: 'lb' }, '图库')
+              ),
+              // 笔记：这一局的记录，每局各自一份
+              h(
+                'button',
+                {
+                  key: 'notes',
+                  className: 'sim-rail-tab' + (tab === 'notes' ? ' on' : ''),
+                  title: '笔记',
+                  onClick: () => goTab('notes'),
+                },
+                h('span', { className: 'ic' }, '📝'),
+                h('span', { className: 'lb' }, '笔记')
               ),
             )
           );
@@ -8880,6 +9120,12 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
             add: (it) => call('galleryAdd', it, gameId),
             remove: (id) => call('galleryRemove', { id }, gameId),
   rename: (id, name) => call('galleryRename', { id, name }, gameId),
+          });
+          else if (tab === 'notes') view = h(NotesView, {
+            list: () => call('notesList', {}, gameId),
+            get: (id) => call('notesGet', { id }, gameId),
+            save: (it) => call('notesSave', it, gameId),
+            remove: (id) => call('notesRemove', { id }, gameId),
           });
           else if (tab === 'npcs') view = npcEditor;
           else if (tab === 'skills') view = assetEditor;

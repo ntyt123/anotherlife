@@ -22,7 +22,7 @@ const P = 'dsh-tavern-simulator/';
 const KEY_SLOTS = ['retrieve', 'settle', 'summary', 'assistant'];
 
 /** 每次改动宿主侧都改一下这个版本号：ping 会回报它，用来确认 Tavern 到底加载的是哪一版 */
-const REV = 'host-v69-reasoning-20261018r';
+const REV = 'host-v70-notes-20261018r';
 
 /**
  * 只有这一局用的是这些卡时，插件才出现在界面上（其余卡片游玩时完全不打扰）。
@@ -4325,6 +4325,77 @@ reg('parseRealPerson', async ({ gameId, name, fields }) => {
     if (next.length === items.length) throw new Error('这张图已经不在了');
     await writeGallery(next);
     return { ok: true, total: next.length };
+  });
+
+  // ── 笔记：每局各自一份，存 workspace/simulator-notes-<gameId>.json ──
+  // 和图库分开存：图库是跨局共用的素材，笔记是这一局的记录。
+  const NOTES_PREFIX = STORE_DIR + 'simulator-notes-';
+  const NOTES_MAX_ITEMS = 300;
+  const NOTES_MAX_ONE = 200000;
+  /** gameId 里有非字母数字时换成下划线，免得变成奇怪的文件名 */
+  function notesFile(gameId) {
+      const k = String(gameId || '').replace(/[^a-zA-Z0-9_-]/g, '_') || 'default';
+      return NOTES_PREFIX + k + '.json';
+  }
+  async function readNotes(gameId) {
+      const j = await readJson(notesFile(gameId));
+      const items = j && Array.isArray(j.items) ? j.items : [];
+      return items.filter((x) => x && x.id);
+  }
+  async function writeNotes(gameId, items) {
+      await writeJson(notesFile(gameId), { items, at: Date.now() });
+  }
+  reg('notesList', async ({ gameId }) => {
+      const items = await readNotes(gameId);
+      // 最近改过的排前面
+      const sorted = items.slice().sort((x, y) => (Number(y.updatedAt) || 0) - (Number(x.updatedAt) || 0));
+      return {
+        items: sorted.map((x) => ({
+          id: String(x.id),
+          title: String(x.title || ''),
+          excerpt: String(x.body || '').replace(/\s+/g, ' ').slice(0, 90),
+          len: String(x.body || '').length,
+          updatedAt: Number(x.updatedAt) || 0,
+        })),
+        max: NOTES_MAX_ITEMS,
+      };
+  });
+  reg('notesGet', async ({ gameId, id }) => {
+      const items = await readNotes(gameId);
+      const it = items.find((x) => String(x.id) === String(id));
+      if (!it) throw new Error('这篇笔记已经不在了');
+      return { id: String(it.id), title: String(it.title || ''), body: String(it.body || '') };
+  });
+  /** 保存：id 为空就是新建，返回新 id */
+  reg('notesSave', async ({ gameId, id, title, body }) => {
+      const t = String(title == null ? '' : title).slice(0, 200);
+      const bd = String(body == null ? '' : body).slice(0, NOTES_MAX_ONE);
+      const items = await readNotes(gameId);
+      const now = Date.now();
+      const key = String(id || '');
+      if (key) {
+        const it = items.find((x) => String(x.id) === key);
+        if (!it) throw new Error('这篇笔记已经不在了');
+        it.title = t;
+        it.body = bd;
+        it.updatedAt = now;
+        await writeNotes(gameId, items);
+        return { ok: true, id: key, updatedAt: now };
+      }
+      if (items.length >= NOTES_MAX_ITEMS) {
+        throw new Error('笔记太多了（最多 ' + NOTES_MAX_ITEMS + ' 篇）');
+      }
+      const nid = 'n' + now.toString(36) + Math.random().toString(36).slice(2, 6);
+      items.push({ id: nid, title: t, body: bd, at: now, updatedAt: now });
+      await writeNotes(gameId, items);
+      return { ok: true, id: nid, updatedAt: now };
+  });
+  reg('notesRemove', async ({ gameId, id }) => {
+      const items = await readNotes(gameId);
+      const next = items.filter((x) => String(x.id) !== String(id));
+      if (next.length === items.length) throw new Error('这篇笔记已经不在了');
+      await writeNotes(gameId, next);
+      return { ok: true, total: next.length };
   });
 
   reg('deleteFrom', async ({ gameId, seq }) => {
