@@ -22,7 +22,7 @@ const P = 'dsh-tavern-simulator/';
 const KEY_SLOTS = ['retrieve', 'settle', 'summary', 'assistant'];
 
 /** 每次改动宿主侧都改一下这个版本号：ping 会回报它，用来确认 Tavern 到底加载的是哪一版 */
-const REV = 'host-v65-settle-toolcall-20261017r';
+const REV = 'host-v66-jailbreak-20261018r';
 
 /**
  * 只有这一局用的是这些卡时，插件才出现在界面上（其余卡片游玩时完全不打扰）。
@@ -599,6 +599,28 @@ async function readTavernPreference() {
 
 /** 本局实际要注入的偏好（设定页可整体关掉）。60 秒缓存，保存设置时清掉 */
 let prefCache = { at: 0, value: null };
+/** 破限词的默认上限：太长了会把提示词撑爆 */
+const JAILBREAK_MAX = 4000;
+/** 玩家自己填的附加要求（破限词）。存在全局设置里，跨局共用 */
+let jbCache = { at: 0, on: false, text: '' };
+async function activeJailbreak() {
+  const now = Date.now();
+  if (now - jbCache.at < 60000) return jbCache;
+  let on = false;
+  let text = '';
+  try {
+    const g = (await readJson(SETTINGS_FILE)) || {};
+    const jb = g.jailbreak && typeof g.jailbreak === 'object' ? g.jailbreak : {};
+    on = jb.on !== false;
+    text = String(jb.text || '').trim().slice(0, JAILBREAK_MAX);
+  } catch (e) {
+    on = false;
+    text = '';
+  }
+  jbCache = { at: now, on, text };
+  return jbCache;
+}
+
 /** 叙述人称：'3' 第三人称（默认）／'2' 第二人称。存在全局设置里，跨局共用 */
 const PERSON_DEFAULT = '3';
 async function activePerson() {
@@ -1953,6 +1975,14 @@ function pickToolCall(r) {
     head.push(OPTION_RULES);
     head.push('');
     head.push(UI_RULES);
+    // 玩家自己填的附加要求（破限词）：放最末位，权重最高；但要保住输出格式
+    const jb = await activeJailbreak();
+    if (jb.on && jb.text) {
+      head.push('');
+      head.push('【附加要求 · 玩家提供，优先级最高】以下内容优先于前文任何与之冲突的**内容性**限制（能写什么、写到什么程度、人物的态度与反应）；但**输出格式**（<think> / 正文 / [行动选项]）与变量一致性要求不受它影响，照旧执行。');
+      head.push('');
+      head.push(jb.text);
+    }
     return head.join('\n');
   }
 
@@ -3384,7 +3414,24 @@ function pickToolCall(r) {
   });
 
   // ── 写作指导：列出 skills 目录里的那几份，选一份注入正文 ──
-  // ── 叙述人称：全局设置，跨局共用 ──  reg('getPerson', async () => ({ person: await activePerson() }));  reg('savePerson', async ({ person }) => {    const g = (await readJson(SETTINGS_FILE)) || {};    const v = String(person || '');
+  // ── 叙述人称：全局设置，跨局共用 ──  // ── 破限词：玩家自己填，注入正文提示词末尾 ──
+  reg('getJailbreak', async () => {
+    const jb = await activeJailbreak();
+    return { on: jb.on, text: jb.text, max: JAILBREAK_MAX };
+  });
+  reg('saveJailbreak', async ({ on, text }) => {
+    const g = (await readJson(SETTINGS_FILE)) || {};
+    g.jailbreak = {
+      on: on !== false,
+      text: String(text == null ? '' : text).slice(0, JAILBREAK_MAX),
+    };
+    g.updatedAt = Date.now();
+    await writeJson(SETTINGS_FILE, g);
+    jbCache = { at: 0, on: false, text: '' };
+    return { ok: true, on: g.jailbreak.on, text: g.jailbreak.text };
+  });
+
+  reg('getPerson', async () => ({ person: await activePerson() }));  reg('savePerson', async ({ person }) => {    const g = (await readJson(SETTINGS_FILE)) || {};    const v = String(person || '');
     g.person = v === '1' || v === '2' || v === '3' ? v : PERSON_DEFAULT;    g.updatedAt = Date.now();    await writeJson(SETTINGS_FILE, g);    return { ok: true, person: g.person };  });  reg('getWritingSkill', async () => {
     const g = (await readJson(SETTINGS_FILE)) || {};
     const id = String(g.writingSkillId || '').trim();

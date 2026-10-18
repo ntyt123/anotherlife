@@ -3087,6 +3087,33 @@ window.__ModuleLoader__.load({
               };
           }, [tab, gameId]);
 
+          // ── 破限词：玩家自己填，注入正文提示词末尾 ──
+          const [jb, setJb] = React.useState({ on: true, text: '', max: 4000, loaded: false, busy: false, note: '' });
+          const jbLoadedRef = React.useRef(false);
+          React.useEffect(() => {
+              if (tab !== 'settings' || jbLoadedRef.current) return;
+              jbLoadedRef.current = true;
+              let alive = true;
+              call('getJailbreak', {}, gameId)
+                  .then((r) => {
+                  if (!alive) return;
+                  setJb((p) =>
+                      Object.assign({}, p, {
+                        on: !(r && r.on === false),
+                        text: (r && r.text) || '',
+                        max: (r && r.max) || 4000,
+                        loaded: true,
+                      })
+                  );
+                  })
+                  .catch(() => {
+                  if (alive) setJb((p) => Object.assign({}, p, { loaded: true }));
+                  });
+              return () => {
+                alive = false;
+              };
+          }, [tab, gameId]);
+
 
           function run(p, reload) {
             setBusy(true);
@@ -3561,6 +3588,22 @@ window.__ModuleLoader__.load({
             return call('savePerson', { person: v }, gameId)
               .then((r) => setPerson(r && r.person === '2' ? '2' : '3'))
               .catch((e) => setErr(msg(e)));
+          }
+          /** 存破限词（textarea 用显式保存，不随敲字写盘） */
+          function saveJb(next) {
+            setJb((p) => Object.assign({}, p, { on: next.on, text: next.text, busy: true, note: '' }));
+            return call('saveJailbreak', { on: next.on, text: next.text }, gameId)
+              .then((r) =>
+                setJb((p) =>
+                  Object.assign({}, p, {
+                    on: !(r && r.on === false),
+                    text: r && r.text != null ? r.text : next.text,
+                    busy: false,
+                    note: '已保存',
+                  })
+                )
+              )
+              .catch((e) => setJb((p) => Object.assign({}, p, { busy: false, note: msg(e) })));
           }
 
           if (!state || !draft || !dps) {
@@ -7989,6 +8032,57 @@ function starPanel(n) {
                   'div',
                   { className: 'sim-hint', style: { marginTop: 8 } },
                   '列表里带括号的是非写作类 skill（purpose 不是 writing）。'
+                ),
+              ),
+            ),
+
+            /* ── 破限词 ── */
+            group(
+              'jailbreak',
+              '破限词',
+              (jb.text.trim() ? (jb.on ? '已启用 · ' : '未启用 · ') + jb.text.trim().length + ' 字' : '未填写'),
+              h(
+                'div',
+                { className: 'sim-card' },
+                h(
+                  'div',
+                  { className: 'sim-hint' },
+                  '附加到正文提示词末尾，优先于前文的内容性限制。输出格式与变量一致性不受影响。'
+                ),
+                h(
+                  'div',
+                  { className: 'sim-acts', style: { marginTop: 8 } },
+                  h(
+                    Btn,
+                    {
+                      primary: !!jb.on,
+                      disabled: jb.busy,
+                      onClick: () => saveJb({ on: !jb.on, text: jb.text }),
+                    },
+                    jb.on ? '已启用' : '未启用'
+                  ),
+                  jb.note ? h('span', { className: 'sim-hint' }, jb.note) : null
+                ),
+                h('textarea', {
+                  className: 'sim-ta',
+                  style: { marginTop: 10, minHeight: 180 },
+                  value: jb.text,
+                  placeholder: '在这里写你想要的附加要求。它会附在正文提示词的最后。',
+                  onChange: (e) => setJb((p) => Object.assign({}, p, { text: e.target.value, note: '' })),
+                }),
+                h(
+                  'div',
+                  { className: 'sim-acts', style: { marginTop: 8, justifyContent: 'space-between' } },
+                  h('span', { className: 'sim-hint' }, jb.text.length + ' / ' + jb.max + ' 字'),
+                  h(
+                    Btn,
+                    {
+                      primary: true,
+                      disabled: jb.busy || !jb.loaded,
+                      onClick: () => saveJb({ on: jb.on, text: jb.text }),
+                    },
+                    jb.busy ? '保存中…' : '保存'
+                  )
                 ),
               ),
             ),
