@@ -3067,6 +3067,23 @@ window.__ModuleLoader__.load({
               };
           }, [tab, gameId]);
 
+          // ── 叙述人称：全局设置，默认第三人称 ──
+          const [person, setPerson] = React.useState('3');
+          const personLoadedRef = React.useRef(false);
+          React.useEffect(() => {
+              if (tab !== 'settings' || personLoadedRef.current) return;
+              personLoadedRef.current = true;
+              let alive = true;
+              call('getPerson', {}, gameId)
+                  .then((r) => {
+                  if (alive && r && r.person) setPerson(String(r.person) === '2' ? '2' : '3');
+                  })
+                .catch(() => {});
+              return () => {
+                alive = false;
+              };
+          }, [tab, gameId]);
+
 
           function run(p, reload) {
             setBusy(true);
@@ -3533,6 +3550,14 @@ window.__ModuleLoader__.load({
                 )
               )
               .catch((e) => setWskill((p) => Object.assign({}, p, { busy: false, note: msg(e) })));
+          }
+          /** 换叙述人称：存进全局设置，下一轮就按新的写 */
+          function pickPerson(p) {
+            const v = String(p) === '2' ? '2' : '3';
+            setPerson(v);
+            return call('savePerson', { person: v }, gameId)
+              .then((r) => setPerson(r && r.person === '2' ? '2' : '3'))
+              .catch((e) => setErr(msg(e)));
           }
 
           if (!state || !draft || !dps) {
@@ -7738,6 +7763,44 @@ function starPanel(n) {
             h('div', { className: 'sim-hint', style: { marginBottom: 10 } }, '模型与注入规则跨故事共用，新开一局会带上；每局独立的只有剧情本身。'),
 
             /* ── 外观与正文 ── */
+            /* ── 人称 ── */
+            group(
+              'person',
+              '人称',
+              person === '2' ? '第二人称' : '第三人称',
+              h(
+                'div',
+                { className: 'sim-card' },
+                h(
+                  'div',
+                  { className: 'sim-field' },
+                  h('label', null, '叙述人称'),
+                  h(
+                    'select',
+                    {
+                      className: 'sim-select',
+                      value: person,
+                      onChange: (e) => pickPerson(e.target.value),
+                    },
+                    h('option', { value: '3' }, '第三人称（名字／他／她）'),
+                    h('option', { value: '2' }, '第二人称（你）')
+                  ),
+                ),
+                h(
+                  'div',
+                  { className: 'sim-hint' },
+                  person === '2'
+                    ? '正文把主角写成「你」。其他角色仍是第三人称。'
+                    : '正文用主角的姓名或「他／她」来写，不用「你」。'
+                ),
+                h(
+                  'div',
+                  { className: 'sim-hint', style: { marginTop: 8 } },
+                  '写作指导与长期偏好只能改文风，改不了人称。'
+                ),
+              ),
+            ),
+
             group(
               'look',
               '外观与正文',

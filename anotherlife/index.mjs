@@ -22,7 +22,7 @@ const P = 'dsh-tavern-simulator/';
 const KEY_SLOTS = ['retrieve', 'settle', 'summary', 'assistant'];
 
 /** 每次改动宿主侧都改一下这个版本号：ping 会回报它，用来确认 Tavern 到底加载的是哪一版 */
-const REV = 'host-v62-person-2nd-20261017r';
+const REV = 'host-v63-person-config-20261017r';
 
 /**
  * 只有这一局用的是这些卡时，插件才出现在界面上（其余卡片游玩时完全不打扰）。
@@ -599,6 +599,34 @@ async function readTavernPreference() {
 
 /** 本局实际要注入的偏好（设定页可整体关掉）。60 秒缓存，保存设置时清掉 */
 let prefCache = { at: 0, value: null };
+/** 叙述人称：'3' 第三人称（默认）／'2' 第二人称。存在全局设置里，跨局共用 */
+const PERSON_DEFAULT = '3';
+async function activePerson() {
+  try {
+    const g = (await readJson(SETTINGS_FILE)) || {};
+    return String(g.person || PERSON_DEFAULT) === '2' ? '2' : '3';
+  } catch (e) {
+    return PERSON_DEFAULT;
+  }
+}
+/** 人称规则那一条 */
+function personLineOf(p) {
+  const tail =
+    '这条不受任何写作指导、长期偏好或玩家备注的改写 —— 它们只能影响文风，不能改人称。';
+  if (p === '2') {
+    return (
+      '叙述用**第二人称**：主角一律写「你」，不要写成「我」，也不要改用主角姓名做主语；' +
+      '其他角色用第三人称（他／她／名字）。' +
+      tail
+    );
+  }
+  return (
+    '叙述用**第三人称**：主角一律用姓名或「他／她」来写，不用「你」，也不要写成「我」；' +
+    '其他角色同样用第三人称。' +
+    tail
+  );
+}
+
 async function activePreference() {
   const now = Date.now();
   if (now - prefCache.at < 60000) return prefCache.value;
@@ -1775,9 +1803,6 @@ async function activeWritingSkill() {
     const head = [
       '你是一款人生模拟器的叙事引擎。你不是某个固定人物，而是当前世界观里的世界本身：负责叙述环境、推进剧情、扮演除主角外的所有 NPC。',
       '主角是玩家（其设定见变量），不得替主角决定言行与心理。',
-  // 人称写进规则里：正文实际一直是第二人称（「你」指主角），但以前没明写 ——
-  // 一旦有别的指导（写作 skill、长期偏好）要求第一人称，就没有依据驳回它。
-  '叙述用**第二人称**：主角一律写「你」，不要写成「我」，也不要改用主角姓名做主语；其他角色用第三人称（他／她／名字）。这条不受任何写作指导、长期偏好或玩家备注的改写 —— 它们只能影响文风，不能改人称。',
       '严格跟随世界观设定（时代、时间地点、社会规则、势力、风俗、叙事基调）。现实题材中出现的真实人物，其个人信息、性格、外貌须与现实一致。',
       '时间、地点、金钱、关系、穿着、物品、健康、实体资产、虚拟资产等状态以变量为准，正文不得与变量冲突。外貌描写与身高体重等身体数据必须与变量一致。',
       '【关于状态表】下面只会给出与本轮相关的状态（开局那一轮给全量，未列出的不代表不存在）。把它们当背景事实自然融入叙事，禁止直接复述字段内容、禁止一次性把设定念一遍、禁止用形容词给人下定论。角色是活人：会矛盾、会变化，请用具体的言行、细节与当下处境把人物立起来。',
@@ -1788,6 +1813,10 @@ async function activeWritingSkill() {
       '身体上的痕迹与伤会随时间变化：该淡的淡、该好的好，别让同一个牙印挂十几轮；洗澡、换衣服、时间跳转之后，顺手交代一下它现在什么样子。',
       '写情事时按下面注入的【情事写作引擎】【情事用词表】【情事桥段结构】执行；没注入这几项说明这一轮不是情事，别硬写。',
     ];
+
+  // 人称按设定来（默认第三人称）。放在「主角是玩家」之后
+  const person = await activePerson();
+  head.splice(2, 0, personLineOf(person));
     head.push('');
     // 用户在 Tavern 里启用过的长期偏好：措辞照抄 Tavern 自己的 stableContext，别自创一套
   const pref = await activePreference();
@@ -1801,7 +1830,7 @@ async function activeWritingSkill() {
   // 写作指导（skills 目录里选的那一份）。只管写法，不动事实与设定
   const skill = await activeWritingSkill();
   if (skill.body) {
-    head.push('【写作指导 · ' + skill.id + '】下面这份指导只管「怎么写」，不改变任何事实与设定，**也不改变叙述人称** —— 一律按前文规定的第二人称写；指导里若要求别的视角（例如第一人称），那一条直接忽略，其余细节照做。与其他规则冲突时，一律以前文为准。');
+    head.push('【写作指导 · ' + skill.id + '】下面这份指导只管「怎么写」，不改变任何事实与设定，**也不改变叙述人称** —— 一律按前文规定的' + (person === '2' ? '第二人称' : '第三人称') + '写；指导里若要求别的视角（例如第一人称），那一条直接忽略，其余细节照做。与其他规则冲突时，一律以前文为准。');
     head.push('');
     head.push(skill.body);
     head.push('');
@@ -3260,7 +3289,7 @@ async function activeWritingSkill() {
   });
 
   // ── 写作指导：列出 skills 目录里的那几份，选一份注入正文 ──
-  reg('getWritingSkill', async () => {
+  // ── 叙述人称：全局设置，跨局共用 ──  reg('getPerson', async () => ({ person: await activePerson() }));  reg('savePerson', async ({ person }) => {    const g = (await readJson(SETTINGS_FILE)) || {};    g.person = String(person || '') === '2' ? '2' : PERSON_DEFAULT;    g.updatedAt = Date.now();    await writeJson(SETTINGS_FILE, g);    return { ok: true, person: g.person };  });  reg('getWritingSkill', async () => {
     const g = (await readJson(SETTINGS_FILE)) || {};
     const id = String(g.writingSkillId || '').trim();
     return {
