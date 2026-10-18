@@ -2530,6 +2530,31 @@ window.__ModuleLoader__.load({
           return true;
         }
 
+        /**
+         * 粗估 token 数：中文、ASCII、其它（中文标点等）三类分别按不同系数算。
+         * 一刀切「字数 = token」在中文上会高估 15%~40%。系数取国产分词器的常见档位，
+         * 换 OpenAI 系会偏少 —— 预览只要一个量级参考，不需要精确。
+         */
+        function estimateTokens(text) {
+          let cjk = 0,
+            ascii = 0,
+            other = 0;
+          for (const ch of String(text == null ? '' : text)) {
+            const c = ch.codePointAt(0);
+            if (c >= 0x4e00 && c <= 0x9fff) cjk++;
+            else if (c < 128) ascii++;
+            else other++;
+          }
+          return Math.round(cjk * 0.85 + ascii * 0.28 + other * 0.55);
+        }
+        /** 大数字转成人看的写法：9.2 千 / 1.4 万 */
+        function fmtTok(n) {
+          const v = Number(n) || 0;
+          if (v >= 10000) return (v / 10000).toFixed(1) + ' 万';
+          if (v >= 1000) return (v / 1000).toFixed(1) + ' 千';
+          return String(v);
+        }
+
         /** 按货币名猜一个单位（人民币→元、银两→两…），猜不出就不加 */
         function moneyUnit(cur) {
           const s = String(cur || '');
@@ -7909,7 +7934,7 @@ function starPanel(n) {
                         call('previewSystemPrompt', { input: ctxIn }, gameId)
                           .then((r) => {
                             setSysHasPref(!!(r && r.hasPref));
-                            setSysMeta(!r ? '没有返回' : (r.hasPref ? '✔ 已注入长期偏好' : '⚠ 没有注入长期偏好') + ' · 共 ' + r.length + ' 字');
+                            setSysMeta(!r ? '没有返回' : (r.hasPref ? '✔ 已注入长期偏好' : '⚠ 没有注入长期偏好') + ' · ' + r.length + ' 字 · 约 ' + fmtTok(estimateTokens(r.text)) + ' token');
                             setSysOut(String((r && r.text) || ''));
                             setBusy(false);
                           })
