@@ -30,6 +30,10 @@ window.__ModuleLoader__.load({
       // ── 助手浮窗（模拟器把整页接管了，侧边对话点不到，所以自带一个）──
       // 用 position:fixed：既能压在任意页上方，也不会被外层滚动/裁剪容器切掉
       '.sim-as{position:fixed;right:22px;bottom:22px;width:min(420px,42vw);height:min(600px,78vh);display:flex;flex-direction:column;background:var(--sim-bg2);border:1px solid var(--sim-bd);border-radius:12px;box-shadow:0 14px 44px rgba(0,0,0,.24);z-index:70;overflow:hidden}',
+      '.sim-as-resize{position:absolute;right:0;bottom:0;width:16px;height:16px;cursor:nwse-resize;touch-action:none;z-index:2}',
+      '.sim-as-resize::after{content:\'\';position:absolute;right:3px;bottom:3px;width:8px;height:8px;border-right:2px solid var(--sim-t3);border-bottom:2px solid var(--sim-t3);opacity:.5}',
+      '.sim-as-resize:hover::after{opacity:.9}',
+      '.sim-as-foot{padding-right:20px}',
       '.sim-as-top{display:flex;align-items:center;gap:8px;padding:10px 12px;min-height:44px;border-bottom:1px solid var(--sim-bd)}',
       '.sim-as-top{cursor:move;touch-action:none;user-select:none}',
       '.sim-as-top .sim-btn{cursor:pointer}',
@@ -2742,6 +2746,20 @@ window.__ModuleLoader__.load({
             return null;
           });
           const asDragRef = React.useRef(null);
+          // 助手浮窗的尺寸（右下角拖）。null = 用默认的 min(420,42vw) × min(600,78vh)
+          const [asSize, setAsSize] = React.useState(() => {
+            try {
+              const v = JSON.parse(window.localStorage.getItem('sim-as-size') || 'null');
+              if (v && typeof v.w === 'number' && typeof v.h === 'number') return v;
+            } catch (e) {
+              /* 存坏了当没存过 */
+            }
+            return null;
+          });
+          const asResizeRef = React.useRef(null);
+          // 缩放手柄的尺寸与最小可用尺寸
+          const AS_MIN_W = 300;
+          const AS_MIN_H = 260;
           const lastAssistRef = React.useRef(null); // 上一轮已提示过的正文序号（提示音用）
           const dingRef = React.useRef(false); // 这一轮生成完成后要响一声（重新生成这种「序号没变但正文换了」的情况靠它）
           const [editingKey, setEditingKey] = React.useState(''); // 正在编辑哪一段：role-seq
@@ -3720,17 +3738,75 @@ window.__ModuleLoader__.load({
             }
           }
           /** 浮窗实际用的定位样式：拖过就用 left/top，没拖过保持默认的右下角 */
+          /** 浮窗实际用的定位与尺寸：拖过/调过就用存的，否则保持默认的右下角 */
           function asBoxStyle() {
-            if (!asPos) return null;
+            if (!asPos && !asSize) return null;
             const m = 4;
-            const w = Math.min(420, window.innerWidth * 0.42);
-            const h = Math.min(600, window.innerHeight * 0.78);
+            const dw = Math.min(420, window.innerWidth * 0.42);
+            const dh = Math.min(600, window.innerHeight * 0.78);
+            const w = Math.round(Math.max(AS_MIN_W, Math.min(window.innerWidth - m * 2, asSize ? asSize.w : dw)));
+            const h = Math.round(Math.max(AS_MIN_H, Math.min(window.innerHeight - m * 2, asSize ? asSize.h : dh)));
+            const x = asPos
+              ? Math.max(m, Math.min(window.innerWidth - w - m, asPos.x))
+              : Math.max(m, window.innerWidth - w - 22);
+            const y = asPos
+              ? Math.max(m, Math.min(window.innerHeight - h - m, asPos.y))
+              : Math.max(m, window.innerHeight - h - 22);
             return {
-              left: Math.max(m, Math.min(window.innerWidth - w - m, asPos.x)) + 'px',
-              top: Math.max(m, Math.min(window.innerHeight - h - m, asPos.y)) + 'px',
+              left: x + 'px',
+              top: y + 'px',
+              width: w + 'px',
+              height: h + 'px',
               right: 'auto',
               bottom: 'auto',
             };
+          }
+          /**
+           * 右下角拉大小。第一次拉时如果还没拖过位置，先把当前 rect 锚成 asPos ——
+           * 否则「只调大小」会让浮窗从右下角对齐跳到左上角对齐，看着像被甩了一下。
+           */
+          function asResizeStart(e) {
+            const panel = e.currentTarget.parentElement;
+            if (!panel) return;
+            const box = panel.getBoundingClientRect();
+            asResizeRef.current = {
+              x0: e.clientX,
+              y0: e.clientY,
+              w: box.width,
+              h: box.height,
+              left: box.left,
+              top: box.top,
+              last: null,
+            };
+            if (!asPos) setAsPos({ x: Math.round(box.left), y: Math.round(box.top) });
+            try {
+              e.currentTarget.setPointerCapture(e.pointerId);
+            } catch (e2) {
+              /* 不支持就算了 */
+            }
+            e.preventDefault();
+            e.stopPropagation();
+          }
+          function asResizeMove(e) {
+            const d = asResizeRef.current;
+            if (!d) return;
+            const m = 4;
+            const maxW = window.innerWidth - d.left - m;
+            const maxH = window.innerHeight - d.top - m;
+            const w = Math.max(AS_MIN_W, Math.min(maxW, d.w + (e.clientX - d.x0)));
+            const h = Math.max(AS_MIN_H, Math.min(maxH, d.h + (e.clientY - d.y0)));
+            d.last = { w: Math.round(w), h: Math.round(h) };
+            setAsSize(d.last);
+          }
+          function asResizeEnd() {
+            const d = asResizeRef.current;
+            asResizeRef.current = null;
+            if (!d || !d.last) return;
+            try {
+              window.localStorage.setItem('sim-as-size', JSON.stringify(d.last));
+            } catch (e) {
+              /* 存不了不影响本次 */
+            }
           }
 
           /**
@@ -8647,7 +8723,19 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
                       },
                     }),
                     h(Btn, { primary: true, disabled: asBusy || !String(asIn).trim(), onClick: () => sendAssistant() }, asBusy ? '思考中…' : '发送')
-                  )
+                  ),
+                  // 右下角缩放手柄
+                  h(
+                    'div',
+                    {
+                      className: 'sim-as-resize',
+                      title: '拖动调整大小',
+                      onPointerDown: asResizeStart,
+                      onPointerMove: asResizeMove,
+                      onPointerUp: asResizeEnd,
+                      onPointerCancel: asResizeEnd,
+                    }
+                  ),
                 )
               : null
           );
