@@ -10477,7 +10477,17 @@ function toggleFans(npc) {
                         step: 500,
                         value: (dcfg.tokens && dcfg.tokens[key] != null) ? dcfg.tokens[key] : '',
                         placeholder: String(def),
-                        onChange: (e) => pickTokens(key, e.target.value),
+                        onChange: (e) => {
+                          const rawV = Number(e.target.value);
+                          const cfg2 = Object.assign({}, dcfg);
+                          const t2 = Object.assign({}, cfg2.tokens || {});
+                          // 清空 / 非数字 / 0 都不写：让它回退到默认值
+                          if (Number.isFinite(rawV) && rawV > 0) t2[key] = Math.floor(rawV);
+                          else delete t2[key];
+                          cfg2.tokens = t2;
+                          upd({ config: cfg2 });
+                          run(call('saveTokens', { tokens: t2 }, gameId));
+                        },
                       }),
                       h('span', { className: 'h' }, hint),
                     )
