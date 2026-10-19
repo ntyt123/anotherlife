@@ -229,7 +229,7 @@ window.__ModuleLoader__.load({
       '.sim-tip-row.wide .sim-tip-k{flex:none}',
       '.sim-tip-row.scent .sim-tip-v{background:var(--sim-bg);border-left:3px solid var(--sim-ac);border-radius:0 7px 7px 0;padding:4px 9px;font-style:italic;white-space:pre-wrap}',
       '.sim-tip-row.dim .sim-tip-v{color:var(--sim-t2)}',
-      '.sim-scent-bar{position:relative;height:13px;margin-top:2px;border-radius:7px;background:var(--sim-bd);overflow:hidden;min-width:150px}',
+      '.sim-scent-bar{position:relative;height:13px;align-self:center;margin-top:0;border-radius:7px;background:var(--sim-bd);overflow:hidden;min-width:150px}',
       '.sim-scent-fill{height:100%;border-radius:7px;background:linear-gradient(90deg,#7fb87a 0%,#d9a441 55%,#c9563f 100%);background-size:260% 100%;background-position:0 0;transition:width .2s}',
       '.sim-scent-n{position:absolute;right:6px;top:0;line-height:13px;font-size:10px;color:var(--sim-t2);font-variant-numeric:tabular-nums}',
       // ── 正文底部：小总结 / 变量变化 ──
