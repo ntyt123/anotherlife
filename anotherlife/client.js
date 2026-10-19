@@ -10479,8 +10479,8 @@ function toggleFans(npc) {
                         // 而每次 onChange 都跑一遍 run(...) 会跟后端返回的状态打架，
                         // 输入框里的数字被刷回去 —— 这就是「改不了」。改成失焦才存。
                         // key 带当前存档值：存完之后组件重挂载，框里显示的就是真值。
-                        key: key + ':' + String((dcfg.tokens && dcfg.tokens[key] != null) ? dcfg.tokens[key] : ''),
-                        defaultValue: (dcfg.tokens && dcfg.tokens[key] != null) ? dcfg.tokens[key] : '',
+                        key: key + ':' + String((dcfg.tokens && dcfg.tokens[key] != null) ? dcfg.tokens[key] : def),
+                        defaultValue: (dcfg.tokens && dcfg.tokens[key] != null) ? dcfg.tokens[key] : def,
                         placeholder: String(def),
                         onBlur: (e) => {
                           const rawV = Number(e.target.value);
