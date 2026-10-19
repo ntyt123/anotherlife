@@ -7997,8 +7997,17 @@ function renderTrace(v) {
           function bodyBlock(obj) {
             const b = obj && obj.身体;
             if (!b || typeof b !== 'object') return null;
-            const keys = Object.keys(b).filter((k) => String(b[k] == null ? '' : b[k]).trim());
-            if (!keys.length) return null;
+            // 值可能是字符串（老格式）或 { 描述, 强度 }（新格式），都按「有没有描述」判断
+            const hasText = (v) => {
+              if (v == null) return false;
+              if (typeof v === 'string') return !!v.trim();
+              if (typeof v === 'object') return !!String(v.描述 || '').trim();
+              return !!String(v).trim();
+            };
+            const keys = Object.keys(b).filter((k) => hasText(b[k]));
+            // 只有「体内」没有痕迹时，这块也要出现
+            const hasFluid = !!(obj && obj.体内 && String(obj.体内.描述 || '').trim());
+            if (!keys.length && !hasFluid) return null;
             return h(
               'details',
               { className: 'sim-think', style: { marginTop: 10 } },
@@ -8013,7 +8022,14 @@ function renderTrace(v) {
                     h('span', { className: 'k' }, k),
                     h('span', { className: 'v' }, renderTrace(b[k]))
                   )
-                )
+                ),
+                // 体内：只在有内容时出现一行，不单独开区
+                String((obj && obj.体内 && obj.体内.描述) || '').trim()
+                  ? h('div', { className: 'sim-know', key: '__fluid' },
+                      h('span', { className: 'k' }, '体内'),
+                      h('span', { className: 'v' }, renderTrace(obj.体内))
+                    )
+                  : null,
               )
             );
           }
