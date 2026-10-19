@@ -778,6 +778,10 @@ async function activeWritingSkill() {
     const src = raw && typeof raw === 'object' ? raw : {};
     const base = defaultState();
     const s = Object.assign(base, src);
+    // 早先把粉丝 diff 的 path 写成了 ['粉丝', ...]（漏了 protagonist 这一层），
+    // applyDiffs 于是在存档顶层建了个 粉丝。真数据在 protagonist / npcs 里面，
+    // 这份是残留，读到就丢掉。
+    if (s['粉丝'] && s.protagonist && s.protagonist.粉丝) delete s['粉丝'];
     s.config = mergeConfig(src.config);
     // 这一局存档里没填过模型配置的（比如刚新开的一局），用全局设置顶上。
     // 否则每开一局都要重新填 BaseURL／模型。
@@ -1803,7 +1807,7 @@ function applyFanDeltas(s, changes, now) {
   const out = [];
   const list = Array.isArray(changes) ? changes : [];
   if (!list.length) return out;
-  const owners = [{ who: s.protagonist, base: [] }].concat(
+  const owners = [{ who: s.protagonist, base: ['protagonist'] }].concat(
     (Array.isArray(s.npcs) ? s.npcs : []).map((n, i) => ({ who: n, base: ['npcs', i] }))
   );
   list.forEach((c) => {
@@ -1854,17 +1858,17 @@ function applyFanDeltas(s, changes, now) {
     const after = Math.max(0, Math.round(before + delta));
     if (after === before) return;
     // 圈层明细
-    out.push({ path: hit.base.concat(['粉丝', '层级', layer, '量']), from: before, to: after, byFan: true });
+    out.push({ path: hit.base.concat(['粉丝', '层级', layer, '量']), from: before, to: after, byFan: true, _had: true, _prev: before });
     cur.量 = after;
     if (c.原因) cur.状态 = String(c.原因).slice(0, 40);
     f.层级[layer] = cur;
     // 总量与本周
     const totalBefore = Number(f.总量) || 0;
     const totalAfter = Math.max(0, totalBefore + delta);
-    out.push({ path: hit.base.concat(['粉丝', '总量']), from: totalBefore, to: totalAfter, byFan: true });
+    out.push({ path: hit.base.concat(['粉丝', '总量']), from: totalBefore, to: totalAfter, byFan: true, _had: true, _prev: totalBefore });
     f.总量 = totalAfter;
     const weekBefore = Number(f.本周) || 0;
-    out.push({ path: hit.base.concat(['粉丝', '本周']), from: weekBefore, to: weekBefore + delta, byFan: true });
+    out.push({ path: hit.base.concat(['粉丝', '本周']), from: weekBefore, to: weekBefore + delta, byFan: true, _had: true, _prev: weekBefore });
     f.本周 = weekBefore + delta;
     // 记下「最近一次有动态」的时间：tickFans 靠它判断该不该自然掉粉
     if (now != null) f.最近动态 = now;
@@ -1941,6 +1945,7 @@ function tickFans(s, now) {
   const prev = Number(s.story.fanTick);
   if (!Number.isFinite(prev)) {
     // 第一次：只记起点，不下判断
+    out.push({ path: ['story', 'fanTick'], from: null, to: now, byFan: true, _had: false, _prev: null });
     s.story.fanTick = now;
     return out;
   }
@@ -1948,9 +1953,11 @@ function tickFans(s, now) {
   if (!(days >= 7)) return out;   // 没满 7 天：不推进 fanTick，下一轮继续累计
   const weeks = Math.min(8, Math.floor(days / 7));
   // 满 7 天才往前推，而且只推整周 —— 剩下的零头留给下一轮累计
-  s.story.fanTick = prev + weeks * 7 * 24 * 60;
+  const nextTick = prev + weeks * 7 * 24 * 60;
+  out.push({ path: ['story', 'fanTick'], from: prev, to: nextTick, byFan: true, _had: true, _prev: prev });
+  s.story.fanTick = nextTick;
 
-  const owners = [{ who: s.protagonist, base: [] }].concat(
+  const owners = [{ who: s.protagonist, base: ['protagonist'] }].concat(
     (Array.isArray(s.npcs) ? s.npcs : []).map((n, i) => ({ who: n, base: ['npcs', i] }))
   );
   owners.forEach((x) => {
@@ -1963,7 +1970,7 @@ function tickFans(s, now) {
     // 本周清零（每隔 7 天一次，正好在这里做）
     const wk = Number(f.本周) || 0;
     if (wk !== 0) {
-      out.push({ path: x.base.concat(['粉丝', '本周']), from: wk, to: 0, byFan: true });
+      out.push({ path: x.base.concat(['粉丝', '本周']), from: wk, to: 0, byFan: true, _had: true, _prev: wk });
       f.本周 = 0;
     }
 
@@ -1978,13 +1985,13 @@ function tickFans(s, now) {
       if (before <= 0) return;
       const after = Math.max(0, Math.round(before * (1 - pct) ** weeks));
       if (after === before) return;
-      out.push({ path: x.base.concat(['粉丝', '层级', layer, '量']), from: before, to: after, byFan: true });
+      out.push({ path: x.base.concat(['粉丝', '层级', layer, '量']), from: before, to: after, byFan: true, _had: true, _prev: before });
       cur.量 = after;
       totalDelta += after - before;
     });
     if (!totalDelta) return;
     const tb = Number(f.总量) || 0;
-    out.push({ path: x.base.concat(['粉丝', '总量']), from: tb, to: Math.max(0, tb + totalDelta), byFan: true });
+    out.push({ path: x.base.concat(['粉丝', '总量']), from: tb, to: Math.max(0, tb + totalDelta), byFan: true, _had: true, _prev: tb });
     f.总量 = Math.max(0, tb + totalDelta);
   });
   return out;
