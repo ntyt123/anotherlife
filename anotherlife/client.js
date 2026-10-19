@@ -3758,7 +3758,8 @@ function App({ gameId, close }) {
           // 第一次进这一局：把上次读到的位置读回来。这样即便刷新过，
           // 切页签用的 playScrollRef / lastPlayTopRef 也有值，不会退回顶部。
           React.useEffect(() => {
-            const saved = readScrollPos(gameId);
+            // 首次打开不认上次的位置（下面那个 effect 会直接翻到最后一页）
+            const saved = playOpenedOnce ? readScrollPos(gameId) : null;
             if (saved && saved.top > 0) {
               lastPlayTopRef.current = saved.top;
               playScrollRef.current = saved.top;
@@ -3835,7 +3836,9 @@ function App({ gameId, close }) {
             // 内容没变（条数一样）说明这次不是新生成 —— 回到上次读到的位置。
             // 只有条数变了（生成/删除/重开）才跳到最新那一轮的开头。
             // 判的是 saved 存不存在，不是 top > 0 —— 读到最顶上（0）也是有效进度。
-            const saved = readScrollPos(gameId);
+            const firstThisSession = !playOpenedOnce;
+            playOpenedOnce = true;
+            const saved = firstThisSession ? null : readScrollPos(gameId);
             if (saved && saved.stamp && saved.stamp === txStamp) {
               const restore = () => {
                 const e2 = bodyRef.current;
