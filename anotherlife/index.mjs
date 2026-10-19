@@ -2836,25 +2836,73 @@ let aiPickFail = '';
     };
   }
 
+  /**
+   * 结算用的状态快照。
+   *
+   * 长局会撞上下文窗口：14 轮时就快 2.9 万字（≈2 万 token），
+   * 50 轮外推到 7 万字以上。所以这里做两道瘦身 ——
+   * 都只是「不给模型看」，存档里原样保留，不影响界面与回滚。
+   *
+   * ① 「档案角色」（长期没出场、也没标重要的）只给姓名与当前状态。
+   *    它们这一轮本来就不该变；真出场了 markAppearances 会把它拉回来。
+   *    **没有「最近出场」字段的老数据一律视为刚出场**，不然一上线
+   *    会把全部角色判成很久没露面（这个坑踩过）。
+   *
+   * ② 物品／资产／关系超过上限时只给最近的若干条，并在快照里写明
+   *    「共 N 条，只列了最近 M 条」—— 不写这句，模型会以为就这么多，
+   *    输出时把没列出来的那些重建成新条目。
+   */
   function settleSnapshot(s) {
     const p = Object.assign({}, s.protagonist || {});
     PANEL_ONLY.forEach((k) => {
       delete p[k];
     });
-    return JSON.stringify(
-      {
-        world: s.world,
-        protagonist: p,
-        relationships: s.relationships,
-        npcs: s.npcs,
-        skills_items: s.skills_items,
-        实体资产: s.实体资产,
-        虚拟资产: s.虚拟资产,
-        story: s.story,
-      },
-      null,
-      2
-    );
+
+    // ① 档案角色瘦身
+    const archiveAfter = Number((s.config && s.config.rosterArchiveRounds) || 20);
+    const cur = Number((s.story || {}).current_message_index) || 0;
+    const slimNpc = (Array.isArray(s.npcs) ? s.npcs : []).map((n) => {
+      if (!n || typeof n !== 'object') return n;
+      if (n.重要 === true) return n;
+      const last = Number(n.最近出场);
+      // 老数据没有这个字段：当作刚出场，绝不瘦身
+      if (!Number.isFinite(last)) return n;
+      if (cur - last <= archiveAfter) return n;
+      return { 姓名: n.姓名, 当前状态: n.当前状态 || '' };
+    });
+
+    // ② 长清单截断（只在快照里截，存档不动）
+    const CAP = { 物品: 40, 实体资产: 20, 虚拟资产: 20, 私人关系: 40 };
+    const notes = [];
+    const capList = (arr, name) => {
+      if (!Array.isArray(arr)) return arr;
+      const max = CAP[name];
+      if (!max || arr.length <= max) return arr;
+      notes.push(name + '共 ' + arr.length + ' 条，下面只列了最近 ' + max + ' 条');
+      return arr.slice(-max);
+    };
+    const bag = capList(p.物品, '物品');
+    if (bag !== p.物品) p.物品 = bag;
+    const rels = capList(s.relationships, '私人关系');
+    const assets = capList(s.实体资产, '实体资产');
+    const vassets = capList(s.虚拟资产, '虚拟资产');
+
+    const box = {
+      world: s.world,
+      protagonist: p,
+      relationships: rels,
+      npcs: slimNpc,
+      skills_items: s.skills_items,
+      实体资产: assets,
+      虚拟资产: vassets,
+      story: s.story,
+    };
+    // 截断说明放在最前面，模型一眼能看见
+    if (notes.length) {
+      box.__截断说明 =
+        notes.join('；') + '。没列出来的那些除非正文明确提到，不要改动、也不要在输出里重建它们。';
+    }
+    return JSON.stringify(box, null, 2);
   }
 
   // ────────────────────────────── 提示词 ──────────────────────────────
