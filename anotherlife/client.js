@@ -8575,9 +8575,9 @@ function pregBar(obj, compact) {
             )
       ),
       h('div', { className: 'sim-cyc-bar' },
-        h('div', { className: 'sg ph-post on', style: { flex: '1' } })
+          h('div', { className: 'sg ph-post on', style: { flex: '1' } }),
+          h('div', { className: 'sim-cyc-cur', style: { left: (info.day / info.total) * 100 + '%' } })
       ),
-      h('div', { className: 'sim-cyc-cur', style: { left: (info.day / info.total) * 100 + '%' } })
     );
   }
 
