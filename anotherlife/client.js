@@ -4266,8 +4266,11 @@ function App({ gameId, close }) {
             if (!s) return [];
             const hits = [];
             (Array.isArray(state && state.transcript) ? state.transcript : []).forEach((t) => {
-              if (!t || !t.body) return;
-              if (String(t.body).indexOf(s) >= 0 || String(t.body).toLowerCase().indexOf(s.toLowerCase()) >= 0) {
+              // 只搜叙事（assistant）。玩家自己打的那句没必要搜 ——
+              // 那是刚写的，搜出来只会稀释命中数。
+              if (!t || !t.body || t.role !== 'assistant') return;
+              const body = String(t.body);
+              if (body.indexOf(s) >= 0 || body.toLowerCase().indexOf(s.toLowerCase()) >= 0) {
                 hits.push(t.seq);
               }
             });
@@ -4282,7 +4285,7 @@ function App({ gameId, close }) {
             setFindAt(n);
             const el = bodyRef.current;
             if (!el) return;
-            const node = el.querySelector('.sim-msg[data-seq="' + hits[n] + '"]');
+            const node = el.querySelector('.sim-msg.assistant[data-seq="' + hits[n] + '"]');
             if (!node) {
               // 目标那一轮还没渲染出来（「加载更早」一次只显示若干轮）：
               // 先把显示条数拉到全量，等一帧再跳
