@@ -2739,7 +2739,7 @@ function tokOf(s, key) {
         let out = r && typeof r === 'object' && r.text != null ? String(r.text) : String(r == null ? '' : r);
         if (!out.trim() && r && typeof r === 'object' && r.reasoning) out = String(r.reasoning);
         const rLen = r && typeof r === 'object' && r.reasoning ? String(r.reasoning).length : 0;
-        await apiLog('[槽位·' + tag + '] ' + who + ' → ' + out.length + ' 字' + (rLen ? '（思考 ' + rLen + ' 字）' : ''), t0);
+        await apiLog('[槽位·' + tag + '] ' + who + ' → ' + out.length + ' 字' + (rLen ? '（思考 ' + rLen + ' 字）' : '') + ' 思考档=' + String(opts.reasoningEffort || '未设'), t0);
         return out;
       } catch (e) {
         await apiLog('[槽位·' + tag + '] ' + who + ' → 失败：' + String((e && e.message) || e), t0);
