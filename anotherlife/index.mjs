@@ -2687,10 +2687,33 @@ function pickToolCall(r) {
     return E.filter((e) => want[e.id]);
   }
 
+  /**
+   * 从模型返回里抠出条目 id 数组。
+   *
+   * 注意：推理模型经常把内容只放在思考通道（reasoning）里，callSlot 会拿它兜底。
+   * 而思考过程里往往出现**不止一个** {"ids":[...]} —— 前面是试排、后面才是结论。
+   * 所以有多个时取**最后一个**，不是第一个。取第一个会把过程中的草稿当成答案。
+   */
   function parseIds(raw) {
     const t = String(raw || '');
     const obj = parseJsonLoose(t);
     if (obj && Array.isArray(obj.ids)) return obj.ids;
+    
+    // 把所有 {"ids":[...]} 都找出来，取最后一个
+    const hits = [];
+    const re = /\{"ids"\s*:\s*\[[^\]]*\]\}/g;
+    let m;
+    while ((m = re.exec(t)) !== null) hits.push(m[0]);
+    for (let i = hits.length - 1; i >= 0; i--) {
+      try {
+        const v = JSON.parse(hits[i]);
+        if (v && Array.isArray(v.ids)) return v.ids;
+      } catch (e) {
+        /* 换上一个 */
+      }
+    }
+    
+    // 下面是老路子：裸数组形式
     const body = extractJson(t);
     try {
       const v = JSON.parse(body);
@@ -2698,10 +2721,10 @@ function pickToolCall(r) {
     } catch (e) {
       /* 继续 */
     }
-    const m = t.match(/\[[\s\S]*\]/);
-    if (m) {
+    const arr = t.match(/\[[\s\S]*\]/);
+    if (arr) {
       try {
-        const v = JSON.parse(m[0]);
+        const v = JSON.parse(arr[0]);
         if (Array.isArray(v)) return v;
       } catch (e) {
         /* 放弃 */
@@ -2734,7 +2757,7 @@ let aiPickFail = '';
     const sys = [
       jbLine,
       '你是人生模拟器的上下文筛选器。你的工作：根据玩家本轮的输入，从候选条目中挑出写作这一轮真正需要的条目。',
-      '只输出 JSON，形如：{"ids":["p.姓名","as.0"]}。不要任何解释。',
+      '只输出 JSON，形如：{"ids":["p.姓名","as.0"]}。不要任何解释，也不要逐条分析候选 —— 扫一遍、凭直觉挑，比逐条权衡准。',
       '规则：',
       '1) 宁缺毋滥：只选与本轮输入或最近剧情直接相关的条目，最多 ' + maxN + ' 条。',
       '2) 时间与地点必选：若候选里有 w.当前日期时间、w.起始地点，除非明显无关，都要选上。',
@@ -2749,7 +2772,7 @@ let aiPickFail = '';
       const r = await callMainModel([{ role: 'system', content: sys }, { role: 'user', content: usr }], { temperature: 0, maxTokens: 1200, purpose: '检索' });
       raw = r.text && r.text.trim() ? r.text : r.reasoning;
     } else {
-      raw = await callSlot(s, 'retrieve', [{ role: 'system', content: sys }, { role: 'user', content: usr }], { json: true, reasoningEffort: await reasoningOf(s, 'retrieve'), maxTokens: 1200, temperature: 0, tag: '检索' });
+      raw = await callSlot(s, 'retrieve', [{ role: 'system', content: sys }, { role: 'user', content: usr }], { json: true, reasoningEffort: await reasoningOf(s, 'retrieve'), maxTokens: 3000, temperature: 0, tag: '检索' });
     }
     const ids = parseIds(raw);
     if (!ids) {
