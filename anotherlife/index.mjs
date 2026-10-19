@@ -3385,9 +3385,19 @@ function pickToolCall(r) {
     return list;
   }
 
+  /**
+   * 按 tag 取一条参考条目的内容块。
+   *
+   * 先精确匹配；精确找不到再按「包含」匹配 —— 这样条目标题后面带
+   * 「·描写落点」这类副标题时，用主名也能找到，用户改副标题不会失效。
+   */
   function refBlocks(list, tag) {
-    const hit = (list || []).filter((e) => e.tag === tag)[0];
-    return hit ? hit.blocks : [];
+    const arr = list || [];
+    const t = String(tag || '');
+    const exact = arr.filter((e) => e.tag === t)[0];
+    if (exact) return exact.blocks;
+    const loose = arr.filter((e) => e.tag && (e.tag.indexOf(t) === 0 || e.tag.indexOf(t) >= 0))[0];
+    return loose ? loose.blocks : [];
   }
 
   /** 按关键词在文本里的命中挑若干块（命中多者优先） */
@@ -3476,6 +3486,39 @@ function pickToolCall(r) {
     return NSFW_HINT.test(text.join('\n'));
   }
 
+/**
+ * 这一轮该不该注入「恋足恋袜·描写落点」。
+ *
+ * 常驻会白占预算，而且每轮都提示模型往脚上写，反而廉价。
+ * 四个条件满足任一才注入：
+ *   ① 主角性癖／特点里有恋足、恋袜、丝袜、恋鞋、恋腿
+ *   ② 玩家这一轮的话里提到脚、袜、鞋
+ *   ③ 场上某个角色的袜子浓度 ≥ 70
+ *   ④ 主角自己的袜子浓度 ≥ 70
+ * 正文还没生成，所以这里只能看玩家输入 + 已有状态。
+ */
+function footActive(s, body) {
+  try {
+    const p = (s && s.protagonist) || {};
+    const flat = (v) => String((Array.isArray(v) ? v.join(' ') : v) || '');
+    const kink = flat(p.性癖) + ' ' + flat(p.特点);
+    if (/恋足|恋袜|足恋|丝袜|恋鞋|恋腿/.test(kink)) return true;
+    const txt = String(body || '') + ' ' + flat(p.当前状态);
+    if (/脱.{0,2}袜|袜子|丝袜|足尖|脚趾|脚背|脚心|足弓|赤脚|光脚|脱鞋|换鞋|脚踝|鞋里|鞋口/.test(txt)) return true;
+    const hit = (arr) =>
+      (Array.isArray(arr) ? arr : []).some((x) => {
+        const w = x && x.穿着 && x.穿着.袜子;
+        return w && Number(w.气味强度) >= 70;
+      });
+    if (hit(s.npcs)) return true;
+    const pw = p.穿着 && p.穿着.袜子;
+    if (pw && Number(pw.气味强度) >= 70) return true;
+    return false;
+  } catch (e) {
+    return false;
+  }
+}
+
   async function wearRefSection(s, body, gameId) {
     const refs = await loadRefs(gameId);
     if (!refs.length) return '';
@@ -3516,6 +3559,14 @@ function pickToolCall(r) {
     const items = pickRefBlocks(refBlocks(refs, '鞋袜物品库'), String(body || '') + ' ' + wearNames.join(' '), 2);
     if (items.length) {
       parts.push('【本轮相关的鞋袜单品档案】\n' + items.map((b) => '@@' + b.name + '\n' + b.content).join('\n\n'));
+    }
+    // 恋足／恋袜：按需注入。常驻会让模型每轮都往脚上引，反而廉价。
+    const footBlocks = refBlocks(refs, '恋足恋袜');
+    if (footBlocks.length && footActive(s, body)) {
+      parts.push(
+        '【恋足／恋袜 · 描写落点】只在上面四类条件成立时才按它写；这一轮如果只是平常的日常，就当它不存在：\n' +
+          footBlocks[0].content
+      );
     }
     const book = isAncientWorld(s) ? '衣柜·古风' : '衣柜·现代';
     const styleBlocks = refBlocks(refs, book);
