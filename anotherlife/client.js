@@ -80,7 +80,26 @@ window.__ModuleLoader__.load({
       '.sim-as-txt code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.92em;background:rgba(128,128,128,.16);padding:1px 4px;border-radius:4px}',
       '.sim-as-m.me .sim-as-txt{color:#fff}',
       '.sim-as-err{margin-top:5px;font-size:var(--sim-fs-2);color:var(--sim-err)}',
-      '.sim-as-acts{margin-top:6px;display:flex;gap:6px;opacity:0;transition:opacity .12s}',
+      '.sim-as-ib{padding:2px 8px;border:1px solid var(--sim-bd);border-radius:6px;background:transparent;color:var(--sim-t2);font-size:var(--sim-fs-3);line-height:1.6;cursor:pointer;font-family:inherit}',
+      '.sim-as-ib:hover{color:var(--sim-t);border-color:var(--sim-ac)}',
+      '.sim-as-ib.on{color:var(--sim-ac);border-color:var(--sim-ac)}',
+      '.sim-as-ib[disabled]{opacity:.4;cursor:default}',
+      '.sim-as-list{position:absolute;top:38px;left:8px;right:8px;z-index:3;max-height:60%;overflow-y:auto;background:var(--sim-bg);border:1px solid var(--sim-bd);border-radius:10px;box-shadow:0 10px 28px rgba(0,0,0,.28)}',
+      '.sim-as-li{display:flex;align-items:center;gap:8px;padding:8px 10px;cursor:pointer;border-bottom:1px solid var(--sim-bd)}',
+      '.sim-as-li:last-child{border-bottom:none}',
+      '.sim-as-li:hover{background:var(--sim-bg2)}',
+      '.sim-as-li.on{background:rgba(128,128,128,.10);border-left:3px solid var(--sim-ac);padding-left:7px}',
+      '.sim-as-li .nm{flex:1;min-width:0;font-size:var(--sim-fs-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+      '.sim-as-li .x{width:20px;height:20px;padding:0;flex:0 0 auto;border:none;border-radius:50%;background:transparent;color:var(--sim-t3);font-size:12px;cursor:pointer;opacity:0}',
+      '.sim-as-li:hover .x{opacity:1}',
+      '.sim-as-li .x:hover{background:rgba(0,0,0,.42);color:#fff}',
+      '.sim-as-think{margin:0 0 6px;font-size:var(--sim-fs-2)}',
+      '.sim-trace-row{display:flex;gap:6px;align-items:baseline;padding:2px 0;font-size:var(--sim-fs-2);border-bottom:1px dashed var(--sim-bd)}',
+      '.sim-trace-row:last-child{border-bottom:none}',
+      '.sim-trace-row .n{color:var(--sim-ac);flex:0 0 auto;font-weight:600}',
+      '.sim-trace-row .a{flex:1;min-width:0;color:var(--sim-t2);font-family:ui-monospace,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+      '.sim-trace-row .c{flex:0 0 auto;color:var(--sim-t3)}',
+      '.sim-as{position:relative}',
       '.sim-as-m:hover .sim-as-acts{opacity:1}',
       '.sim-as-foot{display:flex;gap:8px;align-items:flex-end;padding:10px 12px;border-top:1px solid var(--sim-bd)}',
       '.sim-as-in{flex:1 1 auto;min-height:54px;max-height:130px;resize:none;padding:9px 10px;border:1px solid var(--sim-bd);border-radius:10px;background:var(--sim-bg);color:var(--sim-t);font-size:var(--sim-fs-3);line-height:1.55;font-family:inherit}',
@@ -3278,6 +3297,10 @@ window.__ModuleLoader__.load({
           const [asNoteAt, setAsNoteAt] = React.useState(-1);
           const asBodyRef = React.useRef(null); // 助手消息区（新消息来了滚到底）
           const asLoadedRef = React.useRef(false); // 存档里的助手对话只装一次
+          // 神谕的多对话：列表、当前 id、列表面板是否展开
+          const [asThreads, setAsThreads] = React.useState([]);
+          const [asThreadId, setAsThreadId] = React.useState('');
+          const [asListOpen, setAsListOpen] = React.useState(false);
           // 助手浮窗的位置（拖标题栏改）。存 localStorage，刷新后还在
           const [asPos, setAsPos] = React.useState(() => {
             try {
@@ -3663,15 +3686,12 @@ window.__ModuleLoader__.load({
             el.scrollTop += lr.top - er.top;
           }, [asLog, asBusy, asOpen]);
 
-          // 第一次打开浮窗时，把存档里存的助手对话装进来（之后以本地这份为准）
-          React.useEffect(() => {
-            if (asLoadedRef.current || !asOpen || !state) return;
-            asLoadedRef.current = true;
-            const hist = (state.assistant || [])
-              .filter((m) => m && m.content)
-              .map((m) => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: String(m.content) }));
-            if (hist.length) setAsLog(hist);
-          }, [asOpen, state]);
+ // 第一次打开浮窗时拉对话列表（消息由 loadThreads 顺带装进来）
+ React.useEffect(() => {
+   if (asLoadedRef.current || !asOpen || !state) return;
+   asLoadedRef.current = true;
+   loadThreads();
+ }, [asOpen, state]);
 
           // 解析词（创角时那段自由描述）也存进了存档 —— 回到界面时把它填回输入框，
           // 免得切页签回来变空、又得重打一遍。只在输入框还空着时填，别覆盖正在编辑的内容。
@@ -4584,53 +4604,150 @@ window.__ModuleLoader__.load({
            * 助手：把这一句发给模型，回复追加进对话。
            * history 以前端这份为准（它才是这段对话的真源），宿主只负责拼上下文与调用。
            */
-          function sendAssistant() {
-            const text = String(asIn || '').trim();
-            if (!text || asBusy) return;
-            const past = asLog.slice();
-            setAsLog(past.concat([{ role: 'user', content: text }]));
-            setAsIn('');
-            setAsBusy(true);
-            const done = (reply, e) => {
-              setAsBusy(false);
-              setAsLog(past.concat([{ role: 'user', content: text }, { role: 'assistant', content: asText(reply), err: asText(e) }]));
-            };
-            call('assistantChat', { text: text, history: past }, gameId)
+          /** 拉对话列表，顺带把当前对话的消息装进来 */
+          function loadThreads(keepOpen) {
+            return call('threadsList', {}, gameId)
               .then((r) => {
-                if (r && r.ok) done(r.reply);
-                else done('', (r && r.msg) || '神谕没有回复');
+                const list = (r && r.threads) || [];
+                const act = String((r && r.active) || '');
+                setAsThreads(list);
+                setAsThreadId(act);
+                if (act) return loadMessages(act);
+                setAsLog([]);
+                return null;
               })
-              .catch((e) => done('', msg(e)));
+              .catch(() => {});
           }
+
+          /** 读某个对话的消息 */
+          function loadMessages(id) {
+            return call('threadsGet', { id: id }, gameId)
+              .then((r) => {
+                const msgs = (r && r.messages) || [];
+                setAsLog(
+                  msgs.map((m) => ({
+                    role: m.role === 'assistant' ? 'assistant' : 'user',
+                    content: String(m.content || ''),
+                    think: String(m.think || ''),
+                    trace: Array.isArray(m.trace) ? m.trace : [],
+                    err: '',
+                  }))
+                );
+              })
+              .catch(() => {});
+          }
+
+          /** 新建一个空对话并切过去 */
+          function newThread() {
+            call('threadsNew', {}, gameId)
+              .then((r) => {
+                const id = String((r && r.id) || '');
+                setAsLog([]);
+                setAsThreadId(id);
+                setAsListOpen(false);
+                return loadThreads();
+              })
+              .catch((e) => setAsLog([{ role: 'assistant', content: '', err: msg(e) }]));
+          }
+
+          /** 切到另一个对话 */
+          function switchThread(id) {
+            if (!id || id === asThreadId) { setAsListOpen(false); return; }
+            call('threadsSetActive', { id: id }, gameId)
+              .then(() => {
+                setAsThreadId(id);
+                setAsListOpen(false);
+                return loadMessages(id);
+              })
+              .catch((e) => setAsLog([{ role: 'assistant', content: '', err: msg(e) }]));
+          }
+
+          /** 删掉一个对话 */
+          function removeThread(id) {
+            ask('删掉这个对话？聊天记录不可恢复。').then((ok) => {
+              if (!ok) return;
+              call('threadsRemove', { id: id }, gameId)
+                .then(() => {
+                  setAsListOpen(false);
+                  return loadThreads();
+                })
+                .catch((e) => setAsLog([{ role: 'assistant', content: '', err: msg(e) }]));
+            });
+          }
+
+      function sendAssistant() {
+        const text = String(asIn || '').trim();
+        if (!text || asBusy) return;
+        setAsLog((p) => p.concat([{ role: 'user', content: text }]));
+        setAsIn('');
+        setAsBusy(true);
+        // 历史不再由前端传 —— 后端从对话文件里读，还要按需压缩
+        call('assistantChat', { threadId: asThreadId, text: text }, gameId)
+          .then((r) => {
+            setAsBusy(false);
+            if (r && r.ok) {
+              setAsLog((p) =>
+                p.concat([
+                  {
+                    role: 'assistant',
+                    content: asText(r.reply),
+                    think: String(r.think || ''),
+                    trace: Array.isArray(r.trace) ? r.trace : [],
+                    err: '',
+                  },
+                ])
+              );
+              // 第一条消息后标题会变，刷新一下列表
+              loadThreads();
+            } else {
+              const m = (r && r.msg) || '神谕没有回复';
+              setAsLog((p) => p.concat([{ role: 'assistant', content: '', err: m }]));
+            }
+          })
+          .catch((e) => {
+            setAsBusy(false);
+            setAsLog((p) => p.concat([{ role: 'assistant', content: '', err: msg(e) }]));
+          });
+      }
           /**
            * 重新生成第 i 条助手回复：把它前面那条用户提问再问一遍，用新回复替换它。
            * 第 i 条之前的对话原样作为历史传下去。
            */
-          function regenAssistant(i) {
-            if (asBusy) return;
-            const upto = asLog.slice(0, i); // 不含要被替换的那条
-            let q = '';
-            let qi = -1;
-            for (let k = upto.length - 1; k >= 0; k--) {
-              if (upto[k].role === 'user') {
-                q = String(upto[k].content || '').trim();
-                qi = k;
-                break;
-              }
-            }
-            if (!q) return;
-            setAsBusy(true);
-            const done = (reply, e) => {
-              setAsBusy(false);
-              setAsLog(upto.concat([{ role: 'assistant', content: asText(reply), err: asText(e) }]));
-            };
-            call('assistantChat', { text: q, history: upto.slice(0, qi) }, gameId)
-              .then((r) => {
-                if (r && r.ok) done(r.reply);
-                else done('', (r && r.msg) || '神谕没有回复');
-              })
-              .catch((e) => done('', msg(e)));
-          }
+      /**
+       * 重新生成第 i 条回复：把它前面那条用户提问再问一遍，用新回复替换它。
+       * 历史由后端从对话文件里取，前端只负责传「重发这一句」。
+       */
+      function regenAssistant(i) {
+        if (asBusy) return;
+        const upto = asLog.slice(0, i);
+        let q = '';
+        for (let k = upto.length - 1; k >= 0; k--) {
+          if (upto[k].role === 'user') { q = String(upto[k].content || '').trim(); break; }
+        }
+        if (!q) return;
+        setAsBusy(true);
+        call('assistantChat', { threadId: asThreadId, text: q }, gameId)
+          .then((r) => {
+            setAsBusy(false);
+            const reply = r && r.ok ? asText(r.reply) : '';
+            setAsLog((p) =>
+              p.map((x, k) =>
+                k === i
+                  ? Object.assign({}, x, {
+                      content: reply,
+                      think: String((r && r.think) || ''),
+                      trace: Array.isArray(r && r.trace) ? r.trace : [],
+                      err: r && r.ok ? '' : (r && r.msg) || '神谕没有回复',
+                    })
+                  : x
+              )
+            );
+          })
+          .catch((e) => {
+            setAsBusy(false);
+            setAsLog((p) => p.map((x, k) => (k === i ? Object.assign({}, x, { err: msg(e) }) : x)));
+          });
+      }
           /**
            * 把某条回答存成笔记：标题用「它对应的那个提问」，正文是这条回答。
            * 往前找最近一条用户消息当标题 —— 神谕的多轮里就是这样一问一答排下来的。
@@ -9713,9 +9830,42 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
   },
 },
                     h('span', { className: 'sim-as-title' }, '神谕'),
-                    h(Btn, { disabled: asBusy || !asLog.length, onClick: () => clearAssistant() }, '清空'),
-                    h(Btn, { onClick: () => { setAsOpen(false); if (close) close(); } }, '切换到普通聊天')
+                    // 新建对话 / 对话列表
+                    h('button', { className: 'sim-as-ib', title: '新建对话', disabled: asBusy, onClick: newThread }, '＋'),
+                    h('button', { className: 'sim-as-ib' + (asListOpen ? ' on' : ''), title: '对话列表（' + asThreads.length + '）', onClick: () => setAsListOpen((v) => !v) }, '☰'),
                   ),
+                  // 对话列表（浮层，盖在消息区上方）
+                  asListOpen
+                      ? h(
+                          'div',
+                          { className: 'sim-as-list' },
+                          asThreads.length
+                            ? asThreads.map((t) =>
+                                h(
+                                  'div',
+                                  {
+                                    key: t.id,
+                                    className: 'sim-as-li' + (t.id === asThreadId ? ' on' : ''),
+                                    onClick: () => switchThread(t.id),
+                                  },
+                                  h('span', { className: 'nm' }, t.title || (t.count ? '（无标题）' : '新对话')),
+                                  h(
+                                    'button',
+                                    {
+                                      className: 'x',
+                                      title: '删掉',
+                                      onClick: (e) => {
+                                        e.stopPropagation();
+                                        removeThread(t.id);
+                                      },
+                                    },
+                                    '✕'
+                                  )
+                                )
+                              )
+                            : h('div', { className: 'sim-hint', style: { padding: '10px 12px' } }, '还没有对话。'),
+                        )
+                      : null,
                   h(
                     'div',
                     { className: 'sim-as-body', ref: asBodyRef },
@@ -9724,6 +9874,35 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
                           h(
                             'div',
                             { key: i, className: 'sim-as-m' + (m.role === 'user' ? ' me' : '') },
+                            // 思考过程与工具调用：默认收起，想看的点开
+                            m.think
+                                ? h(
+                                    'details',
+                                    { className: 'sim-think sim-as-think' },
+                                    h('summary', null, '思考过程'),
+                                    h('div', { className: 'sim-fold-body' }, m.think)
+                                  )
+                                : null,
+                            m.trace && m.trace.length
+                                ? h(
+                                    'details',
+                                    { className: 'sim-think sim-as-think' },
+                                    h('summary', null, '工具调用 · ' + m.trace.length + ' 次'),
+                                    h(
+                                      'div',
+                                      { className: 'sim-fold-body' },
+                                      m.trace.map((tc, k) =>
+                                        h(
+                                          'div',
+                                          { key: k, className: 'sim-trace-row' },
+                                          h('span', { className: 'n' }, '⚙ ' + String(tc.name || '')),
+                                          h('span', { className: 'a' }, JSON.stringify(tc.args || {})),
+                                          h('span', { className: 'c' }, tc.chars + ' 字')
+                                        )
+                                      )
+                                    )
+                                  )
+                                : null,
                             h('div', { className: 'sim-as-txt' }, mdNodes(m.content)),
                             m.err ? h('div', { className: 'sim-as-err' }, m.err) : null,
                             m.role === 'user'

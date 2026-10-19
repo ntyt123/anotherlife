@@ -1272,12 +1272,51 @@ function pickToolCall(r) {
      * assistant 的来源必须是 { kind: 'model', provider, model }，其余按用户输入算。
      */
     let msgSeq = 0;
-    const toMessage = (m) => ({
-      id: 'sim-' + Date.now().toString(36) + '-' + (msgSeq++).toString(36),
-      role: m.role,
-      content: [{ type: 'text', text: String(m.content == null ? '' : m.content) }],
-      source: m.role === 'assistant' ? { kind: 'model', provider, model } : { kind: 'user' },
-    });
+    /**
+     * 三种形状：
+     *   ① 普通消息 —— text 块
+     *   ② assistant 带工具调用 —— text 块（可能为空）+ 若干 tool-call 块
+     *   ③ 工具结果 —— 借 user 的壳放 tool-result 块
+     *      DSH 的 Message.role 只有 system/user/assistant、没有 'tool'，
+     *      工具结果的来源靠 source.kind='tool' + callId 标明。
+     */
+    const toMessage = (m) => {
+      const id = 'sim-' + Date.now().toString(36) + '-' + (msgSeq++).toString(36);
+      if (m.role === 'tool') {
+        return {
+          id,
+          role: 'user',
+          content: [
+            {
+              type: 'tool-result',
+              toolCallId: m.toolCallId,
+              content: [{ type: 'text', text: String(m.content == null ? '' : m.content) }],
+            },
+          ],
+          source: { kind: 'tool', callId: m.toolCallId },
+        };
+      }
+      if (m.role === 'assistant' && Array.isArray(m.toolCalls) && m.toolCalls.length) {
+        const blocks = [];
+        const txt = String(m.content == null ? '' : m.content);
+        if (txt.trim()) blocks.push({ type: 'text', text: txt });
+        m.toolCalls.forEach((tc) => {
+          blocks.push({
+            type: 'tool-call',
+            id: tc.id,
+            name: tc.name,
+            arguments: String(tc.args == null ? '{}' : tc.args),
+          });
+        });
+        return { id, role: 'assistant', content: blocks, source: { kind: 'model', provider, model } };
+      }
+      return {
+        id,
+        role: m.role,
+        content: [{ type: 'text', text: String(m.content == null ? '' : m.content) }],
+        source: m.role === 'assistant' ? { kind: 'model', provider, model } : { kind: 'user' },
+      };
+    };
     const options = {
       provider,
       model,
@@ -4488,75 +4527,494 @@ reg('parseRealPerson', async ({ gameId, name, fields }) => {
    * 模型取自「助手」槽位；那一栏留空就退回当前主模型（和检索槽位的惯例一致）。
    * 对话记在存档的 s.assistant 里（最多留 40 条），这样刷新、重开都还在。
    */
-  function buildAssistantSystem(s) {
+  /**
+   * 神谕的只读工具集。
+   * 全部只读 —— 没有写文件、改正文、改变量的入口，这是硬边界：
+   * 它是个分析者，不是编辑者。需要改动时只能告诉玩家去哪里改。
+   */
+  const ORACLE_TOOLS = [
+    {
+      name: 'search_transcript',
+      description: '在正文里按关键词搜索，返回命中的轮次与前后片段。故事很长、你不确定内容在哪一轮时先用它。一次最多 8 条。',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: '要搜的词。一到三个字效果最好（人名、地名、物件）。' },
+        },
+        required: ['query'],
+      },
+    },
+    {
+      name: 'read_turns',
+      description: '读指定轮次的正文全文。一次最多 2 轮；单轮超过 4000 字会被截断。',
+      parameters: {
+        type: 'object',
+        properties: {
+          from: { type: 'number', description: '起始轮次（含）' },
+          to: { type: 'number', description: '结束轮次（含），最多 from+1' },
+        },
+        required: ['from', 'to'],
+      },
+    },
+    {
+      name: 'list_chars',
+      description: '列出所有角色：姓名、性别、身份、与主角的关系、最近出场轮次。查人物相关问题时先调它。',
+      parameters: { type: 'object', properties: {} },
+    },
+    {
+      name: 'get_state',
+      description: '查一个变量的值。路径用点号分隔，支持数组下标，例如 world.当前日期时间、protagonist.金钱、npcs[0].穿着.上衣。',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: '变量路径' },
+        },
+        required: ['path'],
+      },
+    },
+    {
+      name: 'list_notes',
+      description: '列出这一局的笔记（标题 + 摘要 + 字数）。',
+      parameters: { type: 'object', properties: {} },
+    },
+    {
+      name: 'search_notes',
+      description: '在笔记正文里按关键词搜索。',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: '要搜的词' },
+        },
+        required: ['query'],
+      },
+    },
+  ];
+
+  /** 一次提问的工具预算（按回填字数算）。到 75% 提示收尾，到 100% 强制结束。 */
+  const ORACLE_BUDGET = 150000;
+  /** 轮数只做最后的保险，真正约束是预算 */
+  const ORACLE_MAX_ROUNDS = 12;
+  /** 工具结果回填给模型的字数上限（展示给玩家的仍是全文） */
+  const ORACLE_BACKFILL = 800;
+  /** 单轮正文回填上限 */
+  const ORACLE_TURN_CAP = 4000;
+
+  /** 按点号路径取值，支持 a.b[0].c 这种写法 */
+  function getByDotPath(obj, path) {
+    const parts = String(path || '').replace(/\[(\d+)\]/g, '.$1').split('.').filter(Boolean);
+    let cur = obj;
+    for (const k of parts) {
+      if (cur == null) return undefined;
+      cur = cur[k];
+    }
+    return cur;
+  }
+
+  /** 正文目录：让模型知道有哪些轮次、大致讲了什么，再决定搜什么 */
+  function transcriptIndex(s, limit) {
+    const list = Array.isArray(s.transcript) ? s.transcript : [];
+    if (!list.length) return '';
+    const n = limit || 40;
+    const start = Math.max(0, list.length - n);
+    const rows = [];
+    for (let i = start; i < list.length; i++) {
+      const t = list[i] || {};
+      const body = String(t.body || '').replace(/\s+/g, ' ');
+      rows.push(
+        '第' + t.seq + '轮 ' + (t.role === 'user' ? '玩家' : '叙事') + '：' + body.slice(0, 50) +
+          '（' + body.length + '字）'
+      );
+    }
+    return (
+      '【正文目录】共 ' + list.length + ' 轮' +
+      (start > 0 ? '（下面只列最近 ' + rows.length + ' 轮，更早的用 search_transcript 找）' : '') +
+      '\n' + rows.join('\n')
+    );
+  }
+
+  /** 执行一个工具。永远返回字符串，不抛 —— 工具出错也要让模型看到发生了什么 */
+  async function runOracleTool(s, name, args, gameId) {
+    const a = args && typeof args === 'object' ? args : {};
+    try {
+      if (name === 'search_transcript') {
+        const q = String(a.query || '').trim();
+        if (!q) return '（关键词是空的）';
+        const hits = [];
+        const list = Array.isArray(s.transcript) ? s.transcript : [];
+        for (const t of list) {
+          const body = String(t.body || '');
+          let idx = body.indexOf(q);
+          while (idx >= 0) {
+            if (hits.length >= 8) break;
+            const from = Math.max(0, idx - 40);
+            const to = Math.min(body.length, idx + q.length + 60);
+            hits.push('第' + t.seq + '轮 ' + (t.role === 'user' ? '玩家' : '叙事') + '：…' + body.slice(from, to).replace(/\s+/g, ' ') + '…');
+            idx = body.indexOf(q, idx + q.length);
+          }
+          if (hits.length >= 8) break;
+        }
+        return hits.length ? hits.join('\n') : '（正文里没有「' + q + '」）';
+      }
+      if (name === 'read_turns') {
+        const from = Number(a.from);
+        const to = Math.min(Number(a.to) || from, from + 1);
+        if (!Number.isFinite(from)) return '（from 要给数字）';
+        const out = [];
+        (Array.isArray(s.transcript) ? s.transcript : []).forEach((t) => {
+          if (t.seq < from || t.seq > to) return;
+          const body = String(t.body || '');
+          const head = '【第' + t.seq + '轮 · ' + (t.role === 'user' ? '玩家' : '叙事') + '】';
+          out.push(
+            head +
+              '\n' +
+              (body.length > ORACLE_TURN_CAP
+                ? body.slice(0, ORACLE_TURN_CAP) +
+                  '\n（本轮共 ' + body.length + ' 字，后面省略）'
+                : body)
+          );
+        });
+        return out.length ? out.join('\n\n') : '（这几轮不存在）';
+      }
+      if (name === 'list_chars') {
+        const rows = [];
+        const p = s.protagonist || {};
+        rows.push('主角：' + [p.姓名, p.性别, p.身份].filter(Boolean).join(' · '));
+        (Array.isArray(s.npcs) ? s.npcs : []).forEach((n) => {
+          if (!n) return;
+          const rel = (Array.isArray(s.relationships) ? s.relationships : []).find(
+            (r) => r && String(r.对象 || '') === String(n.姓名 || '')
+          );
+          rows.push(
+            [
+              String(n.姓名 || '未命名'),
+              String(n.性别 || ''),
+              String(n.身份 || ''),
+              rel ? '关系：' + String(rel.关系 || '') + ' · ' + String(rel.当前状况 || '') : '',
+              n.最近出场 != null ? '最近出场：第' + n.最近出场 + '轮' : '',
+            ]
+              .filter(Boolean)
+              .join(' | ')
+          );
+        });
+        return rows.join('\n') || '（还没有角色）';
+      }
+      if (name === 'get_state') {
+        const path = String(a.path || '').trim();
+        if (!path) return '（path 是空的）';
+        const v = getByDotPath(s, path);
+        if (v === undefined) return '（没有这个路径：' + path + '）';
+        const txt = typeof v === 'string' ? v : JSON.stringify(v, null, 2);
+        return txt.length > 3000 ? txt.slice(0, 3000) + '\n（已截断）' : txt;
+      }
+      if (name === 'list_notes') {
+        const items = await readNotes(gameId);
+        if (!items.length) return '（还没有笔记）';
+        return items
+          .map((x) => {
+            const body = String(x.body || '').replace(/\s+/g, ' ');
+            return '· ' + String(x.title || '无标题') + '（' + body.length + '字）：' + body.slice(0, 80);
+          })
+          .join('\n');
+      }
+      if (name === 'search_notes') {
+        const q = String(a.query || '').trim();
+        if (!q) return '（关键词是空的）';
+        const items = await readNotes(gameId);
+        const hits = [];
+        for (const x of items) {
+          const body = String(x.body || '');
+          let idx = body.indexOf(q);
+          while (idx >= 0 && hits.length < 6) {
+            const from = Math.max(0, idx - 40);
+            const to = Math.min(body.length, idx + q.length + 60);
+            hits.push('· ' + String(x.title || '无标题') + '：…' + body.slice(from, to).replace(/\s+/g, ' ') + '…');
+            idx = body.indexOf(q, idx + q.length);
+          }
+        }
+        return hits.length ? hits.join('\n') : '（笔记里没有「' + q + '」）';
+      }
+      return '（没有这个工具：' + name + '）';
+    } catch (e) {
+      return '（工具执行失败：' + String((e && e.message) || e) + '）';
+    }
+  }
+
+  /**
+   * agent 循环：模型要搜就搜，搜完再要、再搜，直到它不再调工具为止。
+   * 返回 { text, think, trace } —— trace 是这一轮调过的工具，给界面展示用。
+   */
+  async function runOracleAgent(s, baseMessages, opts) {
+    const o = opts || {};
+    const messages = baseMessages.slice();
+    const trace = [];
+    let spent = 0;
+    let lastText = '';
+    let lastThink = '';
+    for (let round = 0; round < ORACLE_MAX_ROUNDS; round++) {
+      if (spent > ORACLE_BUDGET) break;
+      // 快到预算时软提醒，让它自己收尾（比硬掐断好：不会给出半句话）
+      if (spent > ORACLE_BUDGET * 0.75) {
+        messages.push({
+          role: 'user',
+          content: '【提示】搜索预算快用完了。请不要再调工具，用已经拿到的信息直接回答。',
+        });
+      }
+      const r = await callSlot(
+        s,
+        'assistant',
+        messages,
+        Object.assign({ maxTokens: 2000, tag: o.tag || '神谕' }, o.slotOpts || {}, {
+          tools: ORACLE_TOOLS,
+          wantTools: true,
+        })
+      );
+      const text = String((r && r.text) || '');
+      const think = String((r && r.reasoning) || '');
+      const calls = (r && r.toolCalls) || [];
+      if (text) lastText = text;
+      if (think) lastThink = think;
+      if (!calls.length) {
+        return { text: lastText, think: lastThink, trace };
+      }
+      messages.push({ role: 'assistant', content: text, toolCalls: calls });
+      for (const tc of calls) {
+        const out = await runOracleTool(s, tc.name, tc.args, s.__gameId || o.gameId);
+        spent += String(out).length;
+        trace.push({
+          name: tc.name,
+          args: tc.args,
+          chars: String(out).length,
+          preview: String(out).slice(0, 160),
+        });
+        const body =
+          String(out).length > ORACLE_BACKFILL
+            ? String(out).slice(0, ORACLE_BACKFILL) +
+              '\n（共 ' + String(out).length + ' 字，已截断）'
+            : String(out);
+        messages.push({ role: 'tool', toolCallId: tc.id, content: body });
+      }
+    }
+    return {
+      text:
+        String(lastText || '').trim() ||
+        '（这次的搜索预算用完了。把问题拆小一点再问，或者直接告诉我你想看哪几轮。）',
+      think: lastThink,
+      trace,
+    };
+  }
+
+  /**
+   * 历史压缩：超过阈值就把前段压成摘要，只留最近 3 轮。
+   * 摘要只当索引（问过什么、结论要点），细节丢了也没关系 ——
+   * 模型有 search_transcript，缺什么可以自己再查。
+   * 压缩失败就原样返回，退化成简单截断，不能因为它挂掉整个神谕。
+   */
+  async function compressOracleHistory(s, msgs) {
+    const KEEP = 6; // 最近 3 轮（一问一答各算一条）
+    if (msgs.length <= KEEP + 2) return msgs;
+    const old = msgs.slice(0, -KEEP);
+    const keep = msgs.slice(-KEEP);
+    const flat = old
+      .filter((m) => m.role === 'user' || m.role === 'assistant')
+      .map((m) => (m.role === 'user' ? '【问】' : '【答】') + String(m.content || '').slice(0, 400))
+      .join('\n');
+    if (flat.length < 12000) return msgs;
+    try {
+      const r = await callSlot(
+        s,
+        'summary',
+        [
+          {
+            role: 'system',
+            content:
+              '把下面的对话压成 400 字以内的摘要。只保留：问过什么、结论要点是什么。' +
+              '不要展开细节、不要保留原文、不要评价。',
+          },
+          { role: 'user', content: flat },
+        ],
+        { maxTokens: 700, tag: '神谕压缩' }
+      );
+      const sum = String((typeof r === 'string' ? r : (r && r.text) || '')).trim();
+      if (!sum) return msgs;
+      return [{ role: 'user', content: '【更早的对话摘要】\n' + sum }, ...keep];
+    } catch (e) {
+      return msgs;
+    }
+  }
+
+  /**
+   * 神谕的系统提示词。
+   * 和以前的区别：不再塞「最近 6 条正文」—— 它现在有工具，需要什么自己去查。
+   * 塞进去反而会诱导它只依据那几条作答，答不全还编。
+   */
+  function buildOracleSystem(s) {
     const w = s.world || {};
     const p = s.protagonist || {};
-    const recent = (s.transcript || [])
-      .slice(-6)
-      .map((x) => (x.role === 'user' ? '【玩家】' : '【正文】') + String(x.body || '').slice(0, 600))
-      .join('\n\n');
     const who = [p.姓名, p.年龄 ? p.年龄 + '岁' : '', p.身份].filter(Boolean).join(' · ');
     return [
       '你是「故事神谕」，一个为正在进行的角色扮演/故事服务的“戏外”分析者。',
-      '下方提供了当前的故事上下文（角色信息与最近的对话记录）。',
-      '请基于这些上下文，准确地回答用户关于这个故事的问题。',
+      '',
+      '你可以调用只读工具来查资料：',
+      '· search_transcript(query) —— 在正文里按关键词搜索',
+      '· read_turns(from, to) —— 读某几轮的正文（一次最多 2 轮）',
+      '· list_chars() —— 列出所有角色与关系',
+      '· get_state(path) —— 查任意变量（如 protagonist.金钱、npcs[0].穿着）',
+      '· list_notes() / search_notes(query) —— 查这一局的笔记',
+      '',
+      '工作方式：',
+      '· 先看下方【正文目录】判断哪几轮可能相关，再决定搜什么、读哪几轮。',
+      '· 不要为了「搜全」把所有关键词都试一遍；搜两次没结果就换个角度，或直接说明没找到。',
+      '· 拿到足够信息就直接回答，不要反复确认。',
       '',
       '规则：',
-      '- 你不是故事里的角色。不要进行角色扮演、旁白叙述，也不要续写剧情。',
-      '- 除非用户要求展开细节，否则请简明、直接地回答。',
-      '- 如果某些内容在所提供的上下文中并不存在，请如实说明，不要凭空编造。',
+      '· 你没有任何修改能力 —— 不能改正文、不能改角色、不能写文件。',
+      '   需要改动时明确告诉玩家「这个要你自己去改，在哪个页签」。',
+      '· 你不是故事里的角色。不要角色扮演、不要旁白叙述、不要续写剧情。',
+      '· 除非用户要求展开，否则简明直接地回答。',
+      '· 拿不到的内容就说没有，不要编造。',
       '',
       '【世界观】' + String(w.世界名称 || w.时代与年份 || w.描述 || '').slice(0, 400),
       '【主角】' + (who || '（未设定）'),
       '【当前时间】' + String(w.当前日期时间 || '（未设定）').slice(0, 40),
-      '【最近剧情】',
-      recent || '（还没开始）',
     ].join('\n');
   }
 
-  /** 清空助手的对话记录 */
-  reg('assistantClear', async ({ gameId }) => {
-    const s = await loadState(gameId);
-    s.assistant = [];
-    await saveState(s);
+  // ── 神谕的多对话：每局各自一份 ──
+  // 为什么不放存档里：agent 多轮 + 工具记录会让存档膨胀几 MB，
+  // 而 saveState 是整份重写。
+  const THREADS_PREFIX = STORE_DIR + 'simulator-threads-';
+  const THREADS_MAX = 40;
+
+  function threadsFile(gameId) {
+    const k = String(gameId || '').replace(/[^a-zA-Z0-9_-]/g, '_') || 'default';
+    return THREADS_PREFIX + k + '.json';
+  }
+
+  async function readThreads(gameId) {
+    const j = await readJson(threadsFile(gameId));
+    const list = j && Array.isArray(j.threads) ? j.threads : [];
+    const threads = list.filter((x) => x && x.id);
+    for (const t of threads) if (!Array.isArray(t.messages)) t.messages = [];
+    let active = j && j.active ? String(j.active) : '';
+    if (!threads.some((t) => t.id === active)) active = threads.length ? threads[0].id : '';
+    return { threads, active };
+  }
+
+  async function writeThreads(gameId, db) {
+    await writeJson(threadsFile(gameId), { threads: db.threads, active: db.active, at: Date.now() });
+  }
+
+  function newThreadId() {
+    return 't' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  }
+
+  reg('threadsList', async ({ gameId }) => {
+    const db = await readThreads(gameId);
+    return {
+      active: db.active,
+      threads: db.threads.map((t) => ({
+        id: t.id,
+        title: String(t.title || ''),
+        count: t.messages.length,
+        updatedAt: Number(t.updatedAt) || 0,
+      })),
+    };
+  });
+
+  reg('threadsNew', async ({ gameId }) => {
+    const db = await readThreads(gameId);
+    if (db.threads.length >= THREADS_MAX) throw new Error('对话太多了（最多 ' + THREADS_MAX + ' 个）');
+    const id = newThreadId();
+    db.threads.push({ id, title: '', createdAt: Date.now(), updatedAt: Date.now(), messages: [] });
+    db.active = id;
+    await writeThreads(gameId, db);
+    return { ok: true, id, active: id };
+  });
+
+  reg('threadsRemove', async ({ gameId, id }) => {
+    const db = await readThreads(gameId);
+    const next = db.threads.filter((t) => t.id !== String(id));
+    if (next.length === db.threads.length) throw new Error('这个对话已经不在了');
+    db.threads = next;
+    if (db.active === String(id)) db.active = next.length ? next[0].id : '';
+    await writeThreads(gameId, db);
+    return { ok: true, active: db.active };
+  });
+
+  reg('threadsSetActive', async ({ gameId, id }) => {
+    const db = await readThreads(gameId);
+    if (!db.threads.some((t) => t.id === String(id))) throw new Error('这个对话已经不在了');
+    db.active = String(id);
+    await writeThreads(gameId, db);
+    return { ok: true, active: db.active };
+  });
+
+  /** 读某个对话的消息。不传 id 就读当前激活的那个 */
+  reg('threadsGet', async ({ gameId, id }) => {
+    const db = await readThreads(gameId);
+    const t = db.threads.find((x) => x.id === String(id || db.active));
+    if (!t) return { ok: true, id: '', messages: [] };
+    return { ok: true, id: t.id, title: t.title || '', messages: t.messages };
+  });
+
+  /** 清空当前对话的消息（不删对话本身） */
+  reg('assistantClear', async ({ gameId, threadId }) => {
+    const db = await readThreads(gameId);
+    const t = db.threads.find((x) => x.id === String(threadId || db.active));
+    if (t) { t.messages = []; t.title = ''; t.updatedAt = Date.now(); }
+    await writeThreads(gameId, db);
     return { ok: true };
   });
 
-  reg('assistantChat', async ({ gameId, text, history }) => {
+  reg('assistantChat', async ({ gameId, threadId, text }) => {
     const s = await loadState(gameId);
     const say = String(text || '').trim();
     if (!say) return { ok: false, msg: '没有内容' };
-    // 历史以前端传来的为准（前端是这段对话的真源），只取最近若干轮，别把上下文撑爆
-    const past = Array.isArray(history) ? history.slice(-16) : [];
-    const msgs = [{ role: 'system', content: buildAssistantSystem(s) }];
-    past.forEach((m) => {
-      if (!m) return;
-      const role = m.role === 'assistant' ? 'assistant' : 'user';
-      const content = String(m.content == null ? '' : m.content).trim();
-      if (content) msgs.push({ role, content });
-    });
-    msgs.push({ role: 'user', content: say });
 
-    const cfg = (s.config && s.config.assistant) || {};
-    const opts = { temperature: 0.7, maxTokens: 2000, tag: '神谕' };
-    let out;
-    if (cfg.model) {
-      out = await callSlot(s, 'assistant', msgs, Object.assign({ timeoutMs: 120000 }, opts));
-    } else {
-      // callMainModel 返回的是 { text, reasoning, finish }，不是字符串 ——
-      // 忘了取 .text 就会一路变成 [object Object] 存进存档（这里踩过）。
-      const r = await callMainModel(msgs, Object.assign({ stallMs: 120000, purpose: '神谕' }, opts));
-      out = r && typeof r === 'object' && r.text != null ? String(r.text) : String(r == null ? '' : r);
+    const db = await readThreads(gameId);
+    let th = db.threads.find((x) => x.id === String(threadId || db.active));
+    if (!th) {
+      th = { id: newThreadId(), title: '', createdAt: Date.now(), updatedAt: Date.now(), messages: [] };
+      db.threads.push(th);
+      db.active = th.id;
     }
-    out = String(out == null ? '' : out);
 
-    // 顺手在存档里留一份，重开这一局还能翻到
-    s.assistant = Array.isArray(s.assistant) ? s.assistant : [];
-    s.assistant.push({ role: 'user', content: say, at: Date.now() });
-    s.assistant.push({ role: 'assistant', content: String(out || ''), at: Date.now() });
-    if (s.assistant.length > 40) s.assistant = s.assistant.slice(-40);
-    await saveState(s);
-    return { ok: true, reply: String(out || '') };
+    // 历史先过一遍压缩：超阈值就把前段压成摘要，只留最近 3 轮
+    const hist = await compressOracleHistory(
+      s,
+      th.messages.map((m) => ({
+        role: m.role === 'assistant' ? 'assistant' : 'user',
+        content: String(m.content || ''),
+      }))
+    );
+
+    const msgs = [{ role: 'system', content: buildOracleSystem(s) }];
+    hist.forEach((m) => { if (String(m.content || '').trim()) msgs.push(m); });
+    // 每次提问都带一份正文目录，让模型知道该搜哪里
+    msgs.push({ role: 'user', content: say + '\n\n' + transcriptIndex(s) });
+
+    const out = await runOracleAgent(s, msgs, { gameId, tag: '神谕' });
+
+    th.messages.push({ role: 'user', content: say, at: Date.now() });
+    th.messages.push({
+      role: 'assistant',
+      content: String(out.text || ''),
+      think: String(out.think || ''),
+      trace: Array.isArray(out.trace) ? out.trace : [],
+      at: Date.now(),
+    });
+    if (!th.title) th.title = say.replace(/\s+/g, ' ').slice(0, 24);
+    th.updatedAt = Date.now();
+    db.active = th.id;
+    await writeThreads(gameId, db);
+
+    return {
+      ok: true,
+      reply: String(out.text || ''),
+      think: String(out.think || ''),
+      trace: Array.isArray(out.trace) ? out.trace : [],
+      threadId: th.id,
+    };
   });
 
   /**
