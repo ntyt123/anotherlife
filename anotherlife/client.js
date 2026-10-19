@@ -3441,7 +3441,8 @@ function App({ gameId, close }) {
           const [findQ, setFindQ] = React.useState('');
           const [findAt, setFindAt] = React.useState(0);
           // 存档快照
-          const [snaps, setSnaps] = React.useState([]);
+          const [snapNote, setSnapNote] = React.useState('');
+  const [snaps, setSnaps] = React.useState([]);
           const [snapMax, setSnapMax] = React.useState(10);
           const [snapLoaded, setSnapLoaded] = React.useState(false);
           // 助手浮窗的位置（拖标题栏改）。存 localStorage，刷新后还在
@@ -5015,7 +5016,12 @@ function App({ gameId, close }) {
           /** 存一份快照（当前进度） */
           function snapSave() {
             return call('snapSave', {}, gameId)
-              .then(() => loadSnaps())
+              .then(() => {
+                loadSnaps();
+                // 点了要有反应，否则看着像没点上（按钮在正文底部，很容易被忽略）
+                setSnapNote('已存');
+                window.setTimeout(() => setSnapNote(''), 2000);
+              })
               .catch((e) => setErr('存快照失败：' + msg(e)));
           }
 
@@ -6774,7 +6780,14 @@ onDoubleClick: () => {
             list.length === 0
               ? h('div', { className: 'sim-card' }, '正文从这里开始。在下方输入你的行动，或点击行动选项。')
               : list.map((t) => EntryView({ key: t.seq + '-' + t.role, t: t, av: avatarsMap() })),
-            hasAssistant ? h('div', { style: { marginTop: 4 } }, h(Btn, { disabled: busy, onClick: () => run(call('regenerateLatestVars', {}, gameId)) }, '重算最新一段变量')) : null,
+            hasAssistant
+  ? h(
+      'div',
+      { style: { marginTop: 4, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' } },
+      h(Btn, { disabled: busy, onClick: () => run(call('regenerateLatestVars', {}, gameId)) }, '重算最新一段变量'),
+      h(Btn, { disabled: busy, onClick: () => { loadSnaps(); snapSave(); } }, snapNote || '📌 存快照')
+    )
+  : null,
             // 剧情总结（长期记忆）：每 6 轮自动整理一段，攒多了自动合并
             (function () {
               const list = Array.isArray(state.summaries) ? state.summaries : [];
@@ -9954,7 +9967,7 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
               h('div', { style: { fontWeight: 600, marginBottom: 6 } }, '快照'),
               h('div', { className: 'sim-hint' }, '把当前进度整份存下来，随时回到这一刻。最多 ' + snapMax + ' 份。'),
               h('div', { className: 'sim-acts' },
-                h(Btn, { primary: true, disabled: busy, onClick: () => { loadSnaps(); snapSave(); } }, '📌 存快照')
+                h(Btn, { primary: true, disabled: busy, onClick: () => { loadSnaps(); snapSave(); } }, snapNote || '📌 存快照')
               ),
               snaps.length
                 ? h(
