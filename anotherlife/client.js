@@ -1562,6 +1562,10 @@ window.__ModuleLoader__.load({
          * 放组件外面：正文页末尾的进度条会在组件内 const 初始化之前就被渲染到，
          * 留在组件里会撞 TDZ（报 "Cannot access 'STAGE_LABEL' before initialization"）。
          */
+        // 粉丝四个圈层（顺序即界面显示顺序）。必须放工厂作用域：
+        // fanBlock 会被更早的渲染调用，放在它旁边会撞 TDZ。
+        const FAN_LAYERS_UI = ['唯粉', 'CP粉', '路人盘', '黑粉'];
+
         const STAGE_LABEL = {
           prep: ['1', '整理状态'],
           retrieve: ['2', 'AI 提取信息'],
@@ -8051,7 +8055,6 @@ function renderTrace(v) {
  * 总量与本周是代码算的（模型只给每层的增减），所以这里只负责显示。
  * 没有 粉丝 字段就整块不出 —— 老存档、或没开标记的角色都是这种情况。
  */
-const FAN_LAYERS_UI = ['唯粉', 'CP粉', '路人盘', '黑粉'];
 
 function fmtWan(n) {
   const v = Number(n) || 0;
