@@ -15,7 +15,7 @@ export const inject = ['tavern'];
 
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { existsSync, cpSync, mkdirSync, readdirSync } from 'node:fs';
+import { existsSync, cpSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 
 const P = 'dsh-tavern-simulator/';
@@ -5074,6 +5074,99 @@ reg('parseRealPerson', async ({ gameId, name, fields }) => {
  * 只取 body（正文），不取 think / ctx / diffs —— 那三样是诊断信息，
  * 出现在导出的故事里只会碍事。1000 轮大约 3 MB，前端用 Blob 下载。
  */
+// ── 存档快照 ──
+// 一快照一个文件，不塞进主存档：快照是完整 state 的副本，
+// 十份叠在一个文件里，连「列出快照」这种只读操作都要解析几十 MB。
+const SNAP_PREFIX = STORE_DIR + 'simulator-snap-';
+const SNAP_MAX = 10;
+
+function snapKey(gameId) {
+  return String(gameId || '').replace(/[^a-zA-Z0-9_-]/g, '_') || 'default';
+}
+function snapFile(gameId, id) {
+  return SNAP_PREFIX + snapKey(gameId) + '-' + String(id || '').replace(/[^a-zA-Z0-9_-]/g, '') + '.json';
+}
+
+/** 列出这一局的快照（只读元信息） */
+async function listSnaps(gameId) {
+  const k = snapKey(gameId);
+  const items = [];
+  try {
+    const names = readdirSync(STORE_DIR);
+    const head = 'simulator-snap-' + k + '-';
+    for (const nm of names) {
+      if (!String(nm).startsWith(head) || !String(nm).endsWith('.json')) continue;
+      const j = await readJson(STORE_DIR + nm);
+      if (!j) continue;
+      items.push({
+        id: j.id,
+        name: String(j.name || ''),
+        seq: Number(j.seq) || 0,
+        at: Number(j.at) || 0,
+        rounds: Number(j.rounds) || 0,
+      });
+    }
+  } catch (e) {
+    /* 目录还不存在：当作没有快照 */
+  }
+  items.sort((x, y) => y.at - x.at);
+  return items;
+}
+
+reg('snapList', async ({ gameId }) => {
+  return { items: await listSnaps(gameId), max: SNAP_MAX };
+});
+
+/** 存一份快照：当前 state 的完整副本 */
+reg('snapSave', async ({ gameId, name }) => {
+  const s = await loadState(gameId);
+  const list = await listSnaps(gameId);
+  if (list.length >= SNAP_MAX) {
+    throw new Error('快照最多 ' + SNAP_MAX + ' 份，先删掉一些');
+  }
+  const seq = Number((s.story && s.story.current_message_index) || 0);
+  const id = 's' + Date.now().toString(36);
+  const label = String(name || '').trim();
+  const kept = Object.assign({}, s);
+  delete kept.keyStatus;
+  delete kept.gameId;
+  await writeJson(snapFile(gameId, id), {
+    id: id,
+    name: label || ('第 ' + seq + ' 轮'),
+    seq: seq,
+    at: Date.now(),
+    rounds: (Array.isArray(s.transcript) ? s.transcript : []).length,
+    state: kept,
+  });
+  return { ok: true, id: id };
+});
+
+/** 恢复：先把当前存档另存一份，再整份覆盖 */
+reg('snapRestore', async ({ gameId, id }) => {
+  const snap = await readJson(snapFile(gameId, id));
+  if (!snap || !snap.state) throw new Error('这份快照读不出来');
+  const cur = await loadState(gameId);
+  try {
+    await writeJson(statePath(gameId) + '.before-restore', cur);
+  } catch (e) {
+    /* 备份失败不阻塞恢复 */
+  }
+  const next = snap.state;
+  next.gameId = gameId;
+  await saveState(next);
+  return withKeyStatus(next);
+});
+
+reg('snapRemove', async ({ gameId, id }) => {
+  const p = snapFile(gameId, id);
+  try {
+    if (existsSync(p)) rmSync(p, { force: true });
+  } catch (e) {
+    throw new Error('删不掉：' + String((e && e.message) || e));
+  }
+  return { ok: true };
+});
+
 reg('exportStory', async ({ gameId }) => {
   const s = await loadState(gameId);
   const list = Array.isArray(s.transcript) ? s.transcript : [];

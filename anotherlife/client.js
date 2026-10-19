@@ -309,6 +309,15 @@ window.__ModuleLoader__.load({
       '.sim-fold>summary{cursor:pointer;color:var(--sim-t2);font-size:var(--sim-fs-1);user-select:none}',
       '.sim-fold-body{margin-top:6px;white-space:pre-wrap;color:var(--sim-t2);font-size:var(--sim-fs-2)}',
       '.sim-dg{margin:0 0 8px}',
+      '.sim-snap-list{display:flex;flex-direction:column;gap:6px;margin-top:10px}',
+      '.sim-snap{display:flex;align-items:center;gap:8px;padding:7px 9px;border:1px solid var(--sim-bd);border-radius:8px;background:var(--sim-bg)}',
+      '.sim-snap .nm{flex:1;min-width:0;font-size:var(--sim-fs-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+      '.sim-snap .meta{flex:0 0 auto;font-size:var(--sim-fs-1);color:var(--sim-t3)}',
+      '.sim-snap .go{flex:0 0 auto;padding:2px 8px;border:1px solid var(--sim-bd);border-radius:6px;background:transparent;color:var(--sim-t2);font-size:var(--sim-fs-2);cursor:pointer;font-family:inherit}',
+      '.sim-snap .go:hover{color:var(--sim-ac);border-color:var(--sim-ac)}',
+      '.sim-snap .x{flex:0 0 auto;width:20px;height:20px;padding:0;border:none;border-radius:50%;background:transparent;color:var(--sim-t3);font-size:12px;line-height:1;cursor:pointer;opacity:0;transition:opacity .12s}',
+      '.sim-snap:hover .x{opacity:1}',
+      '.sim-snap .x:hover{background:rgba(0,0,0,.42);color:#fff}',
       '.sim-find{display:flex;align-items:center;gap:6px;margin-bottom:10px;padding:6px 8px;border:1px solid var(--sim-bd);border-radius:8px;background:var(--sim-bg2)}',
       '.sim-find-in{flex:1;min-width:0;background:transparent;border:none;outline:none;color:var(--sim-t);font-size:var(--sim-fs-3);font-family:inherit;padding:2px 0}',
       '.sim-find-in::placeholder{color:var(--sim-t3)}',
@@ -3428,6 +3437,10 @@ function App({ gameId, close }) {
           // 正文内搜索
           const [findQ, setFindQ] = React.useState('');
           const [findAt, setFindAt] = React.useState(0);
+          // 存档快照
+          const [snaps, setSnaps] = React.useState([]);
+          const [snapMax, setSnapMax] = React.useState(10);
+          const [snapLoaded, setSnapLoaded] = React.useState(false);
           // 助手浮窗的位置（拖标题栏改）。存 localStorage，刷新后还在
           const [asPos, setAsPos] = React.useState(() => {
             try {
@@ -3830,6 +3843,12 @@ function App({ gameId, close }) {
     };
   }, [asLog, asBusy, asOpen, asThreadId]);
 
+ // 进设定页就刷一次快照列表（存过、删过要能看到最新的）
+ React.useEffect(() => {
+   if (tab !== 'settings' || !state) return;
+   loadSnaps();
+ }, [tab, state]);
+ 
  // 第一次打开浮窗时拉对话列表（消息由 loadThreads 顺带装进来）
  React.useEffect(() => {
    if (asLoadedRef.current || !asOpen || !state) return;
@@ -4855,6 +4874,51 @@ function App({ gameId, close }) {
                 }
               })
               .catch((e) => setErr(msg(e)));
+          }
+
+          /** 拉快照列表（存 / 删之后都要刷一次） */
+          function loadSnaps() {
+            return call('snapList', {}, gameId)
+              .then((r) => {
+                setSnaps((r && r.items) || []);
+                setSnapMax(Number((r && r.max) || 10));
+                setSnapLoaded(true);
+              })
+              .catch(() => setSnapLoaded(true));
+          }
+
+          /** 存一份快照（当前进度） */
+          function snapSave() {
+            return call('snapSave', {}, gameId)
+              .then(() => loadSnaps())
+              .catch((e) => setErr('存快照失败：' + msg(e)));
+          }
+
+          /** 回到某个快照：成功后用 run(..., true) 把新状态吸收进来 */
+          function snapRestore(id, name) {
+            ask('回到「' + name + '」？当前进度会被覆盖（会先留一份备份）。').then((ok) => {
+              if (!ok) return;
+              run(call('snapRestore', { id: id }, gameId), true)
+                .then(() => loadSnaps())
+                .catch((e) => setErr('恢复失败：' + msg(e)));
+            });
+          }
+
+          function snapRemove(id, name) {
+            ask('删掉快照「' + name + '」？').then((ok) => {
+              if (!ok) return;
+              call('snapRemove', { id: id }, gameId)
+                .then(() => loadSnaps())
+                .catch((e) => setErr('删除失败：' + msg(e)));
+            });
+          }
+
+          /** 时间格式：10-18 14:32 */
+          function fmtSnapTime(t) {
+            if (!t) return '';
+            const d = new Date(t);
+            const p2 = (n) => (n < 10 ? '0' + n : String(n));
+            return (d.getMonth() + 1) + '-' + p2(d.getDate()) + ' ' + p2(d.getHours()) + ':' + p2(d.getMinutes());
           }
 
           /** 拉对话列表，顺带把当前对话的消息装进来 */
@@ -9787,6 +9851,29 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
               '开发',
               null,
               h(GitCfg, { key: 'gitcfg' }),
+            h('div', { className: 'sim-card' },
+              h('div', { style: { fontWeight: 600, marginBottom: 6 } }, '快照'),
+              h('div', { className: 'sim-hint' }, '把当前进度整份存下来，随时回到这一刻。最多 ' + snapMax + ' 份。'),
+              h('div', { className: 'sim-acts' },
+                h(Btn, { primary: true, disabled: busy, onClick: () => { loadSnaps(); snapSave(); } }, '📌 存快照')
+              ),
+              snaps.length
+                ? h(
+                    'div',
+                    { className: 'sim-snap-list' },
+                    snaps.map((s) =>
+                      h(
+                        'div',
+                        { className: 'sim-snap', key: s.id },
+                        h('span', { className: 'nm' }, s.name),
+                        h('span', { className: 'meta' }, Math.max(0, s.seq) + ' 轮 · ' + fmtSnapTime(s.at)),
+                        h('button', { className: 'go', title: '回到这一刻', onClick: () => snapRestore(s.id, s.name) }, '回到这里'),
+                        h('button', { className: 'x', title: '删掉', onClick: () => snapRemove(s.id, s.name) }, '✕')
+                      )
+                    )
+                  )
+                : h('div', { className: 'sim-hint', style: { marginTop: 8 } }, '还没有快照。'),
+            ),
             h('div', { className: 'sim-card' },
               h('div', { style: { fontWeight: 600, marginBottom: 6 } }, '导出'),
               h('div', { className: 'sim-hint' }, '把这一局的正文导出成 Markdown。只含正文与角色表。'),
