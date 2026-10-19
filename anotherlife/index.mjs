@@ -4987,7 +4987,7 @@ reg('parseRealPerson', async ({ gameId, name, fields }) => {
     return { ok: true };
   });
 
-  reg('assistantChat', async ({ gameId, threadId, text }) => {
+  reg('assistantChat', async ({ gameId, threadId, text, regenIndex }) => {
     const s = await loadState(gameId);
     const say = String(text || '').trim();
     if (!say) return { ok: false, msg: '没有内容' };
@@ -4998,6 +4998,22 @@ reg('parseRealPerson', async ({ gameId, name, fields }) => {
       th = { id: newThreadId(), title: '', createdAt: Date.now(), updatedAt: Date.now(), messages: [] };
       db.threads.push(th);
       db.active = th.id;
+    }
+
+    // 重新生成：把这一条之后的消息全丢掉，再重新产出。
+    // 不这么做的话「重发」会变成「追加一对新的」，对话越点越长，
+    // 而前端是按位置替换的 —— 两边就对不上了。
+    if (regenIndex != null) {
+      const i = Number(regenIndex);
+      if (Number.isFinite(i) && i >= 0 && i < th.messages.length) {
+        th.messages = th.messages.slice(0, i);
+            // 末尾如果正好是这次要重问的那条提问，去掉它 —— 下面会重新 push，
+            // 不去就是两条一模一样的 user 挨在一起
+            const tail = th.messages[th.messages.length - 1];
+            if (tail && tail.role === 'user' && String(tail.content || '').trim() === say) {
+              th.messages.pop();
+            }
+      }
     }
 
     // 历史先过一遍压缩：超阈值就把前段压成摘要，只留最近 3 轮

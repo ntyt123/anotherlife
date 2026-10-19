@@ -94,6 +94,9 @@ window.__ModuleLoader__.load({
       '.sim-as-li:hover .x{opacity:1}',
       '.sim-as-li .x:hover{background:rgba(0,0,0,.42);color:#fff}',
       '.sim-as-think{margin:0 0 6px;font-size:var(--sim-fs-2)}',
+      '.sim-as-pending{padding:4px 0;font-size:var(--sim-fs-3);color:var(--sim-t3)}',
+      '.sim-as-pending::after{content:"";display:inline-block;width:6px;height:6px;margin-left:6px;border-radius:50%;background:var(--sim-ac);animation:sim-pulse 1.1s ease-in-out infinite}',
+      '@keyframes sim-pulse{0%,100%{opacity:.25}50%{opacity:1}}',
       '.sim-trace-row{display:flex;gap:6px;align-items:baseline;padding:2px 0;font-size:var(--sim-fs-2);border-bottom:1px dashed var(--sim-bd)}',
       '.sim-trace-row:last-child{border-bottom:none}',
       '.sim-trace-row .n{color:var(--sim-ac);flex:0 0 auto;font-weight:600}',
@@ -4716,6 +4719,13 @@ window.__ModuleLoader__.load({
        * 重新生成第 i 条回复：把它前面那条用户提问再问一遍，用新回复替换它。
        * 历史由后端从对话文件里取，前端只负责传「重发这一句」。
        */
+      /**
+       * 重新生成第 i 条回复。
+       * · 点下去立刻把这条清空（留 pending 标记让界面显示「正在重新生成」），
+       *   不等返回 —— 旧内容还挂着会让人以为没点上。
+       * · 后端要一起把「这一条之后」的消息丢掉再重出（regenIndex），
+       *   否则会变成追加新的一轮，越点越长。
+       */
       function regenAssistant(i) {
         if (asBusy) return;
         const upto = asLog.slice(0, i);
@@ -4724,27 +4734,49 @@ window.__ModuleLoader__.load({
           if (upto[k].role === 'user') { q = String(upto[k].content || '').trim(); break; }
         }
         if (!q) return;
+
+        // 立刻清空，进入 pending
+        setAsLog((p) =>
+          p.map((x, k) =>
+            k === i
+              ? Object.assign({}, x, { content: '', think: '', trace: [], err: '', pending: true })
+              : x
+          )
+        );
         setAsBusy(true);
-        call('assistantChat', { threadId: asThreadId, text: q }, gameId)
+
+        call('assistantChat', { threadId: asThreadId, text: q, regenIndex: i }, gameId)
           .then((r) => {
             setAsBusy(false);
-            const reply = r && r.ok ? asText(r.reply) : '';
-            setAsLog((p) =>
-              p.map((x, k) =>
-                k === i
-                  ? Object.assign({}, x, {
-                      content: reply,
-                      think: String((r && r.think) || ''),
-                      trace: Array.isArray(r && r.trace) ? r.trace : [],
-                      err: r && r.ok ? '' : (r && r.msg) || '神谕没有回复',
-                    })
-                  : x
-              )
-            );
+            if (r && r.ok) {
+              setAsLog((p) =>
+                p.map((x, k) =>
+                  k === i
+                    ? Object.assign({}, x, {
+                        content: asText(r.reply),
+                        think: String(r.think || ''),
+                        trace: Array.isArray(r.trace) ? r.trace : [],
+                        err: '',
+                        pending: false,
+                      })
+                    : x
+                )
+              );
+            } else {
+              setAsLog((p) =>
+                p.map((x, k) =>
+                  k === i
+                    ? Object.assign({}, x, { err: (r && r.msg) || '神谕没有回复', pending: false })
+                    : x
+                )
+              );
+            }
           })
           .catch((e) => {
             setAsBusy(false);
-            setAsLog((p) => p.map((x, k) => (k === i ? Object.assign({}, x, { err: msg(e) }) : x)));
+            setAsLog((p) =>
+              p.map((x, k) => (k === i ? Object.assign({}, x, { err: msg(e), pending: false }) : x))
+            );
           });
       }
           /**
@@ -9902,7 +9934,9 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
                                     )
                                   )
                                 : null,
-                            h('div', { className: 'sim-as-txt' }, mdNodes(m.content)),
+                            m.pending
+                              ? h('div', { className: 'sim-as-pending' }, '重新生成中…')
+                              : h('div', { className: 'sim-as-txt' }, mdNodes(m.content)),
                             m.err ? h('div', { className: 'sim-as-err' }, m.err) : null,
                             m.role === 'user'
                               ? null
