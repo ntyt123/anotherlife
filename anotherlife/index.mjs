@@ -2913,7 +2913,7 @@ let aiPickFail = '';
     const sys = [
       jbLine,
       '你是人生模拟器的上下文筛选器。你的工作：根据玩家本轮的输入，从候选条目中挑出写作这一轮真正需要的条目。',
-      '只输出 JSON，形如：{"ids":["p.姓名","as.0"]}。不要任何解释，也不要逐条分析候选 —— 扫一遍、凭直觉挑，比逐条权衡准。',
+      '只输出 JSON，形如：{"ids":["p.姓名","as.0"]}。**第一行就先写这一行 JSON**，之后再想别的（或者干脆不想）—— 你的思考一旦写长了就会把这一行挤掉，整轮上下文就废了。不要逐条分析候选，扫一遍凭直觉挑。',
       '规则：',
       '1) 宁缺毋滥：只选与本轮输入或最近剧情直接相关的条目，最多 ' + maxN + ' 条。',
       '2) 时间与地点必选：若候选里有 w.当前日期时间、w.起始地点，除非明显无关，都要选上。',
@@ -2928,7 +2928,7 @@ let aiPickFail = '';
       const r = await callMainModel([{ role: 'system', content: sys }, { role: 'user', content: usr }], { temperature: 0, maxTokens: 1200, purpose: '检索' });
       raw = r.text && r.text.trim() ? r.text : r.reasoning;
     } else {
-      raw = await callSlot(s, 'retrieve', [{ role: 'system', content: sys }, { role: 'user', content: usr }], { json: true, reasoningEffort: await reasoningOf(s, 'retrieve'), maxTokens: 3000, temperature: 0, tag: '检索' });
+      raw = await callSlot(s, 'retrieve', [{ role: 'system', content: sys }, { role: 'user', content: usr }], { json: true, reasoningEffort: await reasoningOf(s, 'retrieve'), maxTokens: 6000, temperature: 0, tag: '检索' });
     }
     const ids = parseIds(raw);
     if (!ids) {
