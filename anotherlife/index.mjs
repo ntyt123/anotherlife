@@ -1022,6 +1022,100 @@ async function activeWritingSkill() {
    * 记录存在 s._收支结算月（state 顶层的私有键，不进主角字段表、界面上看不到）。
    */
   const MONTHLY_MAX = 120;
+/**
+ * 袜子气味：从 0 涨到 100 需要多少小时（按材质，化纤不透气所以快）。
+ * 脱下之后的衰减按这个值的 2.5 倍时长算 —— 见 decaySockScent。
+ */
+const SOCK_FULL_HOURS = {
+  丝: 60,
+  网: 48,
+  棉: 72,
+  羊毛: 84,
+  竹: 70,
+  莫代尔: 66,
+  混纺: 66,
+};
+
+/** 从袜子名里猜材质。猜不出就当混纺 —— 反正只是决定涨得快慢。 */
+/**
+ * 从袜子名里猜材质，决定气味涨得快慢。
+ * 顺序有讲究：先判明确的材质词，再看工艺词。
+ * 「蕾丝中筒棉袜」是棉袜带蕾丝边，不是网袜 —— 早期把「蕾丝」当材质判，
+ * 结果棉袜被判成网（涨得快一倍）。所以网只认「网眼／网纱／渔网」。
+ */
+function detectSockMaterial(name) {
+  const n = String(name || '');
+  if (/网眼|网纱|渔网/.test(n)) return '网';
+  if (/羊毛|羊绒/.test(n)) return '羊毛';
+  if (/竹纤维/.test(n)) return '竹';
+  if (/莫代尔/.test(n)) return '莫代尔';
+  if (/棉/.test(n)) return '棉';
+  if (/丝|锦纶|尼龙|涤纶|连裤|包芯|冰丝/.test(n)) return '丝';
+  return '混纺';
+}
+
+/**
+ * 把「2026年10月19日 星期一 09:35:00 晴」解析成绝对分钟数。
+ * 只要年月日时分，星期和天气忽略。解析不出来返回 null。
+ */
+function parseStoryTime(str) {
+  const m = /(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日[^0-9]*?(\d{1,2})\s*[:：]\s*(\d{2})/.exec(String(str || ''));
+  if (!m) return null;
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  const d = Number(m[3]);
+  const hh = Number(m[4]);
+  const mi = Number(m[5]);
+  if (!(y > 1900 && mo >= 1 && mo <= 12 && d >= 1 && d <= 31 && hh <= 23 && mi <= 59)) return null;
+  const t = new Date(y, mo - 1, d, hh, mi).getTime();
+  return Number.isFinite(t) ? t / 60000 : null;
+}
+
+/**
+ * 每轮结算后推进「穿着中」的袜子气味强度。
+ *
+ * 纯算术，不叫模型：模型只要给出 world.当前日期时间（本来就要给）。
+ * 返回需要追加进 diffs 的条目 —— 因为 applyDiffs 已经跑过，这里要自带 from，
+ * 重算/删轮/回滚快照时才退得回去（跟 settleMonthly 的金钱 diff 同一个道理）。
+ *
+ * 不累计的三种情况：第一次（只记基准）、时间倒退（回滚）、跳跃超过 10 天（时间跳转）。
+ */
+function tickSockScent(s) {
+  const out = [];
+  try {
+    const now = parseStoryTime(s.world && s.world.当前日期时间);
+    if (now == null) return out;
+    s.story = s.story || {};
+    const prev = Number(s.story.sockTick);
+    s.story.sockTick = now;
+    if (!Number.isFinite(prev)) return out;
+    const dh = (now - prev) / 60;
+    if (!(dh > 0) || dh > 240) return out;
+    const npcs = Array.isArray(s.npcs) ? s.npcs : [];
+    npcs.forEach((n, i) => {
+      const w = n && n.穿着 && n.穿着.袜子;
+      if (!w || !String(w.物品 || '').trim()) return;
+      if (w.睡眠中 === true) return;
+      // 老数据还没迁移过：跳过，等「升级老存档」补上基准值
+      if (w.气味强度 == null || w.气味强度 === '') return;
+      const mat = w.材质 || detectSockMaterial(w.物品);
+      const rate = 100 / (SOCK_FULL_HOURS[mat] || SOCK_FULL_HOURS.混纺);
+      const before = Number(w.气味强度) || 0;
+      const after = Math.min(100, Math.round((before + dh * rate) * 10) / 10);
+      if (!w.材质) {
+        out.push({ path: ['npcs', i, '穿着', '袜子', '材质'], to: mat, bySock: true });
+        w.材质 = mat;
+      }
+      if (after === before) return;
+      out.push({ path: ['npcs', i, '穿着', '袜子', '气味强度'], from: before, to: after, bySock: true });
+      w.气味强度 = after;
+    });
+  } catch (e) {
+    /* 袜子强度是锦上添花，算挂了不能影响这一轮保存 */
+  }
+  return out;
+}
+
   function settleMonthly(s) {
     try {
       const w = s.world || {};
@@ -2812,6 +2906,11 @@ function pickToolCall(r) {
             // 重算这一轮时要靠 from 才能把金钱退回原值。
             diffs.push({ path: ['protagonist', '金钱'], from: before, to: monthly.next, byMonthly: true });
           }
+          
+          // 袜子气味强度：纯算术推进，不叫模型。
+          // 返回的条目自带 from（applyDiffs 已跑过），重算/删轮才能一起退回去。
+          const sockDiffs = tickSockScent(s);
+          sockDiffs.forEach((d) => diffs.push(d));
           await turnLog(
             '[settle] gameId=' +
               gid +
