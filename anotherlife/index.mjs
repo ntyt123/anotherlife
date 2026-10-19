@@ -5000,20 +5000,27 @@ reg('parseRealPerson', async ({ gameId, name, fields }) => {
       db.active = th.id;
     }
 
-    // 重新生成：把这一条之后的消息全丢掉，再重新产出。
-    // 不这么做的话「重发」会变成「追加一对新的」，对话越点越长，
-    // 而前端是按位置替换的 —— 两边就对不上了。
+    // 重新生成：这次提问「不算数过」——把它的所有痕迹从历史里抹掉，再重新问。
+    //
+    // 不是简单地「截到最后一个用户消息之前」：早先的版本是「追加」，每点一次
+    // 重新生成就往文件里多留一对问答。那种文件长这样：
+    //   [问Q, 答A1(失败), 问Q, 答A2]
+    // 按位置切只能切掉 A2 那一段，A1 还在 —— 模型看得见「我上次说工具不通」，
+    // 于是新回答开头就变成「先更正上一条」。那不是模型的问题，是历史没清干净。
+    //
+    // 所以按内容清：凡是内容等于这次提问的 user 消息，连同它后面紧跟的那条
+    // 回答一起丢掉。同一句话问过三次、五次，也一次清干净。
     if (regenIndex != null) {
-      const i = Number(regenIndex);
-      if (Number.isFinite(i) && i >= 0 && i < th.messages.length) {
-        th.messages = th.messages.slice(0, i);
-            // 末尾如果正好是这次要重问的那条提问，去掉它 —— 下面会重新 push，
-            // 不去就是两条一模一样的 user 挨在一起
-            const tail = th.messages[th.messages.length - 1];
-            if (tail && tail.role === 'user' && String(tail.content || '').trim() === say) {
-              th.messages.pop();
-            }
+      const kept = [];
+      for (let k = 0; k < th.messages.length; k++) {
+        const m = th.messages[k];
+        if (m && m.role === 'user' && String(m.content || '').trim() === say) {
+          k += 1; // 跳过这条提问（下面会重新 push）和它的回答
+          continue;
+        }
+        kept.push(m);
       }
+      th.messages = kept;
     }
 
     // 历史先过一遍压缩：超阈值就把前段压成摘要，只留最近 3 轮
