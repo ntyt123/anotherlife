@@ -4273,31 +4273,48 @@ function App({ gameId, close }) {
            * 由钉住循环放回去。用户自己滚动会先有滚轮/按住/触摸事件，走下面正常分支。
            */
           /** 正文里搜关键词：返回命中的轮次列表（只按轮次定位，不做逐字高亮） */
+          /**
+           * 搜索命中：按「出现次数」算，不是按轮次。
+           * 一段正文里出现三次，就是三个命中 —— 计数显示 3 而不是 1，
+           * ↓ 跳转也要逐个跳，不能一轮只跳一次。
+           * 返回 [{ seq, n }]，n 是这一轮里的第几个。
+           */
           function findHits(q) {
             const s = String(q || '').trim();
             if (!s) return [];
-            const hits = [];
+            const out = [];
             (Array.isArray(state && state.transcript) ? state.transcript : []).forEach((t) => {
-              // 只搜叙事（assistant）。玩家自己打的那句没必要搜 ——
-              // 那是刚写的，搜出来只会稀释命中数。
+              // 只搜叙事（assistant）。玩家自己打的那句没必要搜。
               if (!t || !t.body || t.role !== 'assistant') return;
               const body = String(t.body);
-              if (body.indexOf(s) >= 0 || body.toLowerCase().indexOf(s.toLowerCase()) >= 0) {
-                hits.push(t.seq);
+              const low = body.toLowerCase();
+              const ql = s.toLowerCase();
+              let n = 0;
+              let idx = low.indexOf(ql);
+              while (idx >= 0) {
+                out.push({ seq: t.seq, n: n });
+                n += 1;
+                idx = low.indexOf(ql, idx + s.length);
               }
             });
-            return hits;
+            return out;
           }
 
           /** 跳到第 n 个命中：滚到那一轮，闪一下 */
+          /**
+           * 跳到第 idx 个命中。
+           * 命中按「出现次数」算，所以要先算出它落在哪一轮的第几个，
+           * 再滚到那一轮、把那个 mark 标成当前命中（颜色加深）。
+           */
           function jumpToHit(idx) {
             const hits = findHits(findQ);
             if (!hits.length) return;
             const n = ((idx % hits.length) + hits.length) % hits.length;
             setFindAt(n);
+            const h = hits[n];
             const el = bodyRef.current;
             if (!el) return;
-            const node = el.querySelector('.sim-msg.assistant[data-seq="' + hits[n] + '"]');
+            const node = el.querySelector('.sim-msg.assistant[data-seq="' + h.seq + '"]');
             if (!node) {
               // 目标那一轮还没渲染出来（「加载更早」一次只显示若干轮）：
               // 先把显示条数拉到全量，等一帧再跳
@@ -4305,11 +4322,24 @@ function App({ gameId, close }) {
               window.setTimeout(() => jumpToHit(n), 60);
               return;
             }
+            // 先滚到那一轮，再补一次高亮（节点是刚渲染出来的话，mark 还不存在）
             const top = node.getBoundingClientRect().top - el.getBoundingClientRect().top + el.scrollTop;
             smoothTo(el, Math.max(0, top - 8));
-            // 闪一下：加 class，2 秒后去掉（React 重渲染会重建节点，所以直接操作 DOM）
-            node.classList.add('sim-flash');
             applyHighlight(findQ);
+            // 把这一轮里第 h.n 个 mark 标成当前命中
+            el.querySelectorAll('mark.sim-hit.cur').forEach((m) => m.classList.remove('cur'));
+            const mk = el.querySelector('mark.sim-hit[data-seq="' + h.seq + '"][data-n="' + h.n + '"]');
+            if (mk) {
+              mk.classList.add('cur');
+              const mt = mk.getBoundingClientRect().top - el.getBoundingClientRect().top + el.scrollTop;
+              // 命中点如果已经滚出视野，再挪一次，把它放在离顶部约 1/3 处
+              const er = el.getBoundingClientRect();
+              const mr = mk.getBoundingClientRect();
+              if (mr.top < er.top + 40 || mr.bottom > er.bottom - 40) {
+                smoothTo(el, Math.max(0, mt - el.clientHeight / 3));
+              }
+            }
+            node.classList.add('sim-flash');
             window.setTimeout(() => { try { node.classList.remove('sim-flash'); } catch (e) {} }, 2000);
           }
 
@@ -4320,45 +4350,63 @@ function App({ gameId, close }) {
                      * 那条链还负责对白染色、粗斜体、行内代码，改它风险大。
                      * 文本节点是安全的插入点 —— 不会破坏已有的 span/strong。
                      */
-                    function applyHighlight(q) {
-                      const el = bodyRef.current;
-                      if (!el) return;
-                      // 先拆掉上一次的标记（把 mark 换回纯文本，再合并相邻节点）
-                      el.querySelectorAll('mark.sim-hit').forEach((m) => {
-                        const p = m.parentNode;
-                        if (!p) return;
-                        p.replaceChild(document.createTextNode(m.textContent), m);
-                        if (p.normalize) p.normalize();
-                      });
-                      const s = String(q || '').trim();
-                      if (!s) return;
-                      const low = s.toLowerCase();
-                      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null);
-                      const targets = [];
-                      let node;
-                      while ((node = walker.nextNode())) {
-                        const t = node.nodeValue || '';
-                        if (t.toLowerCase().indexOf(low) >= 0) targets.push(node);
+                      /**
+                       * 把搜索词在正文里标黄，并给每个标记记上「哪一轮的第几个」。
+                       * 记 data-seq / data-n 是为了让跳转能定位到**具体那一次**出现 ——
+                       * 一轮里同一个词出现五次，是五个命中，不能一次跳过。
+                       *
+                       * 走 DOM 而不是改 mdNodes：正文是 React 渲染的元素树，
+                       * 要在里面插 <mark> 得从 mdInlineCore 一路传 keyword 下来，
+                       * 那条链还负责对白染色、粗斜体、行内代码，改它风险大。
+                       * 文本节点是安全的插入点 —— 不会破坏已有的 span/strong。
+                       */
+                      function applyHighlight(q) {
+                        const el = bodyRef.current;
+                        if (!el) return;
+                        // 先拆掉上一次的标记（把 mark 换回纯文本，再合并相邻节点）
+                        el.querySelectorAll('mark.sim-hit').forEach((m) => {
+                          const p = m.parentNode;
+                          if (!p) return;
+                          p.replaceChild(document.createTextNode(m.textContent), m);
+                          if (p.normalize) p.normalize();
+                        });
+                        const s = String(q || '').trim();
+                        if (!s) return;
+                        const low = s.toLowerCase();
+                        // 逐轮处理：同一轮里从 0 开始数，和 findHits 的 n 对齐
+                        el.querySelectorAll('.sim-msg.assistant[data-seq]').forEach((msgEl) => {
+                          const seq = msgEl.getAttribute('data-seq');
+                          let n = 0;
+                          const walker = document.createTreeWalker(msgEl, NodeFilter.SHOW_TEXT, null);
+                          const targets = [];
+                          let node;
+                          while ((node = walker.nextNode())) {
+                            const t = node.nodeValue || '';
+                            if (t.toLowerCase().indexOf(low) >= 0) targets.push(node);
+                          }
+                          targets.forEach((tn) => {
+                            const t = tn.nodeValue || '';
+                            const lower = t.toLowerCase();
+                            const frag = document.createDocumentFragment();
+                            let i = 0;
+                            let idx = lower.indexOf(low);
+                            while (idx >= 0) {
+                              if (idx > i) frag.appendChild(document.createTextNode(t.slice(i, idx)));
+                              const mk = document.createElement('mark');
+                              mk.className = 'sim-hit';
+                              mk.setAttribute('data-seq', String(seq));
+                              mk.setAttribute('data-n', String(n));
+                              mk.textContent = t.slice(idx, idx + s.length);
+                              frag.appendChild(mk);
+                              n += 1;
+                              i = idx + s.length;
+                              idx = lower.indexOf(low, i);
+                            }
+                            if (i < t.length) frag.appendChild(document.createTextNode(t.slice(i)));
+                            if (tn.parentNode) tn.parentNode.replaceChild(frag, tn);
+                          });
+                        });
                       }
-                      targets.forEach((tn) => {
-                        const t = tn.nodeValue || '';
-                        const lower = t.toLowerCase();
-                        const frag = document.createDocumentFragment();
-                        let i = 0;
-                        let idx = lower.indexOf(low);
-                        while (idx >= 0) {
-                          if (idx > i) frag.appendChild(document.createTextNode(t.slice(i, idx)));
-                          const mk = document.createElement('mark');
-                          mk.className = 'sim-hit';
-                          mk.textContent = t.slice(idx, idx + s.length);
-                          frag.appendChild(mk);
-                          i = idx + s.length;
-                          idx = lower.indexOf(low, i);
-                        }
-                        if (i < t.length) frag.appendChild(document.createTextNode(t.slice(i)));
-                        if (tn.parentNode) tn.parentNode.replaceChild(frag, tn);
-                      });
-                    }
 
 
           function onBodyScroll(e) {
