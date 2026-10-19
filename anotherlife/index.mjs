@@ -1873,6 +1873,49 @@ function applyFanDeltas(s, changes, now) {
 }
 
 /**
+ * 给「追踪粉丝」为真的角色（以及主角）把 粉丝 字段建出来。
+ *
+ * 之前只在模型给出「粉丝动态」时才初始化 —— 于是玩家点了 👥，
+ * 但模型这一轮没报动态，界面上就一直是空的，看起来像功能没装上。
+ * 现在每轮结算都过一遍：谁开了标记、谁还没有 粉丝，就按 全网粉丝数 铺一层。
+ *
+ * 只建一次（有就不动），不会每轮重置。
+ */
+function ensureFanFields(s) {
+  const parseWan = (v) => {
+    if (typeof v === 'number') return v > 0 ? Math.round(v) : 0;
+    const t = String(v || '');
+    const m = t.match(/([\d.]+)\s*(亿|万)?/);
+    if (!m) return 0;
+    const n = parseFloat(m[1]);
+    if (!isFinite(n)) return 0;
+    return Math.round(m[2] === '亿' ? n * 1e8 : m[2] === '万' ? n * 1e4 : n);
+  };
+  const build = (w) => {
+    if (!w || typeof w !== 'object') return;
+    if (w.粉丝 && typeof w.粉丝 === 'object') return;
+    const total = parseWan(w.全网粉丝数);
+    // 开了「追踪粉丝」却没有 全网粉丝数：按「有点名气的新人」给个基础量级，
+    // 不然四层全是 0，界面上一条横条都没有，看着像坏了。
+    const total2 = total > 0 ? total : 300000;
+    const made = { 总量: total2, 本周: 0, 层级: {} };
+    if (total2 > 0) {
+      made.层级['唯粉'] = { 量: Math.round(total2 * 0.04), 状态: '' };
+      made.层级['CP粉'] = { 量: Math.round(total2 * 0.06), 状态: '' };
+      made.层级['路人盘'] = { 量: Math.round(total2 * 0.88), 状态: '' };
+      made.层级['黑粉'] = { 量: Math.round(total2 * 0.02), 状态: '' };
+    }
+    w.粉丝 = made;
+  };
+  // 主角只有是艺人（或已经有粉丝数据）才建 —— 不然一个普通上班族也会有 30 万粉丝
+  if (s.protagonist && (s.protagonist.是否艺人 === true || s.protagonist.粉丝)) build(s.protagonist);
+  (Array.isArray(s.npcs) ? s.npcs : []).forEach((n) => {
+    if (n && n.追踪粉丝 === true) build(n);
+  });
+  return s;
+}
+
+/**
  * 长期没曝光的自然掉粉。
  *
  * 每满 7 天（游戏内）清一次：这 7 天里一条 粉丝动态 都没有的角色，
@@ -4295,6 +4338,9 @@ function seasonText(s) {
           fanDiffs.forEach((d) => diffs.push(d));
 
           // 粉丝：长期没曝光的自然掉粉（每满 7 天清一次）
+          // 先把 粉丝 字段补出来（开了标记但还没有的），不然界面上一直是空的
+          ensureFanFields(s);
+
           const fanIdle = tickFans(s, Number(s.story && s.story.sockTick));
           fanIdle.forEach((d) => diffs.push(d));
           await turnLog(
