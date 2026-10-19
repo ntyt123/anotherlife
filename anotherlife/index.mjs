@@ -4633,8 +4633,26 @@ reg('parseRealPerson', async ({ gameId, name, fields }) => {
   }
 
   /** 执行一个工具。永远返回字符串，不抛 —— 工具出错也要让模型看到发生了什么 */
+  /**
+   * 工具参数解析。
+   * callMainModel 拼出来的 toolCalls[].args 是 **JSON 字符串**（流里给的是
+   * argumentsDelta 片段），不是对象 —— 直接当对象用会全部落空，
+   * 表现就是「没有参数的 list_chars 能用、带参数的全都报参数为空」。
+   */
+  function parseToolArgs(v) {
+    if (v && typeof v === 'object') return v;
+    const s = String(v == null ? '' : v).trim();
+    if (!s) return {};
+    try {
+      const o = JSON.parse(s);
+      return o && typeof o === 'object' ? o : {};
+    } catch (e) {
+      return {};
+    }
+  }
+
   async function runOracleTool(s, name, args, gameId) {
-    const a = args && typeof args === 'object' ? args : {};
+    const a = parseToolArgs(args);
     try {
       if (name === 'search_transcript') {
         const q = String(a.query || '').trim();
@@ -4778,11 +4796,14 @@ reg('parseRealPerson', async ({ gameId, name, fields }) => {
       }
       messages.push({ role: 'assistant', content: text, toolCalls: calls });
       for (const tc of calls) {
-        const out = await runOracleTool(s, tc.name, tc.args, s.__gameId || o.gameId);
+        // tc.args 是 JSON 字符串（流里拼出来的），先解析成对象：
+        // 既给工具执行用，也给界面展示用（否则界面上会显示成转义过的字符串）
+        const callArgs = parseToolArgs(tc.args);
+        const out = await runOracleTool(s, tc.name, callArgs, s.__gameId || o.gameId);
         spent += String(out).length;
         trace.push({
           name: tc.name,
-          args: tc.args,
+          args: callArgs,
           chars: String(out).length,
           preview: String(out).slice(0, 160),
         });
