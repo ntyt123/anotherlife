@@ -653,6 +653,7 @@ window.__ModuleLoader__.load({
       // 四段按真实天数分宽（月经5／卵泡8／排卵3／黄体12），当前段实心，竖线标当天。
       // 价值在右上角那句倒计时：剧情感兴趣的是「还有几天」，不是「第几天」。
       '.sim-cyc{margin:2px 0 6px}',
+      '.sim-cyc.sim-preg{margin-top:4px}',
       '.sim-cyc-t{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:5px}',
       '.sim-cyc-ph{display:inline-flex;align-items:center;gap:6px;font-size:var(--sim-fs-4);font-weight:600;color:var(--sim-t)}',
       '.sim-cyc-ph .dot{width:7px;height:7px;border-radius:50%;flex:none;background:var(--sim-t2)}',
@@ -682,14 +683,17 @@ window.__ModuleLoader__.load({
       '.sg.ph-卵泡{background:#3d9c78}',
       '.sg.ph-排卵{background:#c9922a}',
       '.sg.ph-黄体{background:#5b7ba6}',
+      '.sg.ph-preg{background:#9b6bb0}',
       '.sim-cyc-ph.ph-月经 .dot{background:#b4485c}',
       '.sim-cyc-ph.ph-卵泡 .dot{background:#3d9c78}',
       '.sim-cyc-ph.ph-排卵 .dot{background:#c9922a}',
       '.sim-cyc-ph.ph-黄体 .dot{background:#5b7ba6}',
+      '.sim-cyc-ph.ph-preg .dot{background:#9b6bb0}',
       '.sim-cyc-sc .sc.ph-月经{color:#b4485c}',
       '.sim-cyc-sc .sc.ph-卵泡{color:#3d9c78}',
       '.sim-cyc-sc .sc.ph-排卵{color:#c9922a}',
       '.sim-cyc-sc .sc.ph-黄体{color:#5b7ba6}',
+      '.sim-cyc-sc .sc.ph-preg{color:#9b6bb0}',
       // 卡片上的细条版：矮一档、文字压到次要色
       '.sim-cyc.mini{margin:5px 0 2px}',
       '.sim-cyc.mini .sim-cyc-t{margin-bottom:3px}',
@@ -7758,6 +7762,7 @@ onDoubleClick: () => {
                     : null,
                   statusLine(draft.protagonist) ? h('div', { className: 'sim-status-line' }, statusLine(draft.protagonist)) : null,
                   cycleBar(draft.protagonist),
+                  pregBar(draft.protagonist),
                 )
               ),
               // ── 基本信息：一张统一的字段表（照角色面板的做法）──
@@ -8478,6 +8483,81 @@ function cycleBar(obj, compact) {
         )
   );
 }
+
+/** 孕期三段：早孕 0-13 周、中孕 14-27 周、晚孕 28-40 周 */
+const PREG_SEGS = [
+  { k: '早孕', n: 14 },
+  { k: '中孕', n: 14 },
+  { k: '晚孕', n: 12 },
+];
+
+/**
+ * 从「妊娠状态」那段文本里解出孕周。
+ * 模型写得很散：「孕约 12 周」「怀孕 12 周」「孕 12W」「怀孕三个月」。
+ * 解不出来返回 null —— 宁可这一条不画，也别画错的。
+ */
+function pregInfo(txt) {
+  const t = String(txt == null ? '' : txt).trim();
+  if (!t) return null;
+  if (/未孕|没有怀孕|无妊娠|已流产|已引产/.test(t)) return null;
+  let week = 0;
+  const m = /孕\s*(?:约)?\s*(\d+)\s*(?:周|W|w)/.exec(t) || /怀孕\s*(\d+)\s*周/.exec(t);
+  if (m) week = Number(m[1]);
+  else {
+    const mo = /(?:孕|怀孕)\s*(\d+)\s*个?月/.exec(t);
+    if (mo) week = Math.round(Number(mo[1]) * 4.35);
+  }
+  if (!(week > 0)) return null;
+  week = Math.max(1, Math.min(42, week));
+  const phase = week <= 13 ? '早孕' : week <= 27 ? '中孕' : '晚孕';
+  return { week, phase };
+}
+
+/**
+ * 妊娠进度条。40 周为满，三段着色。
+ * compact=true 给角色卡片（一行细条），否则是弹窗里的完整版。
+ * 没有妊娠数据就返回 null（不画空条）。
+ */
+function pregBar(obj, compact) {
+  const o = obj || {};
+  const info = pregInfo(o.妊娠状态);
+  if (!info) return null;
+  const left = Math.max(0, 40 - info.week);
+  let acc = 0;
+  let startPct = 0;
+  for (const s of PREG_SEGS) {
+    if (s.k === info.phase) { startPct = acc / 40 * 100; break; }
+    acc += s.n;
+  }
+  return h(
+    'div',
+    { className: 'sim-cyc sim-preg' + (compact ? ' mini' : '') },
+    h('div', { className: 'sim-cyc-t' },
+      h('span', { className: 'sim-cyc-ph ph-preg' },
+        h('i', { className: 'dot' }),
+        compact ? '孕' + info.week + 'W' : '孕 ' + info.week + ' 周 · ' + info.phase
+      ),
+      compact
+        ? null
+        : h('span', { className: 'sim-cyc-r' },
+            h('span', { className: 'sim-cyc-nx' }, left > 0 ? '距预产期 ' + left + ' 周' : '已到预产期')
+          )
+    ),
+    h('div', { className: 'sim-cyc-bar' },
+      PREG_SEGS.map((s, i) =>
+        h('div', { key: i, className: 'sg ph-preg' + (s.k === info.phase ? ' on' : ''), style: { flex: String(s.n) } })
+      ),
+      h('div', { className: 'sim-cyc-cur', style: { left: (info.week - 0.5) / 40 * 100 + '%' } })
+    ),
+    compact
+      ? null
+      : h('div', { className: 'sim-cyc-sc' },
+          PREG_SEGS.map((s, i) =>
+            h('div', { key: i, className: 'sc ph-preg', style: { flex: String(s.n) } }, s.k)
+          )
+        )
+  );
+}
           /** 「无/弱/中/强」这种文本档位 → 0~100，交给 statBar 画条；认不出就返回 null（不显示） */
           function levelOf(v) {
             const t = String(v == null ? '' : v).trim();
@@ -8689,6 +8769,7 @@ function toggleFans(npc) {
                   : h('div', { className: 'sim-npc-d muted' }, '（暂无描述）'),
                 c.st ? h('div', { className: 'sim-npc-d sim-status-line' }, c.st) : null,
             cycleBar(npc, true),
+            pregBar(npc, true),
                 c.aff != null ? statBar('❤️', c.aff, 'aff') : null,
                 c.tru != null ? statBar('🤝', c.tru, 'tru') : null,
                 c.des != null ? statBar('🔥', c.des, 'des') : null
@@ -8958,6 +9039,7 @@ function toggleFans(npc) {
                           ? h('div', { className: 'sim-status-line', style: { marginBottom: 8 } }, statusLine(npc || obj))
                           : null,
                           h('div', { style: { marginBottom: 10 } }, cycleBar(npc || obj)),
+                          h('div', { style: { marginBottom: 10 } }, pregBar(npc || obj)),
                         // 和编辑主角一样：每个普通字段一个输入框，改完写回（创角阶段写草稿、游玩阶段写存档）
                         h(
                           'div',
