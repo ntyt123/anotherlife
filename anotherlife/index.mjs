@@ -4318,10 +4318,26 @@ function seasonText(s) {
               // 不标的话，正文和变量会悄悄脱节（正文说着「两天后」，时间还停在原地，
               // 所有按小时衰减的东西都不动），用户只会觉得「功能坏了」。
               if (!diffs.length) {
+                await turnLog('[settle] seq=' + seq + ' 解析成功但产出 0 条 —— 顶层键：' + (sj && typeof sj === 'object' ? Object.keys(sj).join(',') : '非对象'));
+                if (sj && Array.isArray(sj.chars) && sj.chars.length) await turnLog('[settle] chars ' + sj.chars.length + ' 条，第一条键：' + Object.keys(sj.chars[0] || {}).join(','));
                 markWarn(gid, 'settle', '结算返回了但没有产出任何变量变化 —— 这一轮的时间、角色状态、穿着都没更新，正文和变量会脱节');
               }
         } else {
           await turnLog('[settle] gameId=' + gid + ' seq=' + seq + ' JSON 解析失败：' + String(settleRaw || '').slice(0, 400));
+          // 失败详情：只在出事时写，正常轮次一个字不加（日志有 256KB 上限，但不该被正常轮次填满）
+          await turnLog(
+            '[settle×] gameId=' + gid + ' seq=' + seq +
+            ' 工具=' + ((settleRes && settleRes.toolCalls) || []).length +
+            ' 参数=' + ((settleRes && settleRes.toolCalls && settleRes.toolCalls[0] && settleRes.toolCalls[0].args) || '').length + '字' +
+            ' 正文=' + settleText.length +
+            ' 思考=' + settleThink.length +
+            ' 剥后=' + settleBody.length
+          );
+          // 参数的前 300 字：看它是怎么断的（断在键名、字符串、还是数组里）
+          if (settleRes && settleRes.toolCalls && settleRes.toolCalls[0] && settleRes.toolCalls[0].args) {
+            await turnLog('[settle×] 参数开头：' + String(settleRes.toolCalls[0].args).slice(0, 300));
+            await turnLog('[settle×] 参数结尾：' + String(settleRes.toolCalls[0].args).slice(-200));
+          }
           markWarn(gid, 'settle', '结算没有返回可解析的 JSON —— 这一轮的变量（时间、角色状态、穿着等）都没有更新');
         }
       } catch (e) {
