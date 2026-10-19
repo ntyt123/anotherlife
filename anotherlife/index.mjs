@@ -2464,6 +2464,8 @@ function guessSockStrength(txt, scent) {
     else if (/429|限流|rate/i.test(line)) line += '（被限流了，等一会儿再试）';
     else if (/401|403|auth|invalid.*key/i.test(line)) line += '（凭据不对，去设定页检查这个服务的密钥）';
     else if (/timeout|超时/i.test(line)) line += '（上游超时，可以直接重试）';
+    // 流式响应被中途切断：上游没发结束标记就把连接关了。重试一次通常就好。
+    else if (/SSE|stream ended|without \[DONE\]|ECONNRESET|socket hang up/i.test(line)) line += '（连接被中途断开，重试一次通常就恢复了）';
     return line;
   }
 
@@ -7109,7 +7111,17 @@ reg('exportStory', async ({ gameId }) => {
     // 每次提问都带一份正文目录，让模型知道该搜哪里
     msgs.push({ role: 'user', content: say + '\n\n' + transcriptIndex(s) });
 
-    const out = await runOracleAgent(s, msgs, { gameId, tag: '神谕' });
+    // 流被中途切断（SSE stream ended without [DONE] / ECONNRESET）不是配置问题，
+    // 重试一次通常就好了。别的错误（401、维护中）照旧直接抛给玩家。
+    let out;
+    try {
+      out = await runOracleAgent(s, msgs, { gameId, tag: '神谕' });
+    } catch (e) {
+      const why = String((e && e.message) || e);
+      if (!/SSE|stream ended|without \[DONE\]|ECONNRESET|socket hang up/i.test(why)) throw e;
+      await turnLog('[神谕] 连接被中途断开，重试一次：' + why.slice(0, 120));
+      out = await runOracleAgent(s, msgs, { gameId, tag: '神谕·重试' });
+    }
 
     th.messages.push({ role: 'user', content: say, at: Date.now() });
     th.messages.push({
