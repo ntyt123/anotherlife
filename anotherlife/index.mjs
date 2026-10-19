@@ -2636,6 +2636,17 @@ function pickToolCall(r) {
     const idleMs = opts.idleMs || opts.stallMs || 120000;
     let gotAny = false;
     const it = llm.stream(options)[Symbol.asyncIterator]();
+    // 诊断：DSH 的 llm.stream 返回的不一定是标准 asyncIterator。
+    // 如果它没有 return()，我那段 finally 里的清理就是空操作 —— 必须先看清楚。
+    await apiLog(
+      '[' + tag + '] 迭代器能力=' + JSON.stringify({
+        return: typeof it.return,
+        throw: typeof it.throw,
+        next: typeof it.next,
+        proto: (function () { try { return Object.getPrototypeOf(it) && Object.getPrototypeOf(it).constructor && Object.getPrototypeOf(it).constructor.name; } catch (e) { return '?'; } })(),
+      }),
+      t0
+    );
     // 无论正常结束还是抛错（超时、上游断流），都必须把迭代器关掉。
     // 不关的话上游连接会挂在那里占着连接池 —— 表现是「一次失败之后，
     // 整个 DSH 的模型调用全部失败，重启才好」，神谕那次就是这么来的。
