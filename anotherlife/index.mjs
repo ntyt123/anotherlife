@@ -1787,6 +1787,142 @@ function traceDecayRate(desc) {
   return 1.5;
 }
 
+/** 粉丝的四个圈层，顺序即界面显示顺序 */
+const FAN_LAYERS = ['唯粉', 'CP粉', '路人盘', '黑粉'];
+
+/**
+ * 把模型给的「粉丝动态」累加进角色的粉丝数据。
+ *
+ * 模型只负责说：谁、哪个圈层、涨跌多少、为什么。
+ * 加总、重算总量、记周报，都归这里 —— 模型算数字容易错，而且它看不见历史。
+ *
+ * 入参 changes: [{ 姓名, 圈层, 增减, 原因 }]
+ * 只处理「追踪粉丝」为真的角色；没开标记的一律跳过（省得每轮都更新一堆路人艺人）。
+ */
+function applyFanDeltas(s, changes, now) {
+  const out = [];
+  const list = Array.isArray(changes) ? changes : [];
+  if (!list.length) return out;
+  const owners = [{ who: s.protagonist, base: [] }].concat(
+    (Array.isArray(s.npcs) ? s.npcs : []).map((n, i) => ({ who: n, base: ['npcs', i] }))
+  );
+  list.forEach((c) => {
+    if (!c || typeof c !== 'object') return;
+    const nm = String(c.姓名 || '').trim();
+    const layer = String(c.圈层 || '').trim();
+    const delta = Number(c.增减);
+    if (!nm || !layer || !Number.isFinite(delta) || !delta) return;
+    if (FAN_LAYERS.indexOf(layer) < 0) return;
+    const hit = owners.filter((x) => {
+      const wn = String((x.who && (x.who.姓名 || x.who.名字)) || '').trim();
+      return wn && wn === nm;
+    })[0];
+    if (!hit || !hit.who) return;
+    // 先看标记：没开「追踪粉丝」的角色一律不动（省钱、省 token）
+    if (hit.who.追踪粉丝 !== true && hit.who !== s.protagonist) return;
+    // 没有 粉丝 字段就建一个：老存档、或刚开标记的角色都是这种情况。
+    // 总量优先从旧的「全网粉丝数」搬（数字或「2400万」这种写法都认），搬不动就先给个普通量级。
+    const f = (hit.who.粉丝 && typeof hit.who.粉丝 === 'object') ? hit.who.粉丝 : (function () {
+      const parseWan = (v) => {
+        if (typeof v === 'number') return v > 0 ? Math.round(v) : 0;
+        const s = String(v || '');
+        const m = s.match(/([\d.]+)\s*(亿|万)?/);
+        if (!m) return 0;
+        const n = parseFloat(m[1]);
+        if (!isFinite(n)) return 0;
+        return Math.round(m[2] === '亿' ? n * 1e8 : m[2] === '万' ? n * 1e4 : n);
+      };
+      const total = parseWan(hit.who.全网粉丝数);
+      const made = {
+        总量: total,
+        本周: 0,
+        层级: {},
+      };
+      // 有总量就按常见比例铺一层，没有就全零（等剧情里的动态慢慢长出来）
+      if (total > 0) {
+        made.层级['唯粉'] = { 量: Math.round(total * 0.04), 状态: '' };
+        made.层级['CP粉'] = { 量: Math.round(total * 0.06), 状态: '' };
+        made.层级['路人盘'] = { 量: Math.round(total * 0.88), 状态: '' };
+        made.层级['黑粉'] = { 量: Math.round(total * 0.02), 状态: '' };
+      }
+      hit.who.粉丝 = made;
+      return made;
+    })();
+    f.层级 = f.层级 && typeof f.层级 === 'object' ? f.层级 : {};
+    const cur = f.层级[layer] && typeof f.层级[layer] === 'object' ? f.层级[layer] : {};
+    const before = Number(cur.量) || 0;
+    const after = Math.max(0, Math.round(before + delta));
+    if (after === before) return;
+    // 圈层明细
+    out.push({ path: hit.base.concat(['粉丝', '层级', layer, '量']), from: before, to: after, byFan: true });
+    cur.量 = after;
+    if (c.原因) cur.状态 = String(c.原因).slice(0, 40);
+    f.层级[layer] = cur;
+    // 总量与本周
+    const totalBefore = Number(f.总量) || 0;
+    const totalAfter = Math.max(0, totalBefore + delta);
+    out.push({ path: hit.base.concat(['粉丝', '总量']), from: totalBefore, to: totalAfter, byFan: true });
+    f.总量 = totalAfter;
+    const weekBefore = Number(f.本周) || 0;
+    out.push({ path: hit.base.concat(['粉丝', '本周']), from: weekBefore, to: weekBefore + delta, byFan: true });
+    f.本周 = weekBefore + delta;
+    // 记下「最近一次有动态」的时间：tickFans 靠它判断该不该自然掉粉
+    if (now != null) f.最近动态 = now;
+  });
+  return out;
+}
+
+/**
+ * 长期没曝光的自然掉粉。
+ *
+ * 每满 7 天（游戏内）清一次：这 7 天里一条 粉丝动态 都没有的角色，
+ * 路人盘 -3%、唯粉 -0.5%（按比例，不按绝对数 —— 800 万和 80 万不该掉一样多）。
+ * 黑粉不会因为你消失就消失，CP粉也不会，所以这两层不动。
+ *
+ * 基准存在 story.fanTick（分钟），和 sockTick 一样的用法。
+ */
+function tickFans(s, now) {
+  const out = [];
+  if (now == null) return out;
+  s.story = s.story || {};
+  const prev = Number(s.story.fanTick);
+  s.story.fanTick = now;
+  if (!Number.isFinite(prev)) return out;
+  const days = (now - prev) / 60 / 24;
+  if (!(days >= 7)) return out;
+  const weeks = Math.min(8, Math.floor(days / 7));
+  const owners = [{ who: s.protagonist, base: [] }].concat(
+    (Array.isArray(s.npcs) ? s.npcs : []).map((n, i) => ({ who: n, base: ['npcs', i] }))
+  );
+  owners.forEach((x) => {
+    const w = x.who;
+    if (!w || typeof w !== 'object') return;
+    if (w !== s.protagonist && w.追踪粉丝 !== true) return;
+    const f = w.粉丝;
+    if (!f || typeof f !== 'object' || !f.层级) return;
+    // 有动态就重置计时（模型每轮清空，这里用 lastAt 判定更稳）
+    const lastAt = Number(f.最近动态);
+    if (Number.isFinite(lastAt) && now - lastAt < 7 * 24 * 60) return;
+    let totalDelta = 0;
+    [['路人盘', 0.03], ['唯粉', 0.005]].forEach(([layer, pct]) => {
+      const cur = f.层级[layer];
+      if (!cur || typeof cur !== 'object') return;
+      const before = Number(cur.量) || 0;
+      if (before <= 0) return;
+      const after = Math.max(0, Math.round(before * (1 - pct) ** weeks));
+      if (after === before) return;
+      out.push({ path: x.base.concat(['粉丝', '层级', layer, '量']), from: before, to: after, byFan: true });
+      cur.量 = after;
+      totalDelta += after - before;
+    });
+    if (!totalDelta) return;
+    const tb = Number(f.总量) || 0;
+    out.push({ path: x.base.concat(['粉丝', '总量']), from: tb, to: Math.max(0, tb + totalDelta), byFan: true });
+    f.总量 = Math.max(0, tb + totalDelta);
+  });
+  return out;
+}
+
 /**
  * 体液残留：只在角色面板显示，不参与任何判定。
  *
@@ -3326,6 +3462,16 @@ let aiPickFail = '';
       '- **现实中的艺人要把演艺资料给齐**（少一样界面就空一格）：艺人咖位／经纪公司／所属组合／出道时间／微博账号／全网粉丝数／代表作品／主要奖项／当前代言／商业报价／粉丝称呼／当前舆论评价／合约到期。数值写具体（「全网 2400 万粉丝」「合约 2027-06 到期」），拿不准按公开量级推断，**不要留空、不要写「未知」**。虚构角色不写这些 —— **但主角例外**：勾了「星途模拟」就要填齐（见下条）。',
       '- **主角开了「星途模拟」就把演艺资料整批给齐**（创角界面勾过，即 protagonist.是否艺人 为 true）：艺人咖位／定位／资源级别／经纪公司／所属组合／出道时间／合约到期／代表作品／作品履历／主要奖项／微博账号／全网粉丝数／抖音粉丝／小红书粉丝／粉丝称呼／商业价值／当前代言／商业报价／当前舆论评价／舆论来源／舆论热度／团队／团队评价／行程／隐患／私人关系。**开关是单向的：一旦打开就永远不许清空或撤销**（不能因为某轮没提到就写空）；没开的话这一批一个字都不写。数组形状：作品履历 {名称,类型,角色,番位,进度,口碑}；团队 {姓名,职位,状态}；行程 {时间,名称,类型}；隐患 {事情,知情者,危险度,状态}；私人关系 {对象,性质,公开,状态}。',
       '- **资产页字段**：`收支`={月收入:数字, 月支出:数字, 明细:[{名目,金额,周期}]}（不定期进账放明细、金额写「不定」）；`债务`=[{对象,内容,分量,到期,状态}]（人情债也放这，「分量」写 重／中／轻 或金额）；`凭证`=[{名称,取得,效力}]（效力＝它让主角能做什么）；`事业`=[{名称,性质,状态,收益}]；`住所`=[{名称,类别,位置,总面积,购入时间,购入价格,产权,每一层的设施,简介}]；`交通`=[{名称,类别,品牌型号,车牌,购入时间,购入价格,状态,简介}]。**每条都必须有 `名称`**（缺了界面显示「未命名」）；**`名称` 与 `位置` 分开写**：名称＝叫什么（「翠湖天地大平层」），位置＝在哪（「上海黄浦区」），照抄名字当位置没意义。**住所的 `简介` 与 `每一层的设施` 必填，交通的 `简介` 必填**：简介写买下／得到它的契机与周边环境（窗外、邻居、配套、用途），不复述名字、不写宣传腔；设施按 `楼层=设施` 一行一层（`一层=玄关、会客厅、厨房`）。日常自住与常用车只写这两处，**不要同时写进实体资产**（会重复显示）；实体资产留给出租／投资性房产、公司名下资产、收藏品。空着就别写、不要凭空造。',
+      '【粉丝 · 只在开了「追踪粉丝」标记的角色身上更新】',
+      '- 谁的条目上带「追踪粉丝」为 true，才处理他/她的粉丝数据；没开这个标记的角色**一个字段都不要写**（包括主角以外的艺人）。',
+      '- **不要直接改 粉丝.总量 / 粉丝.层级.N.量**，也不要写「全网粉丝数」。你要做的是在顶层给一个 `粉丝动态` 数组，每项说明「谁、哪个圈层、涨跌多少、为什么」，总数由后台加：',
+      '  · 格式：{"姓名":"田曦薇","圈层":"CP粉","增减":150000,"原因":"与王玉雯官宣合作新剧"}',
+      '  · 圈层只能是这四个之一：唯粉 / CP粉 / 路人盘 / 黑粉。',
+      '  · 增减给**绝对人数**（正涨负跌），不要写百分比；量级参考这个人当前的粉丝总量，别给一个三线艺人一夜涨一千万。',
+      '- **什么情况才写粉丝动态**：作品播出／上映／开分、官宣新项目或新代言、上热搜（正面负面都算）、塌房／澄清／公关回应、出席公开活动或路透曝光、与其他艺人的互动被看到（CP 向）。',
+      '- **什么情况不写**：私下的事没人看见（粉丝不会知道）、日常拍戏没有路透也没通稿、这一轮什么都没发生。**没发生就整个 `粉丝动态` 不出现，不要写「持平」「无变化」「0」。**',
+      '- **各圈层的反应往往相反，要分别给**：官宣 CP 合作 → CP粉、路人盘涨，唯粉可能跌；塌房 → 路人盘、唯粉大跌，黑粉涨。只给一个总数等于没写。',
+      '- **舆论也分圈层**（`舆论` 字段）：粉丝／路人／业内／媒体 四层各一句，写当下的看法与风向，别写成事件描述。只对开了标记的角色写。',
       '- **【星途模拟 · 番位与档位的变化必须慢】**「艺人咖位」是最慢的变量，单独说一次：',
       '  · 只有剧情里有**明确事件**支撑时才动（一部剧火了、拿了奖、被全网黑、合约纠纷解约、被雪藏），一轮最多动**一格**，多数轮次**根本不动**。',
       '  · 不许因为「这一轮表现好」就升级，也不许在两个档位之间来回跳。往上走的每一步都要有作品或事件垫着。',
@@ -4123,6 +4269,14 @@ function seasonText(s) {
           // 体液残留（只在面板显示，不参与任何判定）
           const fluidDiffs = tickFluid(s, Number(s._lastDh) || 0);
           fluidDiffs.forEach((d) => diffs.push(d));
+
+          // 粉丝：模型给「谁涨跌多少」，这里加总（只对开了「追踪粉丝」标记的角色）
+          const fanDiffs = applyFanDeltas(s, sj && sj.粉丝动态, Number(s.story && s.story.sockTick));
+          fanDiffs.forEach((d) => diffs.push(d));
+
+          // 粉丝：长期没曝光的自然掉粉（每满 7 天清一次）
+          const fanIdle = tickFans(s, Number(s.story && s.story.sockTick));
+          fanIdle.forEach((d) => diffs.push(d));
           await turnLog(
             '[settle] gameId=' +
               gid +

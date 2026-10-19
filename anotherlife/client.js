@@ -168,6 +168,20 @@ window.__ModuleLoader__.load({
       '.sim-chip-b{font-size:var(--sim-fs-1);opacity:.8}',
       '.sim-ring{display:block;flex:0 0 auto;overflow:visible}',
       '.sim-trace{display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap}',
+
+      '.sim-fan-total{display:flex;align-items:baseline;gap:10px;margin-bottom:8px}',
+      '.sim-fan-total .big{font-size:calc(var(--sim-fs-4) * 1.35);font-weight:800;letter-spacing:.3px}',
+      '.sim-fan-total .wk{font-size:var(--sim-fs-2);color:var(--sim-t2)}',
+      '.sim-fan-total .wk.up{color:#2e9e5b}',
+      '.sim-fan-total .wk.down{color:#c34a4a}',
+      '.sim-fan-layers{display:flex;flex-direction:column;gap:5px}',
+      '.sim-fan-row{display:flex;align-items:center;gap:8px;font-size:var(--sim-fs-2)}',
+      '.sim-fan-row .n{flex:0 0 52px;color:var(--sim-t2)}',
+      '.sim-fan-row .v{flex:0 0 62px;text-align:right;font-variant-numeric:tabular-nums}',
+      '.sim-fan-row .bar{flex:0 0 74px;height:5px;border-radius:3px;background:var(--sim-bd);overflow:hidden}',
+      '.sim-fan-row .bar i{display:block;height:100%;border-radius:3px;background:linear-gradient(90deg,#8aa6c0,#d9a441)}',
+      '.sim-fan-row .st{flex:1 1 auto;min-width:0;color:var(--sim-t3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+      '.sim-fan-pub .sim-know .v{white-space:normal;overflow:visible}',
       '.sim-trace .txt{flex:0 1 auto}',
       '.sim-trace .bar{display:inline-block;flex:0 0 44px;width:44px;height:5px;border-radius:3px;background:var(--sim-bd);overflow:hidden;vertical-align:middle}',
       '.sim-trace .bar i{display:block;height:100%;border-radius:3px;background:linear-gradient(90deg,#d97a41,#c9563f);transition:width .2s}',
@@ -7770,6 +7784,7 @@ onDoubleClick: () => {
               })()
             ),
             bodyBlock(draft.protagonist),
+            fanBlock(draft.protagonist),
             h(
               'div',
               { className: 'sim-card' },
@@ -8009,6 +8024,67 @@ function renderTrace(v) {
             );
           }
           /** 「身体」：只显示剧情里真被记下来的部位；一个都没有就整块不出现 */
+/**
+ * 粉丝：四个圈层 + 舆论四层。只在开了「追踪粉丝」的对象上出现。
+ *
+ * 总量与本周是代码算的（模型只给每层的增减），所以这里只负责显示。
+ * 没有 粉丝 字段就整块不出 —— 老存档、或没开标记的角色都是这种情况。
+ */
+const FAN_LAYERS_UI = ['唯粉', 'CP粉', '路人盘', '黑粉'];
+
+function fmtWan(n) {
+  const v = Number(n) || 0;
+  if (v >= 100000000) return (v / 100000000).toFixed(1) + ' 亿';
+  if (v >= 10000) return Math.round(v / 10000) + ' 万';
+  return String(Math.round(v));
+}
+
+function fanBlock(obj) {
+  const f = obj && obj.粉丝;
+  if (!f || typeof f !== 'object') return null;
+  const layers = f.层级 && typeof f.层级 === 'object' ? f.层级 : {};
+  const max = Math.max(1, ...FAN_LAYERS_UI.map((k) => Number((layers[k] || {}).量) || 0));
+  const week = Number(f.本周) || 0;
+  const rows = FAN_LAYERS_UI.filter((k) => layers[k]).map((k) => {
+    const o = layers[k] || {};
+    const v = Number(o.量) || 0;
+    return h(
+      'div',
+      { className: 'sim-fan-row', key: k },
+      h('span', { className: 'n' }, k),
+      h('span', { className: 'v' }, fmtWan(v)),
+      h('span', { className: 'bar' }, h('i', { style: { width: Math.round((v / max) * 100) + '%' } })),
+      h('span', { className: 'st' }, String(o.状态 || ''))
+    );
+  });
+  const pub = obj && obj.舆论;
+  const pubRows = pub && typeof pub === 'object'
+    ? ['粉丝', '路人', '业内', '媒体'].filter((k) => String(pub[k] || '').trim()).map((k) =>
+        h('div', { className: 'sim-know', key: 'pub-' + k },
+          h('span', { className: 'k' }, k),
+          h('span', { className: 'v' }, String(pub[k]).trim())
+        )
+      )
+    : [];
+  return h(
+    'details',
+    { className: 'sim-think', style: { marginTop: 10 } },
+    h('summary', null, '👥 粉丝'),
+    h(
+      'div',
+      { className: 'sim-body-list sim-fan' },
+      h('div', { className: 'sim-fan-total' },
+        h('span', { className: 'big' }, fmtWan(f.总量)),
+        h('span', { className: 'wk' + (week < 0 ? ' down' : week > 0 ? ' up' : '') },
+          week === 0 ? '本周持平' : (week > 0 ? '+' : '') + fmtWan(week) + '（本周）'
+        )
+      ),
+      rows.length ? h('div', { className: 'sim-fan-layers' }, rows) : null,
+      pubRows.length ? h('div', { className: 'sim-fan-pub' }, h('div', { className: 'sim-hint', style: { margin: '8px 0 4px' } }, '舆论'), pubRows) : null
+    )
+  );
+}
+
           /**
            * 「身体」：皮肤上的痕迹（牙印、绳痕、抓痕）与体内残留。
            *
@@ -8472,6 +8548,18 @@ function starPanel(n) {
             });
             return npcWrite(arr);
           }
+/** 追踪粉丝：和「重要」一样是角色条目上的开关，但管的是不同的事 ——
+ *  重要 = 剧情里重不重要（排序、折叠）
+ *  追踪粉丝 = 事业要不要细算（粉丝与舆论只对该角色更新） */
+function toggleFans(npc) {
+  const nm = nameOf(npc);
+  const pool = phase === 'character' ? draft.npcs : dps.npcs;
+  const arr = (Array.isArray(pool) ? pool : []).map((x) => {
+    if (nameOf(x) !== nm || x !== npc) return x;
+    return Object.assign({}, x, { 追踪粉丝: !x.追踪粉丝 });
+  });
+  return npcWrite(arr);
+}
           function removeNpc(npc) {
             const nm = nameOf(npc);
             const pool = phase === 'character' ? draft.npcs : dps.npcs;
@@ -8511,7 +8599,18 @@ function starPanel(n) {
                           toggleImportant(npc);
                         },
                       }, npc.重要 ? '★' : '☆')
-                    : null,
+                      : null,
+                      // 追踪粉丝：开了才更新这个人的粉丝与舆论
+                      npc
+                        ? h('button', {
+                            className: 'sim-npc-star' + (npc.追踪粉丝 ? ' on' : ''),
+                            title: npc.追踪粉丝 ? '不再追踪粉丝' : '追踪这个人的粉丝与舆论',
+                            onClick: (e) => {
+                              e.stopPropagation();
+                              toggleFans(npc);
+                            },
+                          }, '👥')
+                        : null,
                   npc
                     ? h('button', {
                         className: 'sim-npc-del',
@@ -8889,6 +8988,7 @@ function starPanel(n) {
                     )
                   ),
                   bodyBlock(npc),
+                  fanBlock(npc),
                   (function () {
                     // 代表作品：一排小标签（可能 20+ 部，超过时会限高滚动）
                     const row = tagRow(npc && npc.代表作品);
