@@ -7994,9 +7994,14 @@ function renderTrace(v) {
             );
           }
           /** 「身体」：只显示剧情里真被记下来的部位；一个都没有就整块不出现 */
+          /**
+           * 「身体」：皮肤上的痕迹（牙印、绳痕、抓痕）与体内残留。
+           *
+           * 整块总是显示，哪怕一条都没有 —— 不然玩家会以为这个功能没装上。
+           * 空的时候只写一句「暂时没有痕迹」，不列空槽位。
+           */
           function bodyBlock(obj) {
-            const b = obj && obj.身体;
-            if (!b || typeof b !== 'object') return null;
+            const b = (obj && obj.身体 && typeof obj.身体 === 'object' && !Array.isArray(obj.身体)) ? obj.身体 : {};
             // 值可能是字符串（老格式）或 { 描述, 强度 }（新格式），都按「有没有描述」判断
             const hasText = (v) => {
               if (v == null) return false;
@@ -8005,32 +8010,31 @@ function renderTrace(v) {
               return !!String(v).trim();
             };
             const keys = Object.keys(b).filter((k) => hasText(b[k]));
-            // 只有「体内」没有痕迹时，这块也要出现
-            const hasFluid = !!(obj && obj.体内 && String(obj.体内.描述 || '').trim());
-            if (!keys.length && !hasFluid) return null;
+            const fluid = obj && obj.体内 && String(obj.体内.描述 || '').trim() ? obj.体内 : null;
+
+            const rows = keys.map((k) =>
+              h('div', { className: 'sim-know', key: k },
+                h('span', { className: 'k' }, k),
+                h('span', { className: 'v' }, renderTrace(b[k]))
+              )
+            );
+            // 体内：只在有内容时占一行，不单独开区
+            if (fluid) {
+              rows.push(
+                h('div', { className: 'sim-know', key: '__fluid' },
+                h('span', { className: 'k' }, '体内'),
+                h('span', { className: 'v' }, renderTrace(fluid))
+                )
+              );
+            }
+
             return h(
               'details',
               { className: 'sim-think', style: { marginTop: 10 } },
               h('summary', null, '🩹 身体'),
-              h(
-                'div',
-                { className: 'sim-body-list' },
-                keys.map((k) =>
-                  h(
-                    'div',
-                    { className: 'sim-know', key: k },
-                    h('span', { className: 'k' }, k),
-                    h('span', { className: 'v' }, renderTrace(b[k]))
-                  )
-                ),
-                // 体内：只在有内容时出现一行，不单独开区
-                String((obj && obj.体内 && obj.体内.描述) || '').trim()
-                  ? h('div', { className: 'sim-know', key: '__fluid' },
-                      h('span', { className: 'k' }, '体内'),
-                      h('span', { className: 'v' }, renderTrace(obj.体内))
-                    )
-                  : null,
-              )
+              rows.length
+                ? h('div', { className: 'sim-body-list' }, rows)
+                : h('div', { className: 'sim-hint' }, '暂时没有痕迹')
             );
           }
           /**
