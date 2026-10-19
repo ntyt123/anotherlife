@@ -166,6 +166,7 @@ window.__ModuleLoader__.load({
       '.sim-chip-add{border-style:dashed;border-color:var(--sim-bd);color:var(--sim-t2);cursor:pointer;font-weight:700;padding:5px 12px}',
       '.sim-chip-add:hover{border-color:var(--sim-ac);color:var(--sim-ac)}',
       '.sim-chip-b{font-size:var(--sim-fs-1);opacity:.8}',
+      '.sim-ring{display:block;flex:0 0 auto;overflow:visible}',
       // 气味浓度格：按程度给颜色 —— 新鲜=绿、整日=黄、多日=红
       '.sim-chip-b.dots{opacity:1;letter-spacing:1px;font-size:var(--sim-fs-1)}',
       '.sim-chip-b.d0{color:#3d9c5f}',
@@ -7729,7 +7730,11 @@ onDoubleClick: () => {
                     id: 'w-' + k,
                     title: slot.物品,
                     // 状态与穿着时长都不贴在名字后面（会很长很挤），只在悬浮详情里看；袜子额外给一个浓度格
-                    badge: lvl < 0 ? '' : '●'.repeat(lvl) + '○'.repeat(3 - lvl),
+                    badge: (function () {
+                      if (lvl < 0) return '';
+                      const v = Number(slot && slot.气味强度);
+                      return Number.isFinite(v) ? ScentRing(v) : '●'.repeat(lvl) + '○'.repeat(3 - lvl);
+                    })(),
                     badgeCls: 'dots d' + lvl,
                     rarity: slot.稀有度,
                     tip,
@@ -7862,6 +7867,37 @@ onDoubleClick: () => {
           function scentDots(slot) {
             const n = scentLevel(slot);
             return n < 0 ? '' : '●'.repeat(n) + '○'.repeat(3 - n);
+          }
+
+          /**
+           * 胶囊上的浓度环：SVG 圆环，按 0~100 填充，颜色随浓度走。
+           * 用圆环而不是横条 —— 胶囊高度只有一行，横条会把名字挤掉。
+           * 四档色：干净灰蓝 → 淡绿 → 琥珀 → 深红。
+           */
+          function ScentRing(v) {
+            const pct = Math.max(0, Math.min(100, Number(v) || 0));
+            const r = 5.5;
+            const c = 2 * Math.PI * r;
+            const color =
+              pct <= 10 ? '#8f98a0' : pct <= 40 ? '#7fb87a' : pct <= 70 ? '#d9a441' : pct <= 85 ? '#d97a41' : '#c9563f';
+            return h(
+              'svg',
+              { width: 13, height: 13, viewBox: '0 0 13 13', className: 'sim-ring', 'aria-hidden': 'true' },
+              h('circle', { cx: 6.5, cy: 6.5, r: r, fill: 'none', stroke: 'var(--sim-bd)', strokeWidth: 2 }),
+              h('circle', {
+                cx: 6.5,
+                cy: 6.5,
+                r: r,
+                fill: 'none',
+                stroke: color,
+                strokeWidth: 2,
+                strokeDasharray: c.toFixed(2),
+                strokeDashoffset: (c * (1 - pct / 100)).toFixed(2),
+                strokeLinecap: 'round',
+                transform: 'rotate(-90 6.5 6.5)',
+                style: { transition: 'stroke-dashoffset .2s, stroke .2s' },
+              })
+            );
           }
           /**
            * 性癖／敏感点／底线／经验 这类「剧情里慢慢发掘」的字段：
@@ -8846,7 +8882,11 @@ function starPanel(n) {
                             id: 'nw-' + npcOpen.i + '-' + k,
                             title: slot.物品,
                             // 状态与穿着时长只在悬浮详情里看；袜子额外给一个浓度格
-                            badge: lvl2 < 0 ? '' : '●'.repeat(lvl2) + '○'.repeat(3 - lvl2),
+                            badge: (function () {
+                              if (lvl2 < 0) return '';
+                              const v = Number(slot && slot.气味强度);
+                              return Number.isFinite(v) ? ScentRing(v) : '●'.repeat(lvl2) + '○'.repeat(3 - lvl2);
+                            })(),
                             badgeCls: 'dots d' + lvl2,
                             rarity: slot.稀有度,
                             tip,
