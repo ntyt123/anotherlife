@@ -8958,7 +8958,7 @@ function toggleFans(npc) {
             const c = cardData(npc, rel);
             const setObj = (v) => writeSrc(kind === 'npc' ? 'npcs' : 'relationships', arr.map((x, j) => (j === npcOpen.i ? v : x)));
             // 标题条上的胶囊：性别 / 身份 / 年龄 / 关系。年龄直接写「19岁」，不加前缀。
-            const HEAD_KEYS = ['姓名', '性别', '年龄', '身份', '关系'];
+            const HEAD_KEYS = ['姓名', '性别', '年龄', '身份'];
             const ancient = isAncientWorld(state); // 古风局：不显示微博/粉丝数这类现代字段
             const chips = [npc && npc.性别, npc && npc.身份, npc && npc.年龄, rel && rel.关系]
               .filter((x) => x != null && String(x).trim())
