@@ -2504,8 +2504,12 @@ function pickToolCall(r) {
           return r;
         }
         // 没要工具时维持原样：只回正文
-        const out = r && typeof r === 'object' && r.text != null ? String(r.text) : String(r == null ? '' : r);
-        await apiLog('[槽位·' + tag + '] ' + who + ' → ' + out.length + ' 字', t0);
+        // text 空时退回 reasoning：推理模型有时把整段内容放在思考通道里、
+        // 正文留空，只取 text 就会得到空串（检索这一路踩过）。
+        let out = r && typeof r === 'object' && r.text != null ? String(r.text) : String(r == null ? '' : r);
+        if (!out.trim() && r && typeof r === 'object' && r.reasoning) out = String(r.reasoning);
+        const rLen = r && typeof r === 'object' && r.reasoning ? String(r.reasoning).length : 0;
+        await apiLog('[槽位·' + tag + '] ' + who + ' → ' + out.length + ' 字' + (rLen ? '（思考 ' + rLen + ' 字）' : ''), t0);
         return out;
       } catch (e) {
         await apiLog('[槽位·' + tag + '] ' + who + ' → 失败：' + String((e && e.message) || e), t0);
