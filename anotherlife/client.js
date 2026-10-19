@@ -3364,6 +3364,13 @@ const WARN_FALLBACK = {
         }
 
         /**
+         * 字段名 → 界面上的显示名。只影响显示，存档里的键名不动。
+         *
+         * 必须定义在 KVView 之前 —— 它是 const，写在后面会撞 TDZ。
+         */
+        const FIELD_LABELS = { '与主角关系': '关系' };
+
+        /**
          * 只读的字段展示。短字段两列并排、长字段整行（和角色弹窗同一套排版）。
          * 空的字段直接不显示 —— 要补字段走页面底部的「直接编辑…原始 JSON」。
          */
@@ -3398,7 +3405,7 @@ const WARN_FALLBACK = {
               return h(
                 'div',
                 { className: 'sim-kv-view' + (twoCol && (solo || isFloor || isWideKV(k, src[k])) ? ' wide' : '') + (solo ? ' solo' : ''), key: k },
-                solo ? null : h('span', { className: 'k' }, k),
+                solo ? null : h('span', { className: 'k' }, FIELD_LABELS[k] || k),
                 isFloor
                   ? h('div', { className: 'v' }, FloorsView(src[k]))
                   : h('span', { className: 'v' }, ValueView(src[k]))
@@ -6712,7 +6719,7 @@ onDoubleClick: () => {
                   const v = Array.isArray(cur) ? cur.join('、') : String(cur || '');
                   return h(Field, {
                     key: k,
-                    label: k,
+                    label: FIELD_LABELS[k] || k,
                     value: v,
                     ph: ph,
                     onChange: (x) => setProtag(k, String(x || '')),
@@ -9159,7 +9166,7 @@ function toggleFans(npc) {
                                     )
                                   : h(Field, {
                                   key: k,
-                                  label: k,
+                                  label: FIELD_LABELS[k] || k,
                                   value: src ? src[k] : '',
                                   onChange: (v) => setObj(Object.assign({}, src || {}, { [k]: v })),
                                     })
@@ -9179,7 +9186,7 @@ function toggleFans(npc) {
                     PREF_NPC.filter((k) => WIDE_KEYS.indexOf(k) >= 0 && (editing || hasVal((npc || obj)[k]))).map((k) =>
                       h(Field, {
                         key: k,
-                        label: k,
+                        label: FIELD_LABELS[k] || k,
                         // 这几种是成段的描述，用多行框才看得全
                         multiline: true,
                         readonly: !editing,
@@ -9341,7 +9348,7 @@ function toggleFans(npc) {
                           multiline: k === '备注' || k === '依据',
                           wide: k === '备注' || k === '依据',
                             key: k,
-                            label: k,
+                            label: FIELD_LABELS[k] || k,
                             value: rel[k] == null ? '' : rel[k],
                             onChange: (v) => {
                               const kind2 = 'relationships';
