@@ -1822,6 +1822,43 @@ function tickSockScent(s) {
   return out;
 }
 
+/**
+ * 老存档的「穿着时长」是自由文本（半日 / 刚换上 / 一整天），
+ * 这里把它映射成一个 0~100 的初始强度 + 小时数。
+ * 返回 null 表示映射不了，交给 AI 兜底。
+ */
+/**
+ * 老存档的「穿着时长」是自由文本（半日 / 刚换上 / 一整天），这里映射成 0~100。
+ * 第二个参数是气味描述 —— 很多老数据时长为空，但描述里写着「半日穿着」「刚洗过」，
+ * 合并判断能把该交 AI 的比例压下去。返回 null 表示真判不出来。
+ * 顺序从轻到重：先说干净的，再说浓的，否则「刚洗过」会被「一整天」之类的词抢走。
+ */
+function guessSockStrength(txt, scent) {
+  const t = String(txt || '') + ' ' + String(scent || '');
+  if (!t.trim()) return null;
+  // 干净那一端
+  if (/刚洗|刚换|更换|换上|才穿|新拆|洗过|皂香|皂粉|沐浴|奶香|香水|没有味道|什么都没|晒过太阳/.test(t)) return { s: 5, h: 0.5 };
+  // 持续时间
+  if (/三天|多天|好几天|一周/.test(t)) return { s: 95, h: 60 };
+  if (/两天|二天|隔天/.test(t)) return { s: 82, h: 36 };
+  if (/整天|一天|一整天|全天|整日/.test(t)) return { s: 65, h: 14 };
+  if (/半日|半天|几小时|数小时|一上午|一下午/.test(t)) return { s: 40, h: 6 };
+  if (/小时/.test(t)) {
+    const m = /(\d+)\s*小时/.exec(t);
+    if (m) {
+      const h = Number(m[1]);
+      if (h >= 0) return { s: Math.min(100, Math.round((h * 100) / 60)), h: h };
+    }
+  }
+  // 描述里的强弱词（没写时长时靠它们）
+  if (/呛|刺鼻|绕不过|满屋|不敢靠近/.test(t)) return { s: 88, h: 48 };
+  if (/浓|发苦|板结|硬了|翻出来/.test(t)) return { s: 76, h: 30 };
+  if (/明显|发闷|实实在在|顶上来|闻得到|皱眉/.test(t)) return { s: 62, h: 13 };
+  if (/极淡|微弱|很浅|若有若无|淡得|几乎|忽略/.test(t)) return { s: 25, h: 3 };
+  if (/一点|些许|薄薄|浅浅|微微/.test(t)) return { s: 35, h: 5 };
+  return null;
+}
+
   function settleMonthly(s) {
     try {
       const w = s.world || {};
@@ -5917,6 +5954,121 @@ async function listSnaps(gameId) {
   items.sort((x, y) => y.at - x.at);
   return items;
 }
+/**
+ * 老存档升级：给还没有「气味强度」的袜子补一个初始值。
+ *
+ * 优先按「穿着时长」文本映射（半日→40、一整天→65…），
+ * 映射不了的那几条才交给 AI 判一次 —— 只判这一次，之后全走代码。
+ * 幂等：已有强度的直接跳过，可以反复点。
+ */
+reg('migrateSockScent', async ({ gameId }) => {
+  const s = await loadState(gameId);
+  const npcs = Array.isArray(s.npcs) ? s.npcs : [];
+  const todo = [];
+  npcs.forEach((n, i) => {
+    const w = n && n.穿着 && n.穿着.袜子;
+    if (!w || !String(w.物品 || '').trim()) return;
+    if (w.气味强度 != null && w.气味强度 !== '') return;
+    todo.push({
+      i: i,
+      姓名: String((n && n.姓名) || ''),
+      物品: String(w.物品 || ''),
+      时长: String(w.穿着时长 || ''),
+      气味: String(w.气味 || ''),
+      guess: guessSockStrength(w.穿着时长, w.气味),
+    });
+  });
+  if (!todo.length) return { ok: true, changed: 0, total: 0, ai: 0 };
+
+  // AI 兜底：只处理映射不了的，一次调用全部判完
+  const needAi = todo.filter((x) => !x.guess);
+  const aiResult = {};
+  if (needAi.length) {
+    const cfg = (s.config && s.config.settle) || {};
+    if (cfg.model) {
+      try {
+        const list = needAi.map((x) => ({
+          序号: x.i,
+          姓名: x.姓名,
+          袜子: x.物品,
+          穿着时长: x.时长,
+          现有气味描述: x.气味,
+        }));
+        const msgs = [
+          {
+            role: 'system',
+            content:
+              '下面是一些已经写好的袜子描述。请为每一条估一个「气味强度」，0~100 的整数：\n' +
+              '0~10 刚洗过／新拆封；11~30 几小时，凑近才有；31~50 半天，若有若无；\n' +
+              '51~70 一整天，脱鞋就散出来；71~85 两天没换，不用凑近就能闻到；86~100 三天以上，进屋就撞上。\n' +
+              '依据：气味描述里的用词强度 + 穿着时长。只回一个 JSON 数组，形如 [{"序号":12,"强度":45}]，不要别的文字。',
+          },
+          { role: 'user', content: JSON.stringify(list) },
+        ];
+        const res = await callSlot(s, 'settle', msgs, {
+          maxTokens: 1200,
+          tag: '袜子升级',
+          reasoningEffort: await reasoningOf(s, 'settle'),
+        });
+        const raw = String(res && res.text != null ? res.text : res == null ? '' : res).replace(/<think>[\s\S]*?<\/think>/gi, '');
+        const m = /\[[\s\S]*\]/.exec(raw);
+        if (m) {
+          const arr = JSON.parse(m[0]);
+          if (Array.isArray(arr)) {
+            arr.forEach((x) => {
+              const k = Number(x && x.序号);
+              const v = Number(x && x.强度);
+              if (Number.isFinite(k) && Number.isFinite(v)) aiResult[k] = Math.max(0, Math.min(100, v));
+            });
+          }
+        }
+      } catch (e) {
+        /* AI 判不出来就用默认值，不挡迁移 */
+      }
+    }
+  }
+
+  let changed = 0;
+  todo.forEach((x) => {
+    const w = npcs[x.i] && npcs[x.i].穿着 && npcs[x.i].穿着.袜子;
+    if (!w) return;
+    let sVal;
+    let hVal;
+    if (x.guess) {
+      sVal = x.guess.s;
+      hVal = x.guess.h;
+    } else if (aiResult[x.i] != null) {
+      sVal = aiResult[x.i];
+      hVal = Math.round((sVal / 100) * 60 * 10) / 10;
+    } else {
+      // 既映射不了、AI 也没给：给个中间值，别留空（留空就永远不涨）
+      sVal = 45;
+      hVal = 8;
+    }
+    w.气味强度 = sVal;
+    w.穿着小时 = hVal;
+    w.材质 = detectSockMaterial(w.物品);
+    w.气味 = scentTextOf(scentLevel(sVal), w.材质, w.物品);
+    w.穿着时长 = humanSockHours(hVal);
+    changed += 1;
+  });
+
+  // 顺便把时间基准记上，否则下一轮会因为没有基准而不累计
+  const now = parseStoryTime(s.world && s.world.当前日期时间);
+  if (now != null) {
+    s.story = s.story || {};
+    if (!Number.isFinite(Number(s.story.sockTick))) s.story.sockTick = now;
+  }
+
+  try {
+    await writeJson(statePath(gameId) + '.before-migrate', s);
+  } catch (e) {
+    /* 备份失败不挡迁移 */
+  }
+  await saveState(s);
+  return { ok: true, changed: changed, total: todo.length, ai: needAi.length };
+});
+
 
 reg('snapList', async ({ gameId }) => {
   return { items: await listSnaps(gameId), max: SNAP_MAX };

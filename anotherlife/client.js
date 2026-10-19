@@ -5019,6 +5019,22 @@ function App({ gameId, close }) {
               .catch((e) => setErr(msg(e)));
           }
 
+          /** 老存档升级：给还没有气味强度的袜子补初始值。幂等，可反复点。 */
+          function migrateSocks() {
+            ask('升级老存档的袜子气味强度？已有强度的一律不动。').then((ok) => {
+              if (!ok) return;
+              return call('migrateSockScent', {}, gameId)
+                .then((r) => {
+                  const n = Number((r && r.changed) || 0);
+                  setSnapNote(n ? '已升级 ' + n + ' 双' : '没有要升级的');
+                  window.setTimeout(() => setSnapNote(''), 3000);
+                  // 刷新界面上的角色数据，让新强度显示出来
+                  return run(call('getState', {}, gameId), true);
+                })
+                .catch((e) => setErr('升级失败：' + msg(e)));
+            });
+          }
+
           /** 拉快照列表（存 / 删之后都要刷一次） */
           function loadSnaps() {
             return call('snapList', {}, gameId)
@@ -10018,7 +10034,8 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
               h('div', { style: { fontWeight: 600, marginBottom: 6 } }, '导出'),
               h('div', { className: 'sim-hint' }, '把这一局的正文导出成 Markdown。只含正文与角色表。'),
               h('div', { className: 'sim-acts' },
-                h(Btn, { disabled: busy, onClick: exportStory }, '📄 导出正文')
+                h(Btn, { disabled: busy, onClick: exportStory }, '📄 导出正文'),
+                h(Btn, { disabled: busy, onClick: migrateSocks }, snapNote || '🔄 升级袜子强度')
               )
             ),
               h('div', { className: 'sim-card' },
