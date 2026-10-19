@@ -2670,7 +2670,7 @@ function pickToolCall(r) {
 const TOKEN_DEFAULTS = {
   retrieve: 6000,      // 检索：挑上下文条目（思考重的槽位）
   story: 12000,        // 正文（中文 1 字≈1.5 token，4500 只够 3000 字；实测单轮到过 5750 字）
-  settle: 12000,       // 结算：全部变量变化（最费）
+  settle: 20000,       // 结算（实测思考到过 19000 字≈12600 token）：全部变量变化（最费）
   summary: 2500,       // 剧情总结
   summaryMerge: 3000,  // 多段总结合并
   parse: 8000,         // 创角解析（主角＋名册）
@@ -4419,7 +4419,8 @@ function seasonText(s) {
             ' 参数=' + ((settleRes && settleRes.toolCalls && settleRes.toolCalls[0] && settleRes.toolCalls[0].args) || '').length + '字' +
             ' 正文=' + settleText.length +
             ' 思考=' + settleThink.length +
-            ' 剥后=' + settleBody.length
+            ' 剥后=' + settleBody.length +
+  ' 剥后开头=' + JSON.stringify(settleBody.slice(0, 200))
           );
           // 参数的前 300 字：看它是怎么断的（断在键名、字符串、还是数组里）
           if (settleRes && settleRes.toolCalls && settleRes.toolCalls[0] && settleRes.toolCalls[0].args) {
@@ -4908,6 +4909,20 @@ reg('saveTokens', async ({ gameId, tokens }) => {
     if (Number.isFinite(v) && v > 0) out[k] = Math.max(200, Math.min(32000, Math.floor(v)));
   });
   s.config.tokens = out;
+  await saveState(s);
+  return withKeyStatus(s);
+});
+
+/** 关掉某一轮的问题提示（玩家看过、确认知道了） */
+reg('dismissIssues', async ({ gameId, seq }) => {
+  const s = await loadState(gameId);
+  const list = Array.isArray(s.transcript) ? s.transcript : [];
+  const n = Number(seq);
+  let hit = 0;
+  list.forEach((t) => {
+    if (!t || Number(t.seq) !== n) return;
+    if (t.issues && t.issues.length) { delete t.issues; hit += 1; }
+  });
   await saveState(s);
   return withKeyStatus(s);
 });

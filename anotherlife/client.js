@@ -181,6 +181,8 @@ window.__ModuleLoader__.load({
       '.sim-issue{display:flex;gap:8px;align-items:flex-start;padding:5px 9px;border-radius:7px;background:rgba(176,117,20,.09);border-left:3px solid rgba(176,117,20,.55);font-size:var(--sim-fs-2);line-height:1.6}',
       '.sim-issue .step{flex:0 0 auto;color:#8a5c10;font-weight:700}',
       '.sim-issue .why{flex:1 1 auto;min-width:0;color:#8a5c10;word-break:break-word}',
+      '.sim-issue-x{flex:0 0 auto;border:0;background:none;color:#8a5c10;opacity:.5;cursor:pointer;font-size:var(--sim-fs-2);padding:0 4px;line-height:1;transition:opacity .12s}',
+      '.sim-issue-x:hover{opacity:1}',
       '.sim-fan-total .big{font-size:var(--sim-fs-7);font-weight:800;letter-spacing:.3px}',
       '.sim-fan-total .wk{font-size:var(--sim-fs-4);color:var(--sim-t2)}',
       '.sim-fan-total .wk.up{color:#2e9e5b}',
@@ -6953,6 +6955,15 @@ onDoubleClick: () => {
                           { className: 'sim-issue', key: i },
                           h('span', { className: 'step' }, (STAGE_LABEL[x.step] && STAGE_LABEL[x.step][1]) || x.step),
                           h('span', { className: 'why' }, x.why || '这一步没有成功'),
+                          // 看过就关掉：删的是 transcript 里这一轮的 issues，刷新后也不会回来
+                          h('button', {
+                            className: 'sim-issue-x',
+                            title: '关掉这一轮的问题提示',
+                            onClick: (e) => {
+                              e.stopPropagation();
+                              run(call('dismissIssues', { seq: t.seq }, gameId));
+                            },
+                          }, '✕'),
                         )
                       )
                     )
