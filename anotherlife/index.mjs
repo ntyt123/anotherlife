@@ -2364,6 +2364,15 @@ function guessSockStrength(txt, scent) {
     return body;
   }
 
+  /**
+   * 尽量把一个被写坏的 JSON 修成能 parse 的样子。
+   *
+   * 做三件事：
+   *  · 字符串里的裸换行 / 制表符转成转义序列（JSON 不允许裸换行，
+   *    模型写长文本时分了行，整段就非法了 —— 这是最常见的失败原因）
+   *  · 补齐没闭合的引号、括号
+   *  · 删掉尾部残缺的键值（"xx": "yy 这种写一半的）
+   */
   function repairJson(body) {
     const s = String(body || '');
     let out = '';
@@ -2372,31 +2381,25 @@ function guessSockStrength(txt, scent) {
     let esc = false;
     for (let i = 0; i < s.length; i++) {
       const ch = s[i];
-      out += ch;
       if (inStr) {
-        if (esc) esc = false;
-        else if (ch === '\\') esc = true;
-        else if (ch === '"') inStr = false;
+        if (esc) { esc = false; out += ch; continue; }
+        if (ch === '\\') { esc = true; out += ch; continue; }
+        if (ch === '"') { inStr = false; out += ch; continue; }
+        // 字符串里的裸控制字符：转义掉，否则 JSON.parse 一定失败
+        if (ch === '\n') { out += '\\n'; continue; }
+        if (ch === '\r') { out += '\\r'; continue; }
+        if (ch === '\t') { out += '\\t'; continue; }
+        out += ch;
         continue;
       }
-      if (ch === '"') {
-        inStr = true;
-        continue;
-      }
-      if (ch === '{') {
-        stack.push('}');
-        continue;
-      }
-      if (ch === '[') {
-        stack.push(']');
-        continue;
-      }
-      if (ch === '}' || ch === ']') {
-        stack.pop();
-        continue;
-      }
+      out += ch;
+      if (ch === '"') { inStr = true; continue; }
+      if (ch === '{') { stack.push('}'); continue; }
+      if (ch === '[') { stack.push(']'); continue; }
+      if (ch === '}' || ch === ']') { stack.pop(); continue; }
     }
     if (inStr) out += '"';
+    // 尾部可能停在半个键或半个值上：砍到最后一个完整的 , 或 { 之后
     out = out.replace(/,\s*"[^"\\]*"\s*$/, '');
     out = out.replace(/[,:]\s*$/, '');
     while (stack.length) out += stack.pop();
@@ -4444,7 +4447,8 @@ function seasonText(s) {
             ' 正文=' + settleText.length +
             ' 思考=' + settleThink.length +
             ' 剥后=' + settleBody.length +
-  ' 剥后开头=' + JSON.stringify(settleBody.slice(0, 200))
+  ' 剥后开头=' + JSON.stringify(settleBody.slice(0, 200)) +
+  ' 剥后结尾=' + JSON.stringify(settleBody.slice(-200))
           );
           // 参数的前 300 字：看它是怎么断的（断在键名、字符串、还是数组里）
           if (settleRes && settleRes.toolCalls && settleRes.toolCalls[0] && settleRes.toolCalls[0].args) {
