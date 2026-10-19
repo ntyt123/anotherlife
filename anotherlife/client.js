@@ -310,6 +310,9 @@ window.__ModuleLoader__.load({
       '.sim-fold-body{margin-top:6px;white-space:pre-wrap;color:var(--sim-t2);font-size:var(--sim-fs-2)}',
       '.sim-dg{margin:0 0 8px}',
       '.sim-snap-list{display:flex;flex-direction:column;gap:6px;margin-top:10px}',
+      '.sim-snap-modal{max-width:420px;width:min(420px,86vw)}',
+      '.sim-snap-mh{font-weight:600;font-size:var(--sim-fs-4);margin-bottom:4px}',
+      '.sim-snap-modal .sim-snap-list{margin-top:8px;max-height:52vh;overflow-y:auto}',
       '.sim-snap{display:flex;align-items:center;gap:8px;padding:7px 9px;border:1px solid var(--sim-bd);border-radius:8px;background:var(--sim-bg)}',
       '.sim-snap .nm{flex:1;min-width:0;font-size:var(--sim-fs-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
       '.sim-snap .meta{flex:0 0 auto;font-size:var(--sim-fs-1);color:var(--sim-t3)}',
@@ -3442,6 +3445,8 @@ function App({ gameId, close }) {
           const [findAt, setFindAt] = React.useState(0);
           // 存档快照
           const [snapNote, setSnapNote] = React.useState('');
+          // 读快照：正文页「读快照」按钮打开的列表
+          const [snapOpen, setSnapOpen] = React.useState(false);
   const [snaps, setSnaps] = React.useState([]);
           const [snapMax, setSnapMax] = React.useState(10);
           const [snapLoaded, setSnapLoaded] = React.useState(false);
@@ -6795,7 +6800,8 @@ onDoubleClick: () => {
       'div',
       { style: { marginTop: 4, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' } },
       h(Btn, { disabled: busy, onClick: () => run(call('regenerateLatestVars', {}, gameId)) }, '重算最新一段变量'),
-      h(Btn, { disabled: busy, onClick: () => { loadSnaps(); snapSave(); } }, snapNote || '📌 存快照')
+      h(Btn, { disabled: busy, onClick: () => { loadSnaps(); snapSave(); } }, snapNote || '📌 存快照'),
+      h(Btn, { disabled: busy, onClick: () => { loadSnaps(); setSnapOpen(true); } }, '📂 读快照')
     )
   : null,
             // 剧情总结（长期记忆）：每 6 轮自动整理一段，攒多了自动合并
@@ -10289,6 +10295,43 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
             objEditModal(),
             UiPreviewModal(uiPrevOpen, () => setUiPrevOpen(false)),
             // 自己的确认框（替代 window.confirm —— 后者在 webview 里会把焦点弄丢）
+            // 读快照：正文页按钮打开的列表
+            snapOpen
+              ? h(
+                  'div',
+                  { className: 'sim-mask', style: { zIndex: 94 }, onClick: () => setSnapOpen(false) },
+                  h(
+                    'div',
+                    { className: 'sim-modal sim-snap-modal', onClick: (e) => e.stopPropagation() },
+                    h(
+                      'div',
+                      { className: 'sim-modal-b' },
+                      h('div', { className: 'sim-snap-mh' }, '快照'),
+                      snaps.length
+                        ? h(
+                            'div',
+                            { className: 'sim-snap-list' },
+                            snaps.map((s) =>
+                              h(
+                                'div',
+                                { className: 'sim-snap', key: s.id },
+                                h('span', { className: 'nm' }, s.name),
+                                h('span', { className: 'meta' }, Math.max(0, s.seq) + ' 轮 · ' + fmtSnapTime(s.at)),
+                                h('button', { className: 'go', onClick: () => { setSnapOpen(false); snapRestore(s.id, s.name); } }, '回到这里'),
+                                h('button', { className: 'x', title: '删掉', onClick: () => snapRemove(s.id, s.name) }, '✕')
+                              )
+                            )
+                          )
+                        : h('div', { className: 'sim-hint' }, '还没有快照。'),
+                    ),
+                    h(
+                      'div',
+                      { className: 'sim-modal-f' },
+                      h(Btn, { onClick: () => setSnapOpen(false) }, '关闭')
+                    )
+                  )
+                )
+              : null,
             askState
               ? h(
                     'div',
