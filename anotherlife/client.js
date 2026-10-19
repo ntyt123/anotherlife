@@ -21,12 +21,17 @@ window.__ModuleLoader__.load({
       // 字体同样收口到 --sim-font（等宽、楷体/宋体那几处功能性字体不跟着变）
       '.sim-root{display:flex;flex-direction:row;height:100%;max-width:100%;min-height:0;box-sizing:border-box;font-size:var(--sim-fs-3);line-height:1.6;font-family:var(--sim-font,system-ui,"PingFang SC","Microsoft YaHei",sans-serif);overflow:hidden;background:var(--sim-bg);color:var(--sim-t)}',
       '.sim-main{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0}',
-      '.sim-rail{flex:0 0 auto;width:60px;background:var(--sim-bg2);border-right:1px solid var(--sim-bd);display:flex;flex-direction:column;padding:8px 0;overflow:auto}',
-      '.sim-rail-tabs{display:flex;flex-direction:column;gap:2px}',
+      '.sim-rail{flex:0 0 auto;width:60px;background:var(--sim-bg2);border-right:1px solid var(--sim-bd);display:flex;flex-direction:column;padding:8px 0;overflow:hidden}',
+      '.sim-rail-tabs{flex:1 1 auto;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:2px}',
       '.sim-rail-tab{display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 0;background:transparent;border:none;border-left:3px solid transparent;cursor:pointer;color:var(--sim-t2);font-family:inherit;font-size:var(--sim-fs-1);line-height:1.2}',
       '.sim-rail-tab .ic{font-size:var(--sim-fs-6);line-height:1}',
       '.sim-rail-tab:hover{background:rgba(128,128,128,.10);color:var(--sim-t)}',
       '.sim-rail-tab.on{color:var(--sim-ac);border-left-color:var(--sim-ac);background:rgba(128,128,128,.08);font-weight:700}',
+      '.sim-rail-nav{flex:0 0 auto;display:flex;flex-direction:column;gap:2px;margin-top:6px;padding-top:6px;border-top:1px solid var(--sim-bd)}',
+      '.sim-rail-tab.nav{padding:6px 0}',
+      '.sim-rail-tab.nav .ic{font-family:ui-monospace,monospace;font-weight:700}',
+      '.sim-rail-tab[disabled]{opacity:.35;cursor:default}',
+      '.sim-rail-tab[disabled]:hover{background:transparent;color:var(--sim-t2)}',
       // ── 助手浮窗（模拟器把整页接管了，侧边对话点不到，所以自带一个）──
       // 用 position:fixed：既能压在任意页上方，也不会被外层滚动/裁剪容器切掉
       '.sim-as{position:fixed;right:22px;bottom:22px;width:min(420px,42vw);height:min(600px,78vh);display:flex;flex-direction:column;background:var(--sim-bg2);border:1px solid var(--sim-bd);border-radius:12px;box-shadow:0 14px 44px rgba(0,0,0,.24);z-index:70;overflow:hidden}',
@@ -4089,6 +4094,42 @@ window.__ModuleLoader__.load({
             userActRef.current = Date.now();
           }
 
+          /**
+           * 导航栏的「上一段 / 下一段」。
+           * 段 = 正文里的自然段（.sim-md-p，一个 div 就是一段），不是整轮 ——
+           * 一轮动辄几千字，按轮跳等于没跳。
+           * 「上一段」取当前视口上沿之上最近的一段；「下一段」取之下最近的一段。
+           * 留 4px 余量：位置正好对齐时不会原地不动。
+           */
+          function scrollPara(dir) {
+            const el = bodyRef.current;
+            if (!el) return;
+            const nodes = Array.from(el.querySelectorAll('.sim-md-p'));
+            if (!nodes.length) return;
+            const er = el.getBoundingClientRect();
+            const cur = el.scrollTop;
+            const tops = nodes.map((n) => n.getBoundingClientRect().top - er.top + cur);
+            if (dir > 0) {
+              const next = tops.find((t) => t > cur + 4);
+              el.scrollTop = next != null ? next : el.scrollHeight;
+            } else {
+              let prev = 0;
+              for (const t of tops) {
+                if (t < cur - 4) prev = t;
+                else break;
+              }
+              el.scrollTop = prev;
+            }
+            markUserScroll();
+          }
+          /** 直接到底 */
+          function scrollBottom() {
+            const el = bodyRef.current;
+            if (!el) return;
+            el.scrollTop = el.scrollHeight;
+            markUserScroll();
+          }
+
           // ── 头像 ──
           // 图存在 state.avatars 里（键：主角固定 'protagonist'，角色用 'npc:姓名'）。
           // 不放角色对象身上：那份数据会整块进正文提示词与结算提示词，塞 base64 进去会撑爆。
@@ -5330,7 +5371,30 @@ onDoubleClick: () => {
                 h('span', { className: 'ic' }, '📝'),
                 h('span', { className: 'lb' }, '笔记')
               ),
-            )
+            ),
+            // 导航栏：钉在页签栏最下方。上面那块页签多了会自己滚，这里不动
+            h(
+              'div',
+              { className: 'sim-rail-nav' },
+              h('button', {
+                    className: 'sim-rail-tab nav',
+                    title: tab === 'play' ? '上一段' : '只在正文页可用',
+                    disabled: tab !== 'play',
+                    onClick: () => scrollPara(-1),
+                }, h('span', { className: 'ic' }, '↑')),
+                h('button', {
+                    className: 'sim-rail-tab nav',
+                    title: tab === 'play' ? '下一段' : '只在正文页可用',
+                    disabled: tab !== 'play',
+                    onClick: () => scrollPara(1),
+                }, h('span', { className: 'ic' }, '↓')),
+                h('button', {
+                    className: 'sim-rail-tab nav',
+                    title: tab === 'play' ? '到最底部' : '只在正文页可用',
+                    disabled: tab !== 'play',
+                    onClick: scrollBottom,
+                }, h('span', { className: 'ic' }, '⇩'))
+            ),
           );
 
           /**
