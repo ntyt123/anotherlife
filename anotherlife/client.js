@@ -4121,14 +4121,16 @@ function App({ gameId, close }) {
             });
           }
           function regenTurn(t) {
-            const what = t.role === 'user' ? '重发这一轮' : '重新生成这一轮';
+            const what = t.role === 'user' ? '重发这一轮' : '重写这一轮的叙事';
             const keep = bodyRef.current ? bodyRef.current.scrollTop : 0;
             return ask(what + '？第 ' + t.seq + ' 轮及之后的内容会被覆盖。').then((yes) => {
               if (!yes) return;
               // 确定那一刻的位置当作起点：生成期间位置被清掉时，就按它放回去
               if (keep > 0) keepScrollRef.current = keep;
               dingRef.current = Date.now(); // 覆盖同一轮，序号不会变，完成后要手动响一声
-              return runTurnCall(run(call('regenFrom', { seq: t.seq }, gameId), true)).then(
+              // 点自己那条 = 整轮重来（走向可以变）；点叙事那条 = 只重写叙事（行动与结果不变）
+            const rewriteMode = t.role !== 'user';
+            return runTurnCall(run(call('regenFrom', { seq: t.seq, rewrite: rewriteMode }, gameId), true)).then(
                 (r) => r,
                 (e) => {
                   dingRef.current = 0;

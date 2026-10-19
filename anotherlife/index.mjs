@@ -2709,7 +2709,18 @@ function pickToolCall(r) {
     // 检索没成功（走了关键词兜底）：这一轮注入的状态可能挑不准，阶段条上标个黄灯
     if (lastContext && lastContext.via === 'keyword') markWarn(gid, 'retrieve');
     if (lastContext) userEntry.ctx = { mode: lastContext.mode, via: lastContext.via, count: lastContext.count, text: lastContext.text };
-    const userContent = recent ? recent + '\n\n' + sendText : sendText;
+    // 重写模式：玩家这一轮的行动已经定下来了，这次不是「他说了什么」，
+  // 而是「把已经发生的这一轮换个写法再写一遍」。所以发给模型的不是原始输入，
+  // 而是一句重写要求 —— 但检索（storySystemPrompt 的 input）仍然用原始输入，
+  // 那样挑出来的状态才对得上。
+  const userContent = opts.rewrite
+    ? (recent ? recent + '\n\n' : '') +
+      '【重写】玩家这一轮已经做了：' + sendText +
+      '\n请把这一轮的叙事重写一遍。玩家做了什么、发生了什么、结果如何，全部保持不变；' +
+      '只换叙述方式 —— 角度、节奏、细节侧重、句子长短。不要改结局，不要跳过已经发生的事。'
+    : recent
+      ? recent + '\n\n' + sendText
+      : sendText;
     setProg(gid, 'story', '正在请求正文（主模型）');
     // 收到多少字就报一下，免得看着像卡死（尤其是不支持流式的中转，要等很久）
     const t0 = Date.now();
@@ -4459,7 +4470,7 @@ reg('parseRealPerson', async ({ gameId, name, fields }) => {
    * 重新生成这一轮：砍掉这一轮及之后的，再用同一轮的玩家输入重跑一遍。
    * role='user' 就是「重发」，role='assistant' 就是「重新生成」——两者行为相同。
    */
-  reg('regenFrom', async ({ gameId, seq }) => {
+  reg('regenFrom', async ({ gameId, seq, rewrite }) => {
     const s = await loadState(gameId);
     const n = Number(seq);
     const userEntry = (s.transcript || []).find((t) => Number(t.seq) === n && t.role === 'user');
@@ -4468,7 +4479,12 @@ reg('parseRealPerson', async ({ gameId, name, fields }) => {
     if (!input) {
       // 第 0 轮（开场）没有玩家输入：和「生成开场」走同一条路
       await runTurn(s, buildOpeningMessage(s), '【开局】', { all: true, gameId });
+    } else if (rewrite) {
+      // 点叙事那条的「重新生成」：提问照旧，只把这一轮叙事重写一遍
+      // （行动与结果不变，只换写法）。
+      await runTurn(s, input, input, { gameId, rewrite: true });
     } else {
+      // 点自己那条的「重发」：整轮重来，走向可能因此改变。
       await runTurn(s, input, input, { gameId });
     }
     await saveState(s);
