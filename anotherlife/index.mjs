@@ -2426,15 +2426,35 @@ const SETTLE_TOOL = {
   },
 };
 /** 从一次调用结果里取出工具参数；没有、或参数不是合法 JSON，返回 null */
+/**
+ * 从工具调用里取参数对象。
+ *
+ * 参数是流式拼出来的 JSON 字符串，输出预算不够时会被截在中间 ——
+ * 这时 JSON.parse 直接失败，而正文那头可能只剩个 <think> 也没东西可解析，
+ * 两头一起落空，整轮结算就变成 diffs=0（日志里能看到「工具 1 次 / 正文 N 字」
+ * 但 diff 是 0，就是这种情况）。
+ * 所以解析失败时走一次 repairJson：括号补全后能救回大部分字段。
+ */
 function pickToolCall(r) {
   const calls = (r && Array.isArray(r.toolCalls)) ? r.toolCalls : [];
   for (const c of calls) {
     if (!c || !c.args) continue;
     try {
       const obj = JSON.parse(c.args);
-      if (obj && typeof obj === "object" && !Array.isArray(obj)) return obj;
+      if (obj && typeof obj === 'object' && !Array.isArray(obj)) return obj;
     } catch (e) {
-      /* 参数拼坏了，交给文本兜底 */
+      /* 多半是被截断，下面补全 */
+    }
+    try {
+      // 去掉尾部的残缺再补括号：extractJson 负责取最外层 {}，repairJson 负责闭合
+      const body = extractJson(c.args) || c.args;
+      const fixed = repairJson(body);
+      if (fixed) {
+        const obj = JSON.parse(fixed);
+        if (obj && typeof obj === 'object' && !Array.isArray(obj)) return obj;
+      }
+    } catch (e) {
+      /* 补不回来就交给文本兜底 */
     }
   }
   return null;
