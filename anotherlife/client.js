@@ -4377,7 +4377,23 @@ function App({ gameId, close }) {
                         el.querySelectorAll('.sim-msg.assistant[data-seq]').forEach((msgEl) => {
                           const seq = msgEl.getAttribute('data-seq');
                           let n = 0;
-                          const walker = document.createTreeWalker(msgEl, NodeFilter.SHOW_TEXT, null);
+                          // 只认正文：跳过思考过程、角色标签（「叙事 · 第 3 轮」）、
+                          // 行内按钮和结算详情 —— 那些不是故事，标黄了只会误导。
+                          const SKIP_CLS = ['sim-think', 'sim-role', 'sim-acts-inline', 'sim-fact', 'sim-acts'];
+                          const walker = document.createTreeWalker(msgEl, NodeFilter.SHOW_TEXT, {
+                            acceptNode: (nd) => {
+                              let p = nd.parentNode;
+                              while (p && p !== msgEl) {
+                                if (p.classList && p.classList.length) {
+                                  for (let i = 0; i < SKIP_CLS.length; i++) {
+                                    if (p.classList.contains(SKIP_CLS[i])) return NodeFilter.FILTER_REJECT;
+                                  }
+                                }
+                                p = p.parentNode;
+                              }
+                              return NodeFilter.FILTER_ACCEPT;
+                            },
+                          });
                           const targets = [];
                           let node;
                           while ((node = walker.nextNode())) {
