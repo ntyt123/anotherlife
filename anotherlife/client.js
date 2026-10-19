@@ -167,6 +167,10 @@ window.__ModuleLoader__.load({
       '.sim-chip-add:hover{border-color:var(--sim-ac);color:var(--sim-ac)}',
       '.sim-chip-b{font-size:var(--sim-fs-1);opacity:.8}',
       '.sim-ring{display:block;flex:0 0 auto;overflow:visible}',
+      '.sim-trace{display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap}',
+      '.sim-trace .txt{flex:0 1 auto}',
+      '.sim-trace .bar{display:inline-block;flex:0 0 44px;width:44px;height:5px;border-radius:3px;background:var(--sim-bd);overflow:hidden;vertical-align:middle}',
+      '.sim-trace .bar i{display:block;height:100%;border-radius:3px;background:linear-gradient(90deg,#d97a41,#c9563f);transition:width .2s}',
       // 气味浓度格：按程度给颜色 —— 新鲜=绿、整日=黄、多日=红
       '.sim-chip-b.dots{opacity:1;letter-spacing:1px;font-size:var(--sim-fs-1)}',
       '.sim-chip-b.d0{color:#3d9c5f}',
@@ -7879,6 +7883,26 @@ onDoubleClick: () => {
            * 用圆环而不是横条 —— 胶囊高度只有一行，横条会把名字挤掉。
            * 四档色：干净灰蓝 → 淡绿 → 琥珀 → 深红。
            */
+
+/**
+ * 身体痕迹：新格式是 {描述, 强度}，老格式是字符串。
+ * 有强度就画一条细条（越新越红越满），没有就只显示文字。
+ */
+function renderTrace(v) {
+  if (v == null) return '';
+  if (typeof v !== 'object') return String(v).trim();
+  const txt = String(v.描述 || '').trim();
+  const n = Number(v.强度);
+  const hasBar = Number.isFinite(n) && n > 0 && n <= 100;
+  if (!txt && !hasBar) return null;
+  return h(
+    'span',
+    { className: 'sim-trace' },
+    h('span', { className: 'txt' }, txt),
+    hasBar ? h('span', { className: 'bar', title: Math.round(n) + '/100' }, h('i', { style: { width: Math.round(n) + '%' } })) : null
+  );
+}
+
           function ScentRing(v) {
             const pct = Math.max(0, Math.min(100, Number(v) || 0));
             const r = 5.5;
@@ -7977,7 +8001,7 @@ onDoubleClick: () => {
                     'div',
                     { className: 'sim-know', key: k },
                     h('span', { className: 'k' }, k),
-                    h('span', { className: 'v' }, String(b[k]).trim())
+                    h('span', { className: 'v' }, renderTrace(b[k]))
                   )
                 )
               )

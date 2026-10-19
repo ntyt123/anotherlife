@@ -1774,6 +1774,70 @@ function humanSockHours(h) {
  * 返回的条目自带 from —— applyDiffs 已经跑过，重算/删轮才退得回去。
  */
 /**
+ * 痕迹每小时掉多少强度。按类型分档 —— 绳痕比咬痕浅、消得快。
+ * 判定只看描述里的字，判不出就是 1.5（约 37 小时掉完 55 分）。
+ */
+function traceDecayRate(desc) {
+  const t = String(desc || '');
+  if (/绳痕|勒痕|绑痕|绳印/.test(t)) return 3;
+  if (/吻痕|草莓|吸痕/.test(t)) return 2;
+  if (/红肿|淤青|青紫/.test(t)) return 1.5;
+  if (/抓痕|指甲|划痕/.test(t)) return 1.2;
+  if (/咬痕|牙印|齿痕/.test(t)) return 1;
+  return 1.5;
+}
+
+/**
+ * 身体痕迹随时间消退。
+ *
+ * 数据形状兼容两种：
+ *   老格式  身体: { 左胸: "一个牙印，边缘还红着" }
+ *   新格式  身体: { 左胸: { 描述: "一个牙印", 强度: 55 } }
+ * 撞见老格式就地升级（字符串包成对象），强度从 55 起。
+ *
+ * 强度掉到 0 时把描述清空而不是删键 —— applyDiffs 只会 setByPath，
+ * 删键回滚不回来。界面按「描述为空」过滤掉。
+ */
+function tickBodyTraces(s, dh) {
+  const out = [];
+  if (!(dh > 0)) return out;
+  const npcs = Array.isArray(s.npcs) ? s.npcs : [];
+  const walk = (owner, basePath) => {
+    const b = owner && owner.身体;
+    if (!b || typeof b !== 'object' || Array.isArray(b)) return;
+    Object.keys(b).forEach((k) => {
+      const raw = b[k];
+      if (raw == null || raw === '') return;
+      // 老格式：字符串 → 包成对象
+      if (typeof raw === 'string') {
+        const obj = { 描述: raw, 强度: 55 };
+        out.push({ path: basePath.concat(['身体', k]), from: raw, to: obj, byTrace: true });
+        b[k] = obj;
+        return;
+      }
+      if (typeof raw !== 'object') return;
+      const v = Number(raw.强度);
+      if (!Number.isFinite(v)) return;
+      const desc = String(raw.描述 || '');
+      if (!desc) return;
+      const next = Math.max(0, Math.round((v - dh * traceDecayRate(desc)) * 10) / 10);
+      if (next === v) return;
+      if (next <= 0) {
+        // 消退干净：清描述、强度归零（不删键，删了回滚不回来）
+        out.push({ path: basePath.concat(['身体', k]), from: { 描述: desc, 强度: v }, to: { 描述: '', 强度: 0 }, byTrace: true });
+        b[k] = { 描述: '', 强度: 0 };
+        return;
+      }
+      out.push({ path: basePath.concat(['身体', k, '强度']), from: v, to: next, byTrace: true });
+      raw.强度 = next;
+    });
+  };
+  walk(s.protagonist, []);
+  npcs.forEach((n, i) => walk(n, ['npcs', i]));
+  return out;
+}
+
+/**
  * 每轮结算后推进袜子的气味状态。四件事：
  *   ⓪ 老数据没有 气味强度 的，先按文本补一个初始值
  *   ① 穿着的袜子按小时涨
@@ -1820,6 +1884,8 @@ function tickSockScent(s) {
     // 没有上一轮基准：补完值就结束，这一轮不累加
     if (!Number.isFinite(prev)) return out;
     const dh = (now - prev) / 60;
+    // 留给痕迹消退用：它在 tickSockScent 之后才算，那时 sockTick 已经是 now 了
+    s._lastDh = dh;
     if (!(dh > 0) || dh > 240) return out;
     
     // ① 穿着中的
@@ -3064,7 +3130,11 @@ function pickToolCall(r) {
       '  · 判定分两步走：先只出现模糊信号（月经推迟、恶心、疲惫、口味变化、情绪不稳），要经过**时间**或**外部手段**（验孕棒／医院）才写明确的「妊娠状态」；不要在一场情事结束后立刻确诊。',
       '- 已经怀上的「妊娠状态」写清阶段与周数（如「孕 9 周，早孕反应明显」），并同步更新主角的「身体状态」；之后的身体负担、对方的态度、外界压力都按剧情自然呈现，不额外制造惩罚性后果。',
       '【身体 · 只记剧情特别写到的部位】',
-      '- 角色的「身体」是一个按部位写的小档案（如 {"左胸":"一个牙印，边缘还红着"}）。**默认什么都没有**：只有正文里被特别写到的部位才记（崴了脚、被咬出牙印、被掐出指痕、某处肿了或疼）。没写到的部位一律不写，更不许为了填满给每个部位编一条。',
+      '- 角色的「身体」是一个按部位写的小档案，**每个部位一个对象**：{"左胸":{"描述":"一个牙印，边缘还红着","强度":60},"脚踝":{"描述":"一圈绳痕","强度":35}}。',
+      '  · **描述**：只有正文里被特别写到的部位才记（崴了脚、被咬出牙印、被掐出指痕、某处肿了或疼）。没写到的部位一律不写。',
+      '  · **强度**：0~100 的整数，表示这个痕迹现在多新 —— 刚弄上 80~100（还红着、一碰就疼）／明显 50~79（看得清、颜色深）／开始淡 20~49（浅了、边缘散了）／快看不见 1~19（只剩一点印子）。',
+      '  · **只管写当下，不用算褪色**：后台会按类型自动衰减（绳痕最快，咬痕最慢），到 0 就自己清掉。但如果你在这一轮正文里明确写了「已经淡了／看不见了」，就把强度写低或者把这条删掉。',
+      '  · 洗澡、换衣服、时间跳转之后，顺手确认一下还在的那些现在什么强度。',
       '- 只写**衣物记不下**的东西（皮肤上的痕迹、肿、疼、敏感反应）；衣物的材质、气味、湿度仍旧写在「穿着」里，两边不许重复。',
       '- **痕迹会退，必须按时间更新**：轻的当天或次日就该淡下去（改写或删掉），重的可以留几天并逐步减轻。同一处痕迹不许连着十几轮原样挂着；时间跳转、洗澡、换衣服之后尤其要复查一遍。',
       '- 写清程度与阶段（「边缘还红着」→「转成淡青」→「只剩一点印子」）；**好了就把这个部位删掉**，不要写「已恢复」这类占位。',
@@ -3797,6 +3867,10 @@ function footActive(s, body) {
           // 返回的条目自带 from（applyDiffs 已跑过），重算/删轮才能一起退回去。
           const sockDiffs = tickSockScent(s);
           sockDiffs.forEach((d) => diffs.push(d));
+
+          // 身体痕迹消退：复用 tickSockScent 刚算好的小时差
+          const traceDiffs = tickBodyTraces(s, Number(s._lastDh) || 0);
+          traceDiffs.forEach((d) => diffs.push(d));
           await turnLog(
             '[settle] gameId=' +
               gid +
