@@ -1555,6 +1555,17 @@ window.__ModuleLoader__.load({
           error: ['!', '出错了'],
           idle: ['·', '准备中'],
         };
+
+/**
+ * 降级步骤的兜底说明。宿主会单独传具体原因（why），
+ * 万一没传过来，也别只说「走了兜底」—— 那等于什么都没说。
+ */
+const WARN_FALLBACK = {
+  retrieve: 'AI 提取信息没成，改用关键词匹配挑上下文（可能漏掉相关条目）',
+  settle: '结算没成，这一轮的变量没有更新（时间很可能没动）',
+  story: '正文生成重试过一次',
+  summary: '剧情总结没成，这一轮不影响正文',
+};
         /** 把界面卡片块解析成 {kv, rows, lines}：「键|值」 进 kv，其余按 | 切成多列的行 */
         function parseUiBlock(raw) {
           const kv = {};
@@ -10424,7 +10435,7 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
                 ? h(
                     'div',
                     { className: 'sim-stage-note' },
-                    warnSteps.map((k) => (warnWhy[k] || (STAGE_LABEL[k] ? STAGE_LABEL[k][1] : k) + ' 走了兜底')).join('　·　')
+                    warnSteps.map((k) => warnWhy[k] || WARN_FALLBACK[k] || (STAGE_LABEL[k] ? STAGE_LABEL[k][1] : k) + ' 出了问题').join('　·　')
                   )
                 : null
             );

@@ -2769,6 +2769,7 @@ function pickToolCall(r) {
     try {
       res = await aiPick(s, E, input);
     } catch (e) {
+      aiPickFail = '调用检索模型时出错：' + String((e && e.message) || e).slice(0, 110);
       res = null;
     }
     let picked;
@@ -2779,6 +2780,7 @@ function pickToolCall(r) {
     } else {
       picked = fallbackPick(s, E, input);
       via = 'keyword';
+      if (!aiPickFail) aiPickFail = '检索模型没有给出可用的结果';
     }
     const base = baselineFields(s);
     const merged = [];
@@ -2793,6 +2795,7 @@ function pickToolCall(r) {
       });
     return {
       mode: res ? 'ai' : 'fallback',
+      fail: res ? '' : aiPickFail,
       via,
       ids: merged.map((e) => e.id),
       text: (mem ? mem + '\n\n' : '') + assembleContext(s, merged),
@@ -3034,7 +3037,7 @@ function pickToolCall(r) {
     opts = opts || {};
     const ctxText = await buildStoryContext(s, input, { all: !!opts.all });
     // 记录「这一轮到底注入了什么」，供界面回显
-    lastContext = { mode: ctxText.mode, via: ctxText.via, count: (ctxText.ids || []).length, text: ctxText.text };
+    lastContext = { mode: ctxText.mode, via: ctxText.via, count: (ctxText.ids || []).length, text: ctxText.text, fail: ctxText.fail || '' };
     const head = [
       '你是一款人生模拟器的叙事引擎。你不是某个固定人物，而是当前世界观里的世界本身：负责叙述环境、推进剧情、扮演除主角外的所有 NPC。',
       '主角是玩家（其设定见变量），不得替主角决定言行与心理。',
@@ -3913,7 +3916,9 @@ function seasonText(s) {
     setProg(gid, 'retrieve', 'AI 提取信息 · 筛选本轮要注入的状态');
     const sys = await storySystemPrompt(s, opts.all ? '' : sendText, opts);
     // 检索没成功（走了关键词兜底）：这一轮注入的状态可能挑不准，阶段条上标个黄灯
-    if (lastContext && lastContext.via === 'keyword') markWarn(gid, 'retrieve', '检索模型没成功，这一轮的上下文是关键词兜底挑的（可能漏掉相关条目）');
+    if (lastContext && lastContext.via === 'keyword') {
+      markWarn(gid, 'retrieve', 'AI 提取信息没成：' + (lastContext.fail || '未知原因') + ' —— 改用关键词匹配挑上下文，可能漏掉相关条目');
+    }
     if (lastContext) userEntry.ctx = { mode: lastContext.mode, via: lastContext.via, count: lastContext.count, text: lastContext.text };
     // 重写模式：玩家这一轮的行动已经定下来了，这次不是「他说了什么」，
   // 而是「把已经发生的这一轮换个写法再写一遍」。所以发给模型的不是原始输入，
