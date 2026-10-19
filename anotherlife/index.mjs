@@ -2657,6 +2657,37 @@ function pickToolCall(r) {
   }
 
   /** 走用户自填的 OpenAI 兼容端点；密钥从凭据服务实时取 */
+/**
+ * 各处的输出 token 上限。
+ *
+ * 这些值原来散在十来个地方写死，出问题（思考吃光预算、正文被截断）
+ * 只能改代码。现在统一放这里，设定页可以改，config.tokens 覆盖默认。
+ *
+ * 注意：这是**输出**上限，不是上下文窗口。思考通道也算在里面 ——
+ * deepseek-flash 这类推理模型思考动辄四五千字（约 3000+ token），
+ * 给太小就会出现「想完了，正式内容没预算了」。
+ */
+const TOKEN_DEFAULTS = {
+  retrieve: 6000,      // 检索：挑上下文条目（思考重的槽位）
+  story: 12000,        // 正文（中文 1 字≈1.5 token，4500 只够 3000 字；实测单轮到过 5750 字）
+  settle: 12000,       // 结算：全部变量变化（最费）
+  summary: 2500,       // 剧情总结
+  summaryMerge: 3000,  // 多段总结合并
+  parse: 8000,         // 创角解析（主角＋名册）
+  realInfo: 4000,      // 真人资料补全
+  oracle: 2000,        // 神谕类追问
+  misc: 1200,          // 其他零散调用
+};
+
+/** 取某个用途的 token 上限：config.tokens[key] 优先，否则用默认；夹在 200~32000 */
+function tokOf(s, key) {
+  const t = (s && s.config && s.config.tokens) || {};
+  const v = Number(t[key]);
+  const def = TOKEN_DEFAULTS[key] || TOKEN_DEFAULTS.misc;
+  if (!Number.isFinite(v) || v <= 0) return def;
+  return Math.max(200, Math.min(32000, Math.floor(v)));
+}
+
   /**
    * 每个槽位自己的「思考强度」。存在 config.reasoning 里（和模型槽位同处，换模型时
    * 能一起调整），空串 = 不传，让模型用它自己的默认值。
@@ -2968,10 +2999,10 @@ let aiPickFail = '';
     const usr = '【最近剧情】\n' + recent + '\n\n【玩家本轮输入】\n' + input + '\n\n【候选条目（id | 说明）】\n' + cat + '\n\n只输出 {"ids":[...]}';
     let raw = '';
     if (useMain) {
-      const r = await callMainModel([{ role: 'system', content: sys }, { role: 'user', content: usr }], { temperature: 0, maxTokens: 1200, purpose: '检索' });
+      const r = await callMainModel([{ role: 'system', content: sys }, { role: 'user', content: usr }], { temperature: 0, maxTokens: tokOf(s, 'retrieve'), purpose: '检索' });
       raw = r.text && r.text.trim() ? r.text : r.reasoning;
     } else {
-      raw = await callSlot(s, 'retrieve', [{ role: 'system', content: sys }, { role: 'user', content: usr }], { json: true, reasoningEffort: await reasoningOf(s, 'retrieve'), maxTokens: 6000, temperature: 0, tag: '检索' });
+      raw = await callSlot(s, 'retrieve', [{ role: 'system', content: sys }, { role: 'user', content: usr }], { json: true, reasoningEffort: await reasoningOf(s, 'retrieve'), maxTokens: tokOf(s, 'retrieve'), temperature: 0, tag: '检索' });
     }
     const ids = parseIds(raw);
     if (!ids) {
@@ -4238,7 +4269,7 @@ function seasonText(s) {
       const sec = Math.round((Date.now() - t0) / 1000);
       setProg(gid, 'story', '生成正文中 · 已收到 ' + n + ' 字（' + sec + 's）');
     };
-    const storyOpts = { maxTokens: 4500, onChunk, firstChunkMs: 420000, idleMs: 600000, purpose: opts.all ? '开场' : '正文' };
+    const storyOpts = { maxTokens: tokOf(s, 'story'), onChunk, firstChunkMs: 420000, idleMs: 600000, purpose: opts.all ? '开场' : '正文' };
 
         const bodyEffort = await reasoningOf(s, 'body');
 
@@ -4281,7 +4312,7 @@ function seasonText(s) {
         // 只要求「输出 JSON」时模型常常只丢一个日期就交卷。
         // 首选工具调用：参数由 API 层保证是结构化对象；拿不到再走文本解析（兼容不支持 tools 的模型）
         const settleRes = await callSlot(s, 'settle', msgs, {
-          maxTokens: 10000,
+          maxTokens: tokOf(s, 'settle'),
           tag: '结算',
           tools: [SETTLE_TOOL],
           wantTools: true,
@@ -4530,7 +4561,7 @@ function seasonText(s) {
         { role: 'system', content: [so.jailbreak, SUMMARY_RULES].filter(Boolean).join('\n\n') },
         { role: 'user', content: '需要记录的正文（第 ' + from + '~' + to + ' 轮）：\n' + src },
       ],
-      { maxTokens: 2500, temperature: 0.3, timeoutMs: 240000, tag: '总结' }
+      { maxTokens: tokOf(s, 'summary'), temperature: 0.3, timeoutMs: 240000, tag: '总结' }
     );
     const clean = String(text == null ? '' : text).trim();
     if (!clean) throw new Error('总结模型没有返回内容');
@@ -4559,7 +4590,7 @@ function seasonText(s) {
         { role: 'system', content: [so.jailbreak, MEGA_RULES].filter(Boolean).join('\n\n') },
         { role: 'user', content: '需要合并的多段剧情记录：\n' + head.map((x) => x.content || '').join('\n\n---\n\n') },
       ],
-      { maxTokens: 3000, temperature: 0.3, timeoutMs: 240000, tag: '总结·合并' }
+      { maxTokens: tokOf(s, 'summaryMerge'), temperature: 0.3, timeoutMs: 240000, tag: '总结·合并' }
     );
     const clean = String(text == null ? '' : text).trim();
     if (!clean) throw new Error('总结模型没有返回内容');
@@ -4855,6 +4886,22 @@ function seasonText(s) {
     await saveState(s);
     return withKeyStatus(s);
   });
+
+/** 输出 token 上限：config.tokens 存这里，读的时候用 tokOf(s, key) */
+reg('saveTokens', async ({ gameId, tokens }) => {
+  const s = await loadState(gameId);
+  if (!s.config || typeof s.config !== 'object') s.config = {};
+  const t = tokens && typeof tokens === 'object' ? tokens : {};
+  const out = {};
+  Object.keys(TOKEN_DEFAULTS).forEach((k) => {
+    const v = Number(t[k]);
+    // 留空 / 非数字 / 0 都不写：让它回退到默认值
+    if (Number.isFinite(v) && v > 0) out[k] = Math.max(200, Math.min(32000, Math.floor(v)));
+  });
+  s.config.tokens = out;
+  await saveState(s);
+  return withKeyStatus(s);
+});
 
   reg('reasoningOptions', async ({ provider, model }) => {
     const pid = String(provider || '').trim();
@@ -5714,7 +5761,7 @@ function seasonText(s) {
     if (scfg.model) {
       const r = await callSlot(s, 'settle', msgs, {
         temperature: 0.2,
-        maxTokens: 6000,
+        maxTokens: tokOf(s, 'parse'),
         timeoutMs: 180000,
         tag: '变量解析',
         tools: [SETTLE_TOOL],
@@ -5731,10 +5778,10 @@ function seasonText(s) {
     }
     let r = null;
     try {
-      r = await callMainModel(msgs, { temperature: 0.2, maxTokens: 6000, stallMs: 120000, purpose: '变量解析', tools: [SETTLE_TOOL] });
+      r = await callMainModel(msgs, { temperature: 0.2, maxTokens: tokOf(s, 'parse'), stallMs: 120000, purpose: '变量解析', tools: [SETTLE_TOOL] });
     } catch (e) {
       // 不支持 tools 就退回纯文本 —— 不能因为增强功能把结算搞挂
-      r = await callMainModel(msgs, { temperature: 0.2, maxTokens: 6000, stallMs: 120000, purpose: '变量解析' });
+      r = await callMainModel(msgs, { temperature: 0.2, maxTokens: tokOf(s, 'parse'), stallMs: 120000, purpose: '变量解析' });
     }
     const viaTool2 = pickToolCall(r);
     if (viaTool2) return viaTool2;
@@ -5807,9 +5854,9 @@ reg('parseRealPerson', async ({ gameId, name, fields }) => {
   const scfg = (s && s.config && s.config.settle) || {};
   let out = '';
   if (scfg.model) {
-    out = await callSlot(s, 'settle', msgs, { temperature: 0.2, maxTokens: 4000, timeoutMs: 150000, tag: '真人资料' });
+    out = await callSlot(s, 'settle', msgs, { temperature: 0.2, maxTokens: tokOf(s, 'realInfo'), timeoutMs: 150000, tag: '真人资料' });
   } else {
-    const r = await callMainModel(msgs, { temperature: 0.2, maxTokens: 4000, stallMs: 120000, purpose: '真人资料' });
+    const r = await callMainModel(msgs, { temperature: 0.2, maxTokens: tokOf(s, 'realInfo'), stallMs: 120000, purpose: '真人资料' });
     out = (r.text && r.text.trim()) || r.reasoning || '';
   }
   const text = String(out == null ? '' : out).trim();
@@ -6088,7 +6135,7 @@ reg('parseRealPerson', async ({ gameId, name, fields }) => {
       { role: 'user', content: '本轮正文：\n' + latest.body },
     ];
     const res2 = await callSlot(s, 'settle', msgs, {
-      maxTokens: 6000,
+      maxTokens: tokOf(s, 'settle'),
       tag: '重算结算',
       tools: [SETTLE_TOOL],
       wantTools: true,
@@ -6442,7 +6489,7 @@ reg('parseRealPerson', async ({ gameId, name, fields }) => {
         s,
         'assistant',
         messages,
-        Object.assign({ maxTokens: 2000, tag: o.tag || '神谕' }, o.slotOpts || {}, {
+        Object.assign({ maxTokens: tokOf(s, 'oracle'), tag: o.tag || '神谕' }, o.slotOpts || {}, {
           tools: ORACLE_TOOLS,
           wantTools: true,
         })
@@ -6514,7 +6561,7 @@ reg('parseRealPerson', async ({ gameId, name, fields }) => {
           },
           { role: 'user', content: flat },
         ],
-        { maxTokens: 700, tag: '神谕压缩' }
+        { maxTokens: tokOf(s, 'misc'), tag: '神谕压缩' }
       );
       const sum = String((typeof r === 'string' ? r : (r && r.text) || '')).trim();
       if (!sum) return msgs;
@@ -6732,7 +6779,7 @@ reg('migrateSockScent', async ({ gameId }) => {
           { role: 'user', content: JSON.stringify(list) },
         ];
         const res = await callSlot(s, 'settle', msgs, {
-          maxTokens: 1200,
+          maxTokens: tokOf(s, 'misc'),
           tag: '袜子升级',
           reasoningEffort: await reasoningOf(s, 'settle'),
         });

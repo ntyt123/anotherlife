@@ -171,6 +171,11 @@ window.__ModuleLoader__.load({
 
       '.sim-fan-total{display:flex;align-items:baseline;gap:10px;margin-bottom:8px}',
       '.sim-fan-box{margin-top:12px}',
+      '.sim-tok-row{display:flex;align-items:center;gap:9px;margin-bottom:7px;font-size:var(--sim-fs-2)}',
+      '.sim-tok-row .n{flex:0 0 76px;color:var(--sim-t2)}',
+      '.sim-tok-row input{flex:0 0 92px;padding:4px 7px;border-radius:6px;border:1px solid var(--sim-bd);background:var(--sim-bg2);color:var(--sim-t);font-size:var(--sim-fs-2);font-variant-numeric:tabular-nums;text-align:right}',
+      '.sim-tok-row input:focus{outline:none;border-color:var(--sim-ac)}',
+      '.sim-tok-row .h{flex:1 1 auto;min-width:0;color:var(--sim-t3);font-size:var(--sim-fs-1);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
       '.sim-fan-h{font-size:var(--sim-fs-2);color:var(--sim-t3);font-weight:600;letter-spacing:.5px;margin-bottom:6px}',
       '.sim-issues{margin:10px 0 2px;display:flex;flex-direction:column;gap:4px}',
       '.sim-issue{display:flex;gap:8px;align-items:flex-start;padding:5px 9px;border-radius:7px;background:rgba(176,117,20,.09);border-left:3px solid rgba(176,117,20,.55);font-size:var(--sim-fs-2);line-height:1.6}',
@@ -9652,6 +9657,18 @@ function toggleFans(npc) {
              * 「切换」= 把这个槽位的服务与模型写进配置并立即落盘。
              * 和主模型那一块一致：选完要按一下，才知道到底成没成。
              */
+            /** 改输出 token 上限：立即落盘（同思考强度，字段小不必点「切换」） */
+            function pickTokens(key, raw) {
+              const cfg = Object.assign({}, dcfg);
+              const t = Object.assign({}, cfg.tokens || {});
+              const v = Number(raw);
+              if (Number.isFinite(v) && v > 0) t[key] = Math.floor(v);
+              else delete t[key];        // 清空 = 回退默认
+              cfg.tokens = t;
+              upd({ config: cfg });
+              return run(call('saveTokens', { tokens: t }, gameId));
+            }
+
             /** 改思考强度：立即落盘（这个字段小，不必像模型那样点「切换」） */
             function pickReason(v) {
                 const cfg = Object.assign({}, dcfg);
@@ -10221,7 +10238,41 @@ function toggleFans(npc) {
                 ModelCfg({ slot: 'retrieve', title: '检索', sub: '挑选本轮需要哪些条目。可填便宜的快速模型。', row: true }),
                 ModelCfg({ slot: 'settle', title: '结算', sub: '每轮的变量变化与小总结。留空则跳过结算。', row: true }),
                 ModelCfg({ slot: 'summary', title: '总结', sub: '每 N 轮把正文压成前情总结。留空则关掉总结。', row: true }),
-                ModelCfg({ slot: 'assistant', title: '神谕', sub: '神谕浮窗用的模型。', row: true })
+                ModelCfg({ slot: 'assistant', title: '神谕', sub: '神谕浮窗用的模型。', row: true }),
+                // 输出 token 上限：每个用途给模型多少输出预算（思考也算在里面）
+                h(
+                  'div',
+                  { className: 'sim-card', style: { marginTop: 12 } },
+                  h('div', { className: 'sim-card-t' }, '输出上限'),
+                  h('div', { className: 'sim-hint', style: { marginBottom: 10 } }, '每个用途最多让模型输出多少 token。思考也算在里面 —— 推理模型想得太久，正式内容就没预算了。留空用默认值。'),
+                  [
+                    ['retrieve', '检索', '挑上下文条目', 6000],
+                    ['story', '正文', '单轮正文（中文 1 字≈1.5 token）', 12000],
+                    ['settle', '结算', '全部变量变化，最费的一步', 12000],
+                    ['summary', '总结', '把若干轮压成前情', 2500],
+                    ['summaryMerge', '总结合并', '多段总结合成一份', 3000],
+                    ['parse', '创角解析', '从描述里拆字段与名册', 8000],
+                    ['realInfo', '真人资料', '补全真实人物的公开信息', 4000],
+                    ['oracle', '神谕', '助手浮窗追问', 2000],
+                    ['misc', '其他', '零散调用', 1200],
+                  ].map(([key, label, hint, def]) =>
+                    h(
+                      'div',
+                      { className: 'sim-tok-row', key },
+                      h('span', { className: 'n' }, label),
+                      h('input', {
+                        type: 'number',
+                        min: 200,
+                        max: 32000,
+                        step: 500,
+                        value: (dcfg.tokens && dcfg.tokens[key] != null) ? dcfg.tokens[key] : '',
+                        placeholder: String(def),
+                        onChange: (e) => pickTokens(key, e.target.value),
+                      }),
+                      h('span', { className: 'h' }, hint),
+                    )
+                  )
+                ),
               )
             ),
 
