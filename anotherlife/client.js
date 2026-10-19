@@ -1137,6 +1137,49 @@ window.__ModuleLoader__.load({
         }
 
         /**
+         * 有些 diff 是「整个数组换个新的」（模型直接给了 path:["npcs"] 的整块替换）。
+         * 列表里滚出来就是一大串名字，看不出谁变了什么。
+         * 这里按姓名（角色）或对象（关系）做 key，把数组拆成三类：
+         *   新增 / 移除 / 已有条目内部的字段变化
+         * 返回 [{ group, label, from, to }]，直接喂给现有的渲染。
+         */
+        function expandArrayDiff(d, st) {
+          const want = (d && d.path && d.path[0]) || '';
+          if (want !== 'npcs' && want !== 'relationships' && want !== '物品' && want !== '技能') return null;
+          const before = Array.isArray(d.from) ? d.from : Array.isArray(d._prev) ? d._prev : [];
+          const after = Array.isArray(d.to) ? d.to : [];
+          const keyOf = (x) => {
+            if (x == null || typeof x !== 'object') return String(x);
+            return String(x.姓名 || x.对象 || x.名称 || x.名字 || JSON.stringify(x));
+          };
+          const mapA = new Map();
+          const mapB = new Map();
+          before.forEach((x) => mapA.set(keyOf(x), x));
+          after.forEach((x) => mapB.set(keyOf(x), x));
+          const out = [];
+          // 新增
+          const added = [];
+          mapB.forEach((v, k) => { if (!mapA.has(k)) added.push(k); });
+          if (added.length) out.push({ group: '角色', label: '新增', from: '', to: added.join('、'), kind: 'add' });
+          // 移除
+          const removed = [];
+          mapA.forEach((v, k) => { if (!mapB.has(k)) removed.push(k); });
+          if (removed.length) out.push({ group: '角色', label: '移除', from: removed.join('、'), to: '', kind: 'del' });
+          // 已有条目内部的字段变化
+          mapB.forEach((now, k) => {
+            const old = mapA.get(k);
+            if (!old || now == null || old == null || typeof now !== 'object') return;
+            Object.keys(now).forEach((f) => {
+              const ov = old[f];
+              const nv = now[f];
+              if (JSON.stringify(ov) === JSON.stringify(nv)) return;
+              out.push({ group: k, label: f, from: fmtVal(ov), to: fmtVal(nv) });
+            });
+          });
+          return out.length ? out : null;
+        }
+        
+        /**
          * 把 diff 的 JSON 路径翻译成人能读的分组与标签。
          *   npcs.0.好感              → 分组「田曦薇」 标签「好感」
          *   protagonist.金钱          → 分组「主角」   标签「金钱」
@@ -1174,17 +1217,37 @@ window.__ModuleLoader__.load({
          * 结算详情：把这一轮的 diffs 按「谁」分组，每条写成 标签 旧值 → 新值。
          * 新增用「＋」开头、删除用「−」开头 —— 比 空 → 值 好认。
          */
+        /**
+         * 结算详情：按「谁」分组，每条写成 标签 旧值 → 新值。
+         *
+         * 数组型 diff（整个 npcs / relationships 换成新的）先摊开成
+         * 「新增、移除、某人某字段变了」三类，否则界面上就是一整串名字。
+         */
         function SettleDetail(diffs, st) {
+          // 第一步：把数组 diff 摊平
+          const flat = [];
+          diffs.forEach((d, i) => {
+            const ex = expandArrayDiff(d, st);
+            if (ex) {
+              ex.forEach((x, k) => flat.push({ d: { path: (d.path || []).concat(["__ex" + k]), from: x.from, to: x.to, __ex: x }, m: null, i: i + "-" + k }));
+            } else {
+              flat.push({ d: d, m: null, i: i });
+            }
+          });
+          
           const groups = [];
           const index = {};
-          diffs.forEach((d, i) => {
-            const m = diffMeta(d, st);
+          flat.forEach((x) => {
+            const m = x.d.__ex
+              ? { group: x.d.__ex.group, label: x.d.__ex.label }
+              : diffMeta(x.d, st);
             if (!index[m.group]) {
               index[m.group] = { name: m.group, rows: [] };
               groups.push(index[m.group]);
             }
-            index[m.group].rows.push({ d: d, m: m, i: i });
+            index[m.group].rows.push({ d: x.d, m: m, i: x.i });
           });
+          
           return groups.map((g) =>
             h(
               'div',
@@ -1194,8 +1257,9 @@ window.__ModuleLoader__.load({
                 const hasFrom = x.d.from !== undefined || x.d._prev !== undefined;
                 const f = fmtVal(x.d.from !== undefined ? x.d.from : x.d._prev);
                 const t = fmtVal(x.d.to);
-                const isNew = !hasFrom && t !== '';
-                const isDel = t === '' && hasFrom;
+                const kind = (x.d.__ex && x.d.__ex.kind) || '';
+                const isNew = kind === 'add' || (!hasFrom && t !== '');
+                const isDel = kind === 'del' || (t === '' && hasFrom);
                 return h(
                   'div',
                   {
