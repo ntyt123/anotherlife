@@ -2706,6 +2706,9 @@ function pickToolCall(r) {
     return null;
   }
 
+/** 上一次 aiPick 为什么没成（给进度条用）：空串表示成功或还没跑 */
+let aiPickFail = '';
+
   async function aiPick(s, E, input) {
     if (!E.length) return { picked: [], via: 'main' };
     const cfg = (s.config && s.config.retrieve) || {};
@@ -2745,11 +2748,15 @@ function pickToolCall(r) {
       raw = await callSlot(s, 'retrieve', [{ role: 'system', content: sys }, { role: 'user', content: usr }], { json: true, reasoningEffort: await reasoningOf(s, 'retrieve'), maxTokens: 1200, temperature: 0, tag: '检索' });
     }
     const ids = parseIds(raw);
-    if (!ids) return null;
+    if (!ids) {
+      aiPickFail = '检索模型返回的内容不是预期的 JSON（拿不到条目 id）';
+      return null;
+    }
     const set = {};
     ids.forEach((x) => {
       if (typeof x === 'string') set[x.trim()] = true;
     });
+    aiPickFail = '';
     return { picked: E.filter((e) => set[e.id]).slice(0, maxN), via: useMain ? 'main' : 'retrieve' };
   }
 
