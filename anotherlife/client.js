@@ -5013,17 +5013,27 @@ function App({ gameId, close }) {
               .catch(() => setSnapLoaded(true));
           }
 
-          /** 存一份快照（当前进度） */
-          function snapSave() {
-            return call('snapSave', {}, gameId)
-              .then(() => {
-                loadSnaps();
-                // 点了要有反应，否则看着像没点上（按钮在正文底部，很容易被忽略）
-                setSnapNote('已存');
-                window.setTimeout(() => setSnapNote(''), 2000);
-              })
-              .catch((e) => setErr('存快照失败：' + msg(e)));
-          }
+      /**
+       * 存一份快照。先问名字 —— 默认填「第 N 轮」，够用就直接回车。
+       * 快照列表里只显示名字和轮数，不起名的话过几次就分不清哪个是哪个。
+       */
+      function snapSave() {
+        const seq = Number((state && state.story && state.story.current_message_index) || 0);
+        const def = '第 ' + seq + ' 轮';
+        inputAsk('给这个快照起个名字', def).then((name) => {
+          if (name == null) return; // 取消
+          const nm = String(name).trim();
+          // 允许留空：宿主会退回「第 N 轮」，等于用默认名
+          return call('snapSave', { name: nm }, gameId)
+            .then(() => {
+              loadSnaps();
+              // 点了要有反应，否则看着像没点上（按钮在正文底部，很容易被忽略）
+              setSnapNote('已存');
+              window.setTimeout(() => setSnapNote(''), 2000);
+            })
+            .catch((e) => setErr('存快照失败：' + msg(e)));
+        });
+      }
 
           /** 回到某个快照：成功后用 run(..., true) 把新状态吸收进来 */
           function snapRestore(id, name) {
