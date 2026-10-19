@@ -192,7 +192,10 @@ window.__ModuleLoader__.load({
       '.sim-fan-row .bar{flex:0 0 74px;height:5px;border-radius:3px;background:var(--sim-bd);overflow:hidden}',
       '.sim-fan-row .bar i{display:block;height:100%;border-radius:3px;background:linear-gradient(90deg,#8aa6c0,#d9a441)}',
       '.sim-fan-row .st{flex:1 1 auto;min-width:0;color:var(--sim-t3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
-      '.sim-fan-pub .sim-know .v{white-space:normal;overflow:visible}',
+      // 舆论现在写的是原话（两三句引号），横着排会挤成一行看不全，改成竖排
+      '.sim-fan-pub .sim-know{display:block;padding:4px 0}',
+      '.sim-fan-pub .sim-know .k{display:block;margin-bottom:2px;color:var(--sim-t3);font-size:var(--sim-fs-1)}',
+      '.sim-fan-pub .sim-know .v{display:block;white-space:normal;overflow:visible;word-break:break-word;line-height:1.75}',
       '.sim-trace .txt{flex:0 1 auto}',
       '.sim-trace .bar{display:inline-block;flex:0 0 44px;width:44px;height:5px;border-radius:3px;background:var(--sim-bd);overflow:hidden;vertical-align:middle}',
       '.sim-trace .bar i{display:block;height:100%;border-radius:3px;background:linear-gradient(90deg,#d97a41,#c9563f);transition:width .2s}',
