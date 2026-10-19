@@ -3440,7 +3440,7 @@ window.__ModuleLoader__.load({
           const playScrollRef = React.useRef(0); // 离开正文时读到哪儿（切回来还原用）
           const prevTabRef = React.useRef('play'); // 上一个页签（认得出「刚离开正文」）
           const lastPlayTopRef = React.useRef(0); // 在正文页时持续记下的滚动位置
-          const scrollSaveRef = React.useRef(0); // 上次写 localStorage 的时间（节流用）
+          const scrollSaveRef = React.useRef(0); // 落盘的定时器 id（尾部去抖，见 onBodyScroll）
           const keepScrollRef = React.useRef(0); // 用户看到的滚动位置（生成期间用它把位置钉住）
           const pinTsRef = React.useRef(0); // 最近一次由我们写回 scrollTop 的时间（区分用户滚动）
           const pinValueRef = React.useRef(-1); // 我们刚写回的那个值（它引起的 scroll 事件不算用户滚动）
@@ -4082,16 +4082,33 @@ window.__ModuleLoader__.load({
             if (pinHoldRef.current > 0 && Date.now() - userActRef.current > 700) return;
             keepScrollRef.current = v;
             lastPlayTopRef.current = v;
-            // 阅读进度落盘（500ms 节流，别每滚一像素写一次）
-            const nowTap = Date.now();
-            if (nowTap - scrollSaveRef.current > 500) {
-              scrollSaveRef.current = nowTap;
-              writeScrollPos(gameId, v, txStamp);
-            }
+            // 阅读进度落盘：尾部去抖 —— 停手 300ms 才写。
+            // 不能用节流：平滑滚动期间每帧都有 scroll 事件，节流会把中间某一帧的位置留下来，
+            // 于是「点了到底部」下次打开却停在半路。
+            if (scrollSaveRef.current) window.clearTimeout(scrollSaveRef.current);
+            scrollSaveRef.current = window.setTimeout(() => {
+              const e2 = bodyRef.current;
+              if (e2) writeScrollPos(gameId, e2.scrollTop, txStamp);
+            }, 300);
           }
           // 用户真的要滚：记下时间，钉住循环在这之后 700ms 内不干预
           function markUserScroll() {
             userActRef.current = Date.now();
+          }
+
+          /** 平滑滚到某个位置。scrollTo 不支持（或抛错）就退回直接赋值 */
+          function smoothTo(el, top) {
+            if (!el) return;
+            const v = Math.max(0, Math.round(top));
+            if (typeof el.scrollTo === 'function') {
+              try {
+                el.scrollTo({ top: v, behavior: 'smooth' });
+                return;
+              } catch (e) {
+                /* 老环境不认对象参数：往下走直接赋值 */
+              }
+            }
+            el.scrollTop = v;
           }
 
           /**
@@ -4111,14 +4128,14 @@ window.__ModuleLoader__.load({
             const tops = nodes.map((n) => n.getBoundingClientRect().top - er.top + cur);
             if (dir > 0) {
               const next = tops.find((t) => t > cur + 4);
-              el.scrollTop = next != null ? next : el.scrollHeight;
+              smoothTo(el, next != null ? next : el.scrollHeight);
             } else {
               let prev = 0;
               for (const t of tops) {
                 if (t < cur - 4) prev = t;
                 else break;
               }
-              el.scrollTop = prev;
+              smoothTo(el, prev);
             }
             markUserScroll();
           }
@@ -4126,7 +4143,7 @@ window.__ModuleLoader__.load({
           function scrollBottom() {
             const el = bodyRef.current;
             if (!el) return;
-            el.scrollTop = el.scrollHeight;
+            smoothTo(el, el.scrollHeight);
             markUserScroll();
           }
 
