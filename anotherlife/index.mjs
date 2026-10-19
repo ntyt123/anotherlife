@@ -1924,16 +1924,32 @@ function ensureFanFields(s) {
  *
  * 基准存在 story.fanTick（分钟），和 sockTick 一样的用法。
  */
+/**
+ * 粉丝的两件周期性的事：每满 7 天清一次「本周」，以及长期没曝光的自然掉粉。
+ *
+ * 都挂在 s.story.fanTick（分钟）。**关键是 fanTick 只在真的满 7 天时推进** ——
+ * 第一版写成每轮都 `fanTick = now`，于是 days 永远小于 7，这条永远不触发。
+ *
+ * 掉粉规则：路人盘 -3%、唯粉 -0.5%（按比例，不按绝对数）；
+ * 黑粉不会因为你消失就消失，CP 粉也不会，这两层不动。
+ * 这 7 天里有过 粉丝动态 的角色不掉（看 最近动态）。
+ */
 function tickFans(s, now) {
   const out = [];
   if (now == null) return out;
   s.story = s.story || {};
   const prev = Number(s.story.fanTick);
-  s.story.fanTick = now;
-  if (!Number.isFinite(prev)) return out;
+  if (!Number.isFinite(prev)) {
+    // 第一次：只记起点，不下判断
+    s.story.fanTick = now;
+    return out;
+  }
   const days = (now - prev) / 60 / 24;
-  if (!(days >= 7)) return out;
+  if (!(days >= 7)) return out;   // 没满 7 天：不推进 fanTick，下一轮继续累计
   const weeks = Math.min(8, Math.floor(days / 7));
+  // 满 7 天才往前推，而且只推整周 —— 剩下的零头留给下一轮累计
+  s.story.fanTick = prev + weeks * 7 * 24 * 60;
+
   const owners = [{ who: s.protagonist, base: [] }].concat(
     (Array.isArray(s.npcs) ? s.npcs : []).map((n, i) => ({ who: n, base: ['npcs', i] }))
   );
@@ -1943,7 +1959,15 @@ function tickFans(s, now) {
     if (w !== s.protagonist && w.追踪粉丝 !== true) return;
     const f = w.粉丝;
     if (!f || typeof f !== 'object' || !f.层级) return;
-    // 有动态就重置计时（模型每轮清空，这里用 lastAt 判定更稳）
+
+    // 本周清零（每隔 7 天一次，正好在这里做）
+    const wk = Number(f.本周) || 0;
+    if (wk !== 0) {
+      out.push({ path: x.base.concat(['粉丝', '本周']), from: wk, to: 0, byFan: true });
+      f.本周 = 0;
+    }
+
+    // 这 7 天里有动态就不掉
     const lastAt = Number(f.最近动态);
     if (Number.isFinite(lastAt) && now - lastAt < 7 * 24 * 60) return;
     let totalDelta = 0;
