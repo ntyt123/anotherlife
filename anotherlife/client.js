@@ -181,21 +181,21 @@ window.__ModuleLoader__.load({
       '.sim-issue{display:flex;gap:8px;align-items:flex-start;padding:5px 9px;border-radius:7px;background:rgba(176,117,20,.09);border-left:3px solid rgba(176,117,20,.55);font-size:var(--sim-fs-2);line-height:1.6}',
       '.sim-issue .step{flex:0 0 auto;color:#8a5c10;font-weight:700}',
       '.sim-issue .why{flex:1 1 auto;min-width:0;color:#8a5c10;word-break:break-word}',
-      '.sim-fan-total .big{font-size:calc(var(--sim-fs-4) * 1.35);font-weight:800;letter-spacing:.3px}',
-      '.sim-fan-total .wk{font-size:var(--sim-fs-2);color:var(--sim-t2)}',
+      '.sim-fan-total .big{font-size:var(--sim-fs-7);font-weight:800;letter-spacing:.3px}',
+      '.sim-fan-total .wk{font-size:var(--sim-fs-4);color:var(--sim-t2)}',
       '.sim-fan-total .wk.up{color:#2e9e5b}',
       '.sim-fan-total .wk.down{color:#c34a4a}',
       '.sim-fan-layers{display:flex;flex-direction:column;gap:5px}',
-      '.sim-fan-row{display:flex;align-items:center;gap:8px;font-size:var(--sim-fs-2)}',
+      '.sim-fan-row{display:flex;align-items:center;gap:8px;font-size:var(--sim-fs-5)}',
       '.sim-fan-row .n{flex:0 0 52px;color:var(--sim-t2)}',
       '.sim-fan-row .v{flex:0 0 62px;text-align:right;font-variant-numeric:tabular-nums}',
       '.sim-fan-row .bar{flex:0 0 74px;height:5px;border-radius:3px;background:var(--sim-bd);overflow:hidden}',
       '.sim-fan-row .bar i{display:block;height:100%;border-radius:3px;background:linear-gradient(90deg,#8aa6c0,#d9a441)}',
-      '.sim-fan-row .st{flex:1 1 auto;min-width:0;color:var(--sim-t3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+      '.sim-fan-row .st{flex:1 1 auto;min-width:0;color:var(--sim-t2);font-size:var(--sim-fs-4);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
       // 舆论现在写的是原话（两三句引号），横着排会挤成一行看不全，改成竖排
       '.sim-fan-pub .sim-know{display:block;padding:4px 0}',
-      '.sim-fan-pub .sim-know .k{display:block;margin-bottom:2px;color:var(--sim-t3);font-size:var(--sim-fs-1)}',
-      '.sim-fan-pub .sim-know .v{display:block;white-space:normal;overflow:visible;word-break:break-word;line-height:1.75}',
+      '.sim-fan-pub .sim-know .k{display:block;margin-bottom:2px;color:var(--sim-t2);font-size:var(--sim-fs-4)}',
+      '.sim-fan-pub .sim-know .v{display:block;white-space:normal;overflow:visible;word-break:break-word;line-height:1.75;font-size:var(--sim-fs-5);color:var(--sim-t)}',
       '.sim-trace .txt{flex:0 1 auto}',
       '.sim-trace .bar{display:inline-block;flex:0 0 44px;width:44px;height:5px;border-radius:3px;background:var(--sim-bd);overflow:hidden;vertical-align:middle}',
       '.sim-trace .bar i{display:block;height:100%;border-radius:3px;background:linear-gradient(90deg,#d97a41,#c9563f);transition:width .2s}',
@@ -8112,8 +8112,8 @@ function fanBlock(obj) {
   }
   return h(
     'div',
-    { className: 'sim-fan-box' },
-    h('div', { className: 'sim-fan-h' }, '👥 粉丝'),
+    { className: 'sim-panel', style: { marginTop: 12 } },
+    h('div', { className: 'sim-panel-h' }, '👥 粉丝'),
     h(
       'div',
       { className: 'sim-body-list sim-fan' },
@@ -8164,9 +8164,9 @@ function fanBlock(obj) {
             }
 
             return h(
-              'details',
-              { className: 'sim-think', style: { marginTop: 10 } },
-              h('summary', null, '🩹 身体'),
+              'div',
+              { className: 'sim-panel', style: { marginTop: 10 } },
+              h('div', { className: 'sim-panel-h' }, '🩹 身体'),
               rows.length
                 ? h('div', { className: 'sim-body-list' }, rows)
                 : h('div', { className: 'sim-hint' }, '暂时没有痕迹')
