@@ -95,6 +95,9 @@ window.__ModuleLoader__.load({
       '.sim-as-li .x:hover{background:rgba(0,0,0,.42);color:#fff}',
       '.sim-as-think{margin:0 0 6px;font-size:var(--sim-fs-2)}',
       '.sim-as-pending{padding:4px 0;font-size:var(--sim-fs-3);color:var(--sim-t3)}',
+      '.sim-as-nav{display:flex;gap:6px;padding:6px 12px 0;border-top:1px solid var(--sim-bd)}',
+      '.sim-as-nb{flex:1;padding:4px 0;border:1px solid var(--sim-bd);border-radius:6px;background:transparent;color:var(--sim-t2);font-size:var(--sim-fs-3);font-family:ui-monospace,monospace;line-height:1.5;cursor:pointer}',
+      '.sim-as-nb:hover{color:var(--sim-t);border-color:var(--sim-ac)}',
       '.sim-as-pending::after{content:"";display:inline-block;width:6px;height:6px;margin-left:6px;border-radius:50%;background:var(--sim-ac);animation:sim-pulse 1.1s ease-in-out infinite}',
       '@keyframes sim-pulse{0%,100%{opacity:.25}50%{opacity:1}}',
       '.sim-trace-row{display:flex;gap:6px;align-items:baseline;padding:2px 0;font-size:var(--sim-fs-2);border-bottom:1px dashed var(--sim-bd)}',
@@ -3234,7 +3237,30 @@ window.__ModuleLoader__.load({
           }
         }
 
-        function App({ gameId, close }) {
+        
+  /**
+   * 神谕消息区的阅读进度。按对话 id 存 —— 每个对话读到哪儿是各自的事。
+   * 和正文那套同一个思路，但键不同：正文按 gameId，这里按 threadId。
+   */
+  const AS_SCROLL_KEY = (tid) => 'sim-as-scroll-' + String(tid || 'default');
+  function readAsScroll(tid) {
+    try {
+      const s = window.localStorage.getItem(AS_SCROLL_KEY(tid));
+      const n = Number(s);
+      return Number.isFinite(n) ? n : 0;
+    } catch (e) {
+      return 0;
+    }
+  }
+  function writeAsScroll(tid, top) {
+    try {
+      window.localStorage.setItem(AS_SCROLL_KEY(tid), String(Math.round(top)));
+    } catch (e) {
+      /* 存不了就算了，不影响阅读 */
+    }
+  }
+
+function App({ gameId, close }) {
           const [state, setState] = React.useState(null);
           // 界面字体与字号：存 localStorage，改完立即生效（挂到根元素的 CSS 变量上）
           const [uiFont, setUiFont] = React.useState(() => readUiPref('font', ''));
@@ -3298,6 +3324,8 @@ window.__ModuleLoader__.load({
           // 哪条回答刚存成笔记（按钮上闪一下「已存 ✓」）
           const [asNoteAt, setAsNoteAt] = React.useState(-1);
           const asBodyRef = React.useRef(null); // 助手消息区（新消息来了滚到底）
+          const asLenRef = React.useRef(0); // 上一次的消息条数（分辨「有新消息」和「换了个对话」）
+          const asSaveRef = React.useRef(0); // 阅读进度落盘的定时器（尾部去抖）
           const asLoadedRef = React.useRef(false); // 存档里的助手对话只装一次
           // 神谕的多对话：列表、当前 id、列表面板是否展开
           const [asThreads, setAsThreads] = React.useState([]);
@@ -3671,22 +3699,39 @@ window.__ModuleLoader__.load({
             }
           }, [gameId, !!state, txLen, txStamp]);
 
-          // 助手有新消息时，滚到**最后一条的开头**（不是底部）：
-          // 回答往往很长，滚到底等于让你从结尾往回找开头，每次都得多翻一屏。
-          // 已经在视野里（短消息）就不动，免得凭空跳一下。
-          // 注意：这个必须和其他 hooks 待在一起 —— App 里有个「没加载好就 return 加载中」的
-          // 提前返回，hooks 写在它之后会让两次渲染的 hooks 数量不一致，React 直接抛 #310。
-          React.useEffect(() => {
-            const el = asBodyRef.current;
-            if (!el) return;
-            const last = el.lastElementChild;
-            if (!last) return;
-            const er = el.getBoundingClientRect();
-            const lr = last.getBoundingClientRect();
-            // 整条都在可视区内就不用动
-            if (lr.top >= er.top && lr.bottom <= er.bottom) return;
-            el.scrollTop += lr.top - er.top;
-          }, [asLog, asBusy, asOpen]);
+  // 神谕消息区的滚动：分两种情形。
+  // · 有新消息（条数变多）→ 滚到最后一条的开头。回答往往很长，
+  //   滚到底等于让你从结尾往回找开头。
+  // · 没变多（切换对话、重开浮窗）→ 回到这个对话上次读到的位置。
+  // 用条数增量判断，而不是「asLog 变了」—— 后者每次 setAsLog 都成立。
+  React.useEffect(() => {
+    const el = asBodyRef.current;
+    if (!el) return;
+    const grew = asLog.length > asLenRef.current;
+    asLenRef.current = asLog.length;
+    if (grew) {
+      const last = el.lastElementChild;
+      if (!last) return;
+      const er = el.getBoundingClientRect();
+      const lr = last.getBoundingClientRect();
+      if (!(lr.top >= er.top && lr.bottom <= er.bottom)) {
+        el.scrollTop += lr.top - er.top;
+      }
+      return;
+    }
+    const saved = readAsScroll(asThreadId);
+    if (!(saved > 0)) return;
+    const put = () => {
+      const e2 = asBodyRef.current;
+      if (!e2) return;
+      e2.scrollTop = Math.min(saved, Math.max(0, e2.scrollHeight - e2.clientHeight));
+    };
+    put();
+    const raf = window.requestAnimationFrame ? window.requestAnimationFrame(put) : 0;
+    return () => {
+      if (raf && window.cancelAnimationFrame) window.cancelAnimationFrame(raf);
+    };
+  }, [asLog, asBusy, asOpen, asThreadId]);
 
  // 第一次打开浮窗时拉对话列表（消息由 loadThreads 顺带装进来）
  React.useEffect(() => {
@@ -4606,6 +4651,47 @@ window.__ModuleLoader__.load({
            * 助手：把这一句发给模型，回复追加进对话。
            * history 以前端这份为准（它才是这段对话的真源），宿主只负责拼上下文与调用。
            */
+          /** 神谕消息区滚动时记下位置（300ms 尾部去抖，别每滚一像素写一次） */
+          function onAsScroll(e) {
+            const el = e.currentTarget;
+            const v = el.scrollTop;
+            if (asSaveRef.current) window.clearTimeout(asSaveRef.current);
+            asSaveRef.current = window.setTimeout(() => {
+              const e2 = asBodyRef.current;
+              if (e2) writeAsScroll(asThreadId, e2.scrollTop);
+            }, 300);
+          }
+
+          /**
+           * 神谕的「上一条 / 下一条 / 到底」。
+           * 段 = 一条消息（.sim-as-m），和正文那套同一个规则：
+           * 停在某条中间先回它开头，已经在开头就退到上一条。
+           */
+          function asScrollStep(dir) {
+            const el = asBodyRef.current;
+            if (!el) return;
+            const nodes = Array.from(el.querySelectorAll('.sim-as-m'));
+            if (!nodes.length) return;
+            const er = el.getBoundingClientRect();
+            const cur = el.scrollTop;
+            const tops = nodes.map((n) => n.getBoundingClientRect().top - er.top + cur);
+            const TOL = 20;
+            let here = -1;
+            for (let i = 0; i < tops.length; i++) {
+              if (tops[i] <= cur + 2) here = i;
+              else break;
+            }
+            if (dir < 0) {
+              if (here < 0) smoothTo(el, 0);
+              else if (cur - tops[here] > TOL) smoothTo(el, tops[here]);
+              else smoothTo(el, here > 0 ? tops[here - 1] : 0);
+            } else {
+              const next = here + 1 < tops.length ? tops[here + 1] : null;
+              smoothTo(el, next != null ? next : el.scrollHeight);
+            }
+            if (asSaveRef.current) window.clearTimeout(asSaveRef.current);
+          }
+
           /** 拉对话列表，顺带把当前对话的消息装进来 */
           function loadThreads(keepOpen) {
             return call('threadsList', {}, gameId)
@@ -9899,7 +9985,7 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
                       : null,
                   h(
                     'div',
-                    { className: 'sim-as-body', ref: asBodyRef },
+                    { className: 'sim-as-body', ref: asBodyRef, onScroll: onAsScroll },
                     asLog.length
                       ? asLog.map((m, i) =>
                           h(
@@ -9949,6 +10035,14 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
                           )
                         )
                       : h('div', { className: 'sim-as-empty' }, '剧情、设定、下一步怎么走 —— 问点什么吧。')
+                  ),
+                  // 导航栏：上一条 / 下一条 / 到最底部
+                  h(
+                      'div',
+                      { className: 'sim-as-nav' },
+                      h('button', { className: 'sim-as-nb', title: '上一条', onClick: () => asScrollStep(-1) }, '↑'),
+                      h('button', { className: 'sim-as-nb', title: '下一条', onClick: () => asScrollStep(1) }, '↓'),
+                      h('button', { className: 'sim-as-nb', title: '到最底部', onClick: () => asScrollStep(1e9) }, '⇩')
                   ),
                   h(
                     'div',
