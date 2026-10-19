@@ -1174,6 +1174,8 @@ window.__ModuleLoader__.load({
             const old = mapA.get(k);
             if (!old || now == null || old == null || typeof now !== 'object') return;
             Object.keys(now).forEach((f) => {
+              // 下划线开头的是内部记账用的（如袜子换没换的双）、不给人看
+              if (String(f).charAt(0) === '_') return;
               const ov = old[f];
               const nv = now[f];
               if (JSON.stringify(ov) === JSON.stringify(nv)) return;

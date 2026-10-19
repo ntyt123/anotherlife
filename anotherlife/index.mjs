@@ -1764,6 +1764,15 @@ function humanSockHours(h) {
  *
  * 不累计的三种情况：第一次（只记基准）、时间倒退（回滚）、跳跃超过 10 天（时间跳转）。
  */
+/**
+ * 每轮结算后推进袜子的气味状态。三件事：
+ *   1. 穿着的袜子按小时涨
+ *   2. 换了新袜子就归零（物品名变了就是换了）
+ *   3. 物品栏里脱下来的袜子按小时掉（比积累慢 2.5 倍）
+ *
+ * 纯算术，不叫模型：只要 world.当前日期时间 有变化就能算。
+ * 返回的条目自带 from —— applyDiffs 已经跑过，重算/删轮才退得回去。
+ */
 function tickSockScent(s) {
   const out = [];
   try {
@@ -1775,12 +1784,35 @@ function tickSockScent(s) {
     if (!Number.isFinite(prev)) return out;
     const dh = (now - prev) / 60;
     if (!(dh > 0) || dh > 240) return out;
+    
+    // ① 穿着中的
     const npcs = Array.isArray(s.npcs) ? s.npcs : [];
     npcs.forEach((n, i) => {
       const w = n && n.穿着 && n.穿着.袜子;
       if (!w || !String(w.物品 || '').trim()) return;
-      if (w.睡眠中 === true) return;
-      // 老数据还没迁移过：跳过，等「升级老存档」补上基准值
+      // 换了新袜子：先归零，别把上一双的浓度接着算下去
+      const curName = String(w.物品 || '').trim();
+      const prevName = String(w._上一双 || '').trim();
+      if (prevName && prevName !== curName) {
+        const oldStr = Number(w.气味强度) || 0;
+        const mat0 = detectSockMaterial(curName);
+        out.push({ path: ['npcs', i, '穿着', '袜子', '气味强度'], from: oldStr, to: 0, bySock: true });
+        out.push({ path: ['npcs', i, '穿着', '袜子', '穿着小时'], from: Number(w.穿着小时) || 0, to: 0, bySock: true });
+        out.push({ path: ['npcs', i, '穿着', '袜子', '材质'], from: w.材质 || '', to: mat0, bySock: true });
+        const t0 = scentTextOf(0, mat0, curName);
+        out.push({ path: ['npcs', i, '穿着', '袜子', '气味'], from: String(w.气味 || ''), to: t0, bySock: true });
+        out.push({ path: ['npcs', i, '穿着', '袜子', '穿着时长'], from: String(w.穿着时长 || ''), to: '刚换上', bySock: true });
+        w.气味强度 = 0;
+        w.穿着小时 = 0;
+        w.材质 = mat0;
+        w.气味 = t0;
+        w.穿着时长 = '刚换上';
+      }
+      w._上一双 = curName;
+      if (w.睡眠中 === true) {
+        return;
+      }
+      // 老数据还没迁移过：跳过，等「升级袜子强度」补上基准值
       if (w.气味强度 == null || w.气味强度 === '') return;
       const mat = w.材质 || detectSockMaterial(w.物品);
       const rate = 100 / (SOCK_FULL_HOURS[mat] || SOCK_FULL_HOURS.混纺);
@@ -1800,21 +1832,35 @@ function tickSockScent(s) {
       out.push({ path: ['npcs', i, '穿着', '袜子', '气味强度'], from: before, to: after, bySock: true });
       w.气味强度 = after;
       // 气味文案与「已穿多久」只在跨档时重写 —— 每轮都改会让界面上那句话一直闪。
-      // 它们也要 push diff：回滚时强度会退，文案不跟着退就对不上了。
       const lvBefore = Math.floor(before / 17);
       const lvAfter = Math.floor(after / 17);
       const oldText = String(w.气味 || '');
       const newText = scentTextOf(scentLevel(after), mat, w.物品);
       if (lvBefore !== lvAfter || !oldText) {
-        out.push({ path: ['npcs', i, '穿着', '袜子', '气味'], from: oldText, to: newText, bySock: true });
-        w.气味 = newText;
+          out.push({ path: ['npcs', i, '穿着', '袜子', '气味'], from: oldText, to: newText, bySock: true });
+          w.气味 = newText;
       }
       const oldDur = String(w.穿着时长 || '');
       const newDur = humanSockHours(afterH);
       if (newDur !== oldDur) {
-        out.push({ path: ['npcs', i, '穿着', '袜子', '穿着时长'], from: oldDur, to: newDur, bySock: true });
-        w.穿着时长 = newDur;
+          out.push({ path: ['npcs', i, '穿着', '袜子', '穿着时长'], from: oldDur, to: newDur, bySock: true });
+          w.穿着时长 = newDur;
       }
+    });
+    
+    // ② 物品栏里脱下来的袜子：放着会变淡，比穿着时积累慢 2.5 倍
+    const bag = s.protagonist && Array.isArray(s.protagonist.物品) ? s.protagonist.物品 : [];
+    bag.forEach((it, i) => {
+      if (!it || typeof it !== 'object') return;
+      const sv = Number(it.气味强度);
+      if (!Number.isFinite(sv) || sv <= 0) return;
+      const name = String(it.名称 || it.物品 || it.名字 || '');
+      const mat = it.材质 || detectSockMaterial(name);
+      const rate = 100 / ((SOCK_FULL_HOURS[mat] || SOCK_FULL_HOURS.混纺) * 2.5);
+      const next = Math.max(0, Math.round((sv - dh * rate) * 10) / 10);
+      if (next === sv) return;
+      out.push({ path: ['protagonist', '物品', i, '气味强度'], from: sv, to: next, bySock: true });
+      it.气味强度 = next;
     });
   } catch (e) {
     /* 袜子强度是锦上添花，算挂了不能影响这一轮保存 */
@@ -2936,6 +2982,10 @@ function pickToolCall(r) {
       '  · 状态只在非正常时写（起球／沾了泥／破了个口／勒出印子），正常整洁就留空；',
       '  · **简介**每件衣物都要写，10~25 字一句：这件衣服的由来或当下的样子（谁给的／什么时候买的／穿了多久／为什么换上／洗没洗过／哪里磨旧了）。不要复述物品名，不要写形容词堆砌。',
       '  · 气味：**女性角色的「袜子」必须写**（常规字段，别漏；哪怕正文没细写，也按材质底息＋穿了多久给一句），男性角色一律留空，其他部位也留空。写的时候严格按下面注入的【袜子／鞋的气味引擎】（材质底息＋穿了多久／多远能闻到＋嗅者反应，红线禁用词照它执行）。',
+      '  · **袜子脱下**：正文里出现「脱下袜子／把袜子递过来／袜子被拿走／塞进口袋」这类事实时，做两件事 —— ',
+      '    ① 把该角色 穿着.袜子 的 物品／状态／气味／气味强度／穿着小时／材质 全部置空（不要留半截）；',
+      '    ② 如果袜子到了主角手上，在 protagonist.物品 里加一条：{"名称":"<袜子名>（左/右/一双）","品质":"<原稀有度>","来源":"<原角色名>","状态":"<当下的物理状态，如 还带着体温、揉成一团>","气味强度":<原数值，没有就写 40>,"材质":"<原材质>"}。',
+      '    只记事实，不要替玩家决定收藏还是归还。没写到脱下就不要清空。',
       '- 角色一出现就必须有「穿着」——人不会不穿衣服：按身份／场景／季节／天气给一套合理常规衣着，6 个部位尽量填满，只有确实无从判断的部位才留空。衣着风格照下面注入的衣柜参考来（现代题材用「衣柜·现代」，古代/仙侠题材用「衣柜·古风」）。',
       '- 角色也可以有「物品」（名字/品质/获取时间/简介/属性提升），与剧情相关时才记。好感度／信任度／欲望／依据／印象标签／关系写在角色条目里或 relationships 里都认。',
       '【情事与身体 · 只在剧情真涉及时才写】',
