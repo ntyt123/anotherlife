@@ -170,6 +170,8 @@ window.__ModuleLoader__.load({
       '.sim-trace{display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap}',
 
       '.sim-fan-total{display:flex;align-items:baseline;gap:10px;margin-bottom:8px}',
+      '.sim-fan-box{margin-top:12px}',
+      '.sim-fan-h{font-size:var(--sim-fs-2);color:var(--sim-t3);font-weight:600;letter-spacing:.5px;margin-bottom:6px}',
       '.sim-issues{margin:10px 0 2px;display:flex;flex-direction:column;gap:4px}',
       '.sim-issue{display:flex;gap:8px;align-items:flex-start;padding:5px 9px;border-radius:7px;background:rgba(176,117,20,.09);border-left:3px solid rgba(176,117,20,.55);font-size:var(--sim-fs-2);line-height:1.6}',
       '.sim-issue .step{flex:0 0 auto;color:#8a5c10;font-weight:700}',
@@ -7610,6 +7612,9 @@ onDoubleClick: () => {
                   })
                 )
               ),
+              // 粉丝：四层构成 + 舆论风向，不折叠。上面「数据热度」那几个是旧字段，
+              // 这里给的是会随剧情涨落的那份。
+              fanBlock(p),
               block(
                 '商务代言',
                 h(
@@ -7809,7 +7814,6 @@ onDoubleClick: () => {
               })()
             ),
             bodyBlock(draft.protagonist),
-            fanBlock(draft.protagonist),
             h(
               'div',
               { className: 'sim-card' },
@@ -8091,9 +8095,9 @@ function fanBlock(obj) {
       )
     : [];
   return h(
-    'details',
-    { className: 'sim-think', style: { marginTop: 10 } },
-    h('summary', null, '👥 粉丝'),
+    'div',
+    { className: 'sim-fan-box' },
+    h('div', { className: 'sim-fan-h' }, '👥 粉丝'),
     h(
       'div',
       { className: 'sim-body-list sim-fan' },
