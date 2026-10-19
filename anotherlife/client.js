@@ -684,11 +684,13 @@ window.__ModuleLoader__.load({
       '.sg.ph-排卵{background:#c9922a}',
       '.sg.ph-黄体{background:#5b7ba6}',
       '.sg.ph-preg{background:#9b6bb0}',
+      '.sg.ph-post{background:#7d8fa8}',
       '.sim-cyc-ph.ph-月经 .dot{background:#b4485c}',
       '.sim-cyc-ph.ph-卵泡 .dot{background:#3d9c78}',
       '.sim-cyc-ph.ph-排卵 .dot{background:#c9922a}',
       '.sim-cyc-ph.ph-黄体 .dot{background:#5b7ba6}',
       '.sim-cyc-ph.ph-preg .dot{background:#9b6bb0}',
+      '.sim-cyc-ph.ph-post .dot{background:#7d8fa8}',
       '.sim-cyc-sc .sc.ph-月经{color:#b4485c}',
       '.sim-cyc-sc .sc.ph-卵泡{color:#3d9c78}',
       '.sim-cyc-sc .sc.ph-排卵{color:#c9922a}',
@@ -8427,6 +8429,9 @@ function cycleField(value, onChange) {
 
 function cycleBar(obj, compact) {
   const o = obj || {};
+// 孕中或坐月子期间，生理周期本就停摆 —— 这段时间让位给妊娠条，
+// 免得两条并排显示「黄体期第 22 天」和「产后 27 天」这种互相打架的信息。
+if (pregInfo(o.妊娠状态)) return null;
   if (o.性别 && !/女/.test(String(o.性别))) return null;
   const info = cycleInfo(o.生理周期);
   if (!info) return null;
@@ -8496,10 +8501,32 @@ const PREG_SEGS = [
  * 模型写得很散：「孕约 12 周」「怀孕 12 周」「孕 12W」「怀孕三个月」。
  * 解不出来返回 null —— 宁可这一条不画，也别画错的。
  */
+/**
+ * 从「妊娠状态」那段文本里解出孕周，或者产后天数。
+ *
+ * 两种形态：
+ *   孕期  孕约 12 周 / 怀孕 8 周 / 孕 12W / 怀孕三个月
+ *   产后  产后 27 天 / 产后第 27 天 / 月子第 10 天
+ *
+ * 产褥期按 42 天算（医学口径，月子坐满）。过了 42 天就不返回，
+ * 那时候生理周期该恢复显示了。
+ * 解不出来返回 null —— 宁可这一条不画，也别画错的。
+ */
+const POSTPARTUM_DAYS = 42;
 function pregInfo(txt) {
   const t = String(txt == null ? '' : txt).trim();
   if (!t) return null;
   if (/未孕|没有怀孕|无妊娠|已流产|已引产/.test(t)) return null;
+
+  // 产后：月子期也算在这一条里，满 42 天才放手
+  const pm = /产后\s*第?\s*(\d+)\s*天/.exec(t) || /月子\s*第?\s*(\d+)\s*天/.exec(t);
+  if (pm) {
+    const day = Number(pm[1]);
+    if (!(day >= 0)) return null;
+    if (day >= POSTPARTUM_DAYS) return null;   // 月子坐满，交回生理周期
+    return { kind: '产后', day: day, total: POSTPARTUM_DAYS, phase: '月子' };
+  }
+
   let week = 0;
   const m = /孕\s*(?:约)?\s*(\d+)\s*(?:周|W|w)/.exec(t) || /怀孕\s*(\d+)\s*周/.exec(t);
   if (m) week = Number(m[1]);
@@ -8510,7 +8537,7 @@ function pregInfo(txt) {
   if (!(week > 0)) return null;
   week = Math.max(1, Math.min(42, week));
   const phase = week <= 13 ? '早孕' : week <= 27 ? '中孕' : '晚孕';
-  return { week, phase };
+  return { kind: '孕期', week: week, phase: phase };
 }
 
 /**
@@ -8518,10 +8545,42 @@ function pregInfo(txt) {
  * compact=true 给角色卡片（一行细条），否则是弹窗里的完整版。
  * 没有妊娠数据就返回 null（不画空条）。
  */
+/**
+ * 妊娠 / 产后进度条。
+ *
+ * 孕期按 40 周画三段（早孕 / 中孕 / 晚孕）；
+ * 产后按 42 天月子期画一段 —— 这段时间生理周期还没恢复，
+ * 所以 cycleBar 会让位（见它开头那句判断）。
+ * compact=true 给角色卡片用（一行细条），否则是弹窗里的完整版。
+ */
 function pregBar(obj, compact) {
   const o = obj || {};
   const info = pregInfo(o.妊娠状态);
   if (!info) return null;
+
+  if (info.kind === '产后') {
+    const left = Math.max(0, info.total - info.day);
+    return h(
+      'div',
+      { className: 'sim-cyc sim-preg sim-post' + (compact ? ' mini' : '') },
+      h('div', { className: 'sim-cyc-t' },
+        h('span', { className: 'sim-cyc-ph ph-post' },
+          h('i', { className: 'dot' }),
+          compact ? '月子 D' + info.day : '产后 ' + info.day + ' 天 · 月子期'
+        ),
+        compact
+          ? null
+          : h('span', { className: 'sim-cyc-r' },
+              h('span', { className: 'sim-cyc-nx' }, left > 0 ? '距出月子 ' + left + ' 天' : '已出月子')
+            )
+      ),
+      h('div', { className: 'sim-cyc-bar' },
+        h('div', { className: 'sg ph-post on', style: { flex: '1' } })
+      ),
+      h('div', { className: 'sim-cyc-cur', style: { left: (info.day / info.total) * 100 + '%' } })
+    );
+  }
+
   const left = Math.max(0, 40 - info.week);
   let acc = 0;
   let startPct = 0;
