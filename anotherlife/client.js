@@ -10475,15 +10475,19 @@ function toggleFans(npc) {
                         min: 200,
                         max: 32000,
                         step: 500,
-                        value: (dcfg.tokens && dcfg.tokens[key] != null) ? dcfg.tokens[key] : '',
+                        // 非受控（defaultValue）：受控 value 每次按键都触发 onChange，
+                        // 而每次 onChange 都跑一遍 run(...) 会跟后端返回的状态打架，
+                        // 输入框里的数字被刷回去 —— 这就是「改不了」。改成失焦才存。
+                        // key 带当前存档值：存完之后组件重挂载，框里显示的就是真值。
+                        key: key + ':' + String((dcfg.tokens && dcfg.tokens[key] != null) ? dcfg.tokens[key] : ''),
+                        defaultValue: (dcfg.tokens && dcfg.tokens[key] != null) ? dcfg.tokens[key] : '',
                         placeholder: String(def),
-                        onChange: (e) => {
+                        onBlur: (e) => {
                           const rawV = Number(e.target.value);
                           const cfg2 = Object.assign({}, dcfg);
                           const t2 = Object.assign({}, cfg2.tokens || {});
-                          // 清空 / 非数字 / 0 都不写：让它回退到默认值
                           if (Number.isFinite(rawV) && rawV > 0) t2[key] = Math.floor(rawV);
-                          else delete t2[key];
+                          else delete t2[key];        // 清空 = 回退默认
                           cfg2.tokens = t2;
                           upd({ config: cfg2 });
                           run(call('saveTokens', { tokens: t2 }, gameId));
