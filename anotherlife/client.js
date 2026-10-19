@@ -4309,8 +4309,11 @@ function App({ gameId, close }) {
           /** 跳到第 n 个命中：滚到那一轮，闪一下 */
           /**
            * 跳到第 idx 个命中。
-           * 命中按「出现次数」算，所以要先算出它落在哪一轮的第几个，
-           * 再滚到那一轮、把那个 mark 标成当前命中（颜色加深）。
+           * 命中按「出现次数」算，要先算出它落在哪一轮的第几个。
+           *
+           * 关键：只滚一次。之前是先 smoothTo 到这一轮的开头、再 smoothTo 到命中点，
+           * 两次平滑滚动互相打断，浏览器停在中间 —— 看到的就是「跳到了这条消息的开头」。
+           * 现在直接算出命中点相对内容的高度，一次滚到那儿。
            */
           function jumpToHit(idx) {
             const hits = findHits(findQ);
@@ -4328,22 +4331,23 @@ function App({ gameId, close }) {
               window.setTimeout(() => jumpToHit(n), 60);
               return;
             }
-            // 先滚到那一轮，再补一次高亮（节点是刚渲染出来的话，mark 还不存在）
-            const top = node.getBoundingClientRect().top - el.getBoundingClientRect().top + el.scrollTop;
-            smoothTo(el, Math.max(0, top - 8));
+            // 补齐高亮（这一轮可能是刚渲染的，mark 还不存在）
             applyHighlight(findQ);
-            // 把这一轮里第 h.n 个 mark 标成当前命中
             el.querySelectorAll('mark.sim-hit.cur').forEach((m) => m.classList.remove('cur'));
             const mk = el.querySelector('mark.sim-hit[data-seq="' + h.seq + '"][data-n="' + h.n + '"]');
+            const stopAt = (target) => {
+              const er = el.getBoundingClientRect();
+              const tr = target.getBoundingClientRect();
+              const top = tr.top - er.top + el.scrollTop;
+              // 放在离顶部约 1/4 处，上面留一点上下文
+              smoothTo(el, Math.max(0, top - el.clientHeight / 4));
+            };
             if (mk) {
               mk.classList.add('cur');
-              const mt = mk.getBoundingClientRect().top - el.getBoundingClientRect().top + el.scrollTop;
-              // 命中点如果已经滚出视野，再挪一次，把它放在离顶部约 1/3 处
-              const er = el.getBoundingClientRect();
-              const mr = mk.getBoundingClientRect();
-              if (mr.top < er.top + 40 || mr.bottom > er.bottom - 40) {
-                smoothTo(el, Math.max(0, mt - el.clientHeight / 3));
-              }
+              stopAt(mk);
+            } else {
+              // 没标出来（理论上不该发生）：退回滚到这一轮开头
+              stopAt(node);
             }
             node.classList.add('sim-flash');
             window.setTimeout(() => { try { node.classList.remove('sim-flash'); } catch (e) {} }, 2000);
