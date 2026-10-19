@@ -4588,6 +4588,30 @@ reg('parseRealPerson', async ({ gameId, name, fields }) => {
         required: ['query'],
       },
     },
+  {
+    name: 'web_search',
+    description:
+      '联网搜索真实世界的信息：现实中的演员、作品、地点、事件、新闻等。本局剧情里没有、但现实里客观存在的东西，用这个查。',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: '搜索词' },
+      },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'read_url',
+    description:
+      '读取一个网页的正文。配合 web_search 用：先搜到链接，再读具体页面看细节。',
+    parameters: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', description: '完整网址，http:// 或 https:// 开头' },
+      },
+      required: ['url'],
+    },
+  },
   ];
 
   /** 一次提问的工具预算（按回填字数算）。到 75% 提示收尾，到 100% 强制结束。 */
@@ -4751,6 +4775,45 @@ reg('parseRealPerson', async ({ gameId, name, fields }) => {
         }
         return hits.length ? hits.join('\n') : '（笔记里没有「' + q + '」）';
       }
+      // ── 联网（DSH 的 web 服务，不需要额外配 API key）──
+      if (name === 'web_search' || name === 'read_url') {
+        const web = ctx.get('web');
+        if (!web) return '（这个环境没有联网能力）';
+        if (name === 'web_search') {
+          const q = String(a.query || '').trim();
+          if (!q) return '（搜索词是空的）';
+          const r = await web.search({ query: q, maxResults: 6 });
+          const out = [];
+          if (r && r.content) out.push(String(r.content).slice(0, 1500));
+          (r && r.sources ? r.sources : []).forEach((x) => {
+            const t = String((x && x.title) || '');
+            const u = String((x && x.url) || '');
+            const sn = String((x && x.snippet) || '');
+            out.push('· ' + (t || u) + '\n  ' + u + (sn ? '\n  ' + sn.slice(0, 220) : ''));
+          });
+          return out.length ? out.join('\n') : '（没搜到结果）';
+        }
+        const u = String(a.url || '').trim();
+        if (!/^https?:\/\//i.test(u)) return '（网址要以 http:// 或 https:// 开头）';
+        const r = await web.fetch({ url: u });
+        const body = r && r.body ? String(r.body.content || '') : '';
+        if (!body) return '（这个页面没取到内容，状态码 ' + ((r && r.statusCode) || '?') + '）';
+        // HTML 直接丢掉标签，只留文字：模型看标签没意义，还白占预算
+        const txt =
+          r.body.kind === 'html'
+            ? body
+                .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+                .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+                .replace(/<[^>]+>/g, ' ')
+                .replace(/&nbsp;/g, ' ')
+                .replace(/&amp;/g, '&')
+                .replace(/&lt;/g, '<')
+                .replace(/&gt;/g, '>')
+                .replace(/\s+/g, ' ')
+                .trim()
+            : body;
+        return txt.slice(0, 6000) + (txt.length > 6000 ? '\n（共 ' + txt.length + ' 字，已截断）' : '');
+      }
       return '（没有这个工具：' + name + '）';
     } catch (e) {
       return '（工具执行失败：' + String((e && e.message) || e) + '）';
@@ -4875,12 +4938,8 @@ reg('parseRealPerson', async ({ gameId, name, fields }) => {
     return [
       '你是「故事神谕」，一个为正在进行的角色扮演/故事服务的“戏外”分析者。',
       '',
-      '你可以调用只读工具来查资料：',
-      '· search_transcript(query) —— 在正文里按关键词搜索',
-      '· read_turns(from, to) —— 读某几轮的正文（一次最多 2 轮）',
-      '· list_chars() —— 列出所有角色与关系',
-      '· get_state(path) —— 查任意变量（如 protagonist.金钱、npcs[0].穿着）',
-      '· list_notes() / search_notes(query) —— 查这一局的笔记',
+    '你可以调用只读工具来查资料。可用的能力：',
+    ...ORACLE_TOOLS.map((t) => '· ' + t.name + ' —— ' + String(t.description || '').split('。')[0]),
       '',
       '工作方式：',
       '· 先看下方【正文目录】判断哪几轮可能相关，再决定搜什么、读哪几轮。',
@@ -4977,6 +5036,8 @@ reg('parseRealPerson', async ({ gameId, name, fields }) => {
     if (!t) return { ok: true, id: '', messages: [] };
     return { ok: true, id: t.id, title: t.title || '', messages: t.messages };
   });
+
+
 
   /** 清空当前对话的消息（不删对话本身） */
   reg('assistantClear', async ({ gameId, threadId }) => {
