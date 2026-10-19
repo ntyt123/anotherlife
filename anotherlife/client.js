@@ -99,7 +99,6 @@ window.__ModuleLoader__.load({
       '.sim-trace-row .n{color:var(--sim-ac);flex:0 0 auto;font-weight:600}',
       '.sim-trace-row .a{flex:1;min-width:0;color:var(--sim-t2);font-family:ui-monospace,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
       '.sim-trace-row .c{flex:0 0 auto;color:var(--sim-t3)}',
-      '.sim-as{position:relative}',
       '.sim-as-m:hover .sim-as-acts{opacity:1}',
       '.sim-as-foot{display:flex;gap:8px;align-items:flex-end;padding:10px 12px;border-top:1px solid var(--sim-bd)}',
       '.sim-as-in{flex:1 1 auto;min-height:54px;max-height:130px;resize:none;padding:9px 10px;border:1px solid var(--sim-bd);border-radius:10px;background:var(--sim-bg);color:var(--sim-t);font-size:var(--sim-fs-3);line-height:1.55;font-family:inherit}',
@@ -4470,7 +4469,7 @@ window.__ModuleLoader__.load({
            * 位置夹在视口内（留 4px），窗口变小后重新打开也不会跑到屏幕外。
            */
           function asDragStart(e) {
-            if (e.target.closest && e.target.closest('.sim-btn')) return;
+            if (e.target.closest && e.target.closest('.sim-btn, .sim-as-ib')) return;
             const panel = e.currentTarget.parentElement;
             if (!panel) return;
             const box = panel.getBoundingClientRect();
@@ -9825,7 +9824,7 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
   onPointerCancel: asDragEnd,
   // 双击复位；点在按钮上不算（那两个按钮有自己的点击）
   onDoubleClick: (e) => {
-    if (e.target.closest && e.target.closest('.sim-btn')) return;
+    if (e.target.closest && e.target.closest('.sim-btn, .sim-as-ib')) return;
     asResetBox();
   },
 },
