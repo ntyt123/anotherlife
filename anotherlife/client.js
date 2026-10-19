@@ -325,6 +325,9 @@ window.__ModuleLoader__.load({
       '.sim-find-b{flex:0 0 auto;width:22px;height:22px;padding:0;border:1px solid var(--sim-bd);border-radius:5px;background:transparent;color:var(--sim-t2);font-size:var(--sim-fs-2);line-height:1;cursor:pointer}',
       '.sim-find-b:hover{color:var(--sim-t);border-color:var(--sim-ac)}',
       '.sim-msg.sim-flash{animation:sim-flash 1.9s ease-out}',
+      'mark.sim-hit{background:rgba(255,201,60,.55);color:inherit;padding:0 1px;border-radius:2px}',
+      '.skin-ink mark.sim-hit{background:rgba(255,201,60,.45)}',
+      '.skin-night mark.sim-hit{background:rgba(255,190,40,.42)}',
       '@keyframes sim-flash{0%{background:rgba(255,200,80,.30)}100%{background:transparent}}',
       '.sim-dg:last-child{margin-bottom:0}',
       '.sim-dg-h{font-size:var(--sim-fs-2);color:var(--sim-t3);font-weight:600;margin-bottom:3px}',
@@ -3843,6 +3846,15 @@ function App({ gameId, close }) {
     };
   }, [asLog, asBusy, asOpen, asThreadId]);
 
+ // 搜索高亮：关键词、正文或显示条数一变就重刷。
+ // React 重渲染会重建整片 DOM，上一次插的 <mark> 会一起没掉，所以不能只做一次。
+ // 延一帧再刷：等这一轮渲染把节点挂上去。
+ React.useEffect(() => {
+   if (tab !== 'play') return;
+   const t = window.setTimeout(() => applyHighlight(findQ), 60);
+   return () => window.clearTimeout(t);
+ }, [findQ, state, shown, tab]);
+ 
  // 进设定页就刷一次快照列表（存过、删过要能看到最新的）
  React.useEffect(() => {
    if (tab !== 'settings' || !state) return;
@@ -4297,8 +4309,57 @@ function App({ gameId, close }) {
             smoothTo(el, Math.max(0, top - 8));
             // 闪一下：加 class，2 秒后去掉（React 重渲染会重建节点，所以直接操作 DOM）
             node.classList.add('sim-flash');
+            applyHighlight(findQ);
             window.setTimeout(() => { try { node.classList.remove('sim-flash'); } catch (e) {} }, 2000);
           }
+
+                    /**
+                     * 把搜索词在正文里标黄。
+                     * 走 DOM 而不是改 mdNodes：正文是 React 渲染的元素树，
+                     * 要在里面插 <mark> 得从 mdInlineCore 一路传 keyword 下来，
+                     * 那条链还负责对白染色、粗斜体、行内代码，改它风险大。
+                     * 文本节点是安全的插入点 —— 不会破坏已有的 span/strong。
+                     */
+                    function applyHighlight(q) {
+                      const el = bodyRef.current;
+                      if (!el) return;
+                      // 先拆掉上一次的标记（把 mark 换回纯文本，再合并相邻节点）
+                      el.querySelectorAll('mark.sim-hit').forEach((m) => {
+                        const p = m.parentNode;
+                        if (!p) return;
+                        p.replaceChild(document.createTextNode(m.textContent), m);
+                        if (p.normalize) p.normalize();
+                      });
+                      const s = String(q || '').trim();
+                      if (!s) return;
+                      const low = s.toLowerCase();
+                      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null);
+                      const targets = [];
+                      let node;
+                      while ((node = walker.nextNode())) {
+                        const t = node.nodeValue || '';
+                        if (t.toLowerCase().indexOf(low) >= 0) targets.push(node);
+                      }
+                      targets.forEach((tn) => {
+                        const t = tn.nodeValue || '';
+                        const lower = t.toLowerCase();
+                        const frag = document.createDocumentFragment();
+                        let i = 0;
+                        let idx = lower.indexOf(low);
+                        while (idx >= 0) {
+                          if (idx > i) frag.appendChild(document.createTextNode(t.slice(i, idx)));
+                          const mk = document.createElement('mark');
+                          mk.className = 'sim-hit';
+                          mk.textContent = t.slice(idx, idx + s.length);
+                          frag.appendChild(mk);
+                          i = idx + s.length;
+                          idx = lower.indexOf(low, i);
+                        }
+                        if (i < t.length) frag.appendChild(document.createTextNode(t.slice(i)));
+                        if (tn.parentNode) tn.parentNode.replaceChild(frag, tn);
+                      });
+                    }
+
 
           function onBodyScroll(e) {
             const el = e.currentTarget;
