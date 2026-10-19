@@ -4113,29 +4113,46 @@ window.__ModuleLoader__.load({
 
           /**
            * 导航栏的「上一段 / 下一段」。
-           * 段 = 正文里的自然段（.sim-md-p，一个 div 就是一段），不是整轮 ——
-           * 一轮动辄几千字，按轮跳等于没跳。
-           * 「上一段」取当前视口上沿之上最近的一段；「下一段」取之下最近的一段。
-           * 留 4px 余量：位置正好对齐时不会原地不动。
+           * 「段」= 一段对话，也就是正文里的一轮（.sim-msg，带 data-seq）。
+           *
+           * 上箭头分两级：
+           *   ① 正停在某轮中间 → 先回到这一轮的开头
+           *   ② 已经在某一轮的开头 → 退到上一轮的开头
+           * 这样一直点会一轮一轮往上退，而不是每次只挪一小截。
+           *
+           * 下箭头：永远是「下一轮的开头」；底下没有了就贴到最底。
+           *
+           * 阈值 20px：跳转定位时会在段落上方留 8px，留点余量才认得出来
+           * 「我已经在开头了」，否则会一直判成中间、原地不动。
            */
           function scrollPara(dir) {
             const el = bodyRef.current;
             if (!el) return;
-            const nodes = Array.from(el.querySelectorAll('.sim-md-p'));
+            const nodes = Array.from(el.querySelectorAll('.sim-msg'));
             if (!nodes.length) return;
             const er = el.getBoundingClientRect();
             const cur = el.scrollTop;
             const tops = nodes.map((n) => n.getBoundingClientRect().top - er.top + cur);
-            if (dir > 0) {
-              const next = tops.find((t) => t > cur + 4);
-              smoothTo(el, next != null ? next : el.scrollHeight);
-            } else {
-              let prev = 0;
-              for (const t of tops) {
-                if (t < cur - 4) prev = t;
-                else break;
+            const TOL = 20;
+            // 当前视口上沿落在哪一轮上（最后一个 top 不高于 cur 的）
+            let here = -1;
+            for (let i = 0; i < tops.length; i++) {
+              if (tops[i] <= cur + 2) here = i;
+              else break;
+            }
+            if (dir < 0) {
+              if (here < 0) {
+                smoothTo(el, 0);
+              } else if (cur - tops[here] > TOL) {
+                // ① 在这一轮中间 → 回到它的开头
+                smoothTo(el, tops[here]);
+              } else {
+                // ② 已经在开头 → 上一轮的开头（没有就回顶）
+                smoothTo(el, here > 0 ? tops[here - 1] : 0);
               }
-              smoothTo(el, prev);
+            } else {
+              const next = here + 1 < tops.length ? tops[here + 1] : null;
+              smoothTo(el, next != null ? next : el.scrollHeight);
             }
             markUserScroll();
           }
