@@ -308,6 +308,14 @@ window.__ModuleLoader__.load({
       '.sim-fold{margin-top:6px;border:1px solid var(--sim-bd);border-radius:6px;padding:6px 8px;background:var(--sim-bg)}',
       '.sim-fold>summary{cursor:pointer;color:var(--sim-t2);font-size:var(--sim-fs-1);user-select:none}',
       '.sim-fold-body{margin-top:6px;white-space:pre-wrap;color:var(--sim-t2);font-size:var(--sim-fs-2)}',
+      '.sim-dg{margin:0 0 8px}',
+      '.sim-dg:last-child{margin-bottom:0}',
+      '.sim-dg-h{font-size:var(--sim-fs-2);color:var(--sim-t3);font-weight:600;margin-bottom:3px}',
+      '.sim-df{display:flex;gap:8px;align-items:baseline;padding:2px 0;font-size:var(--sim-fs-3);line-height:1.7}',
+      '.sim-df .k{flex:0 0 auto;color:var(--sim-t2);min-width:64px}',
+      '.sim-df .v{flex:1;min-width:0;word-break:break-word}',
+      '.sim-df.add .v{color:#3f9d6a}',
+      '.sim-df.del .v{color:#d9534f}',
       '.sim-diff{display:flex;gap:8px;font-size:var(--sim-fs-2);padding:2px 0;flex-wrap:wrap;align-items:baseline}',
       '.sim-diff .p{flex:0 0 auto;max-width:46%;color:var(--sim-t2);word-break:break-all}',
       '.sim-diff .f{color:var(--sim-mut);word-break:break-word}',
@@ -1095,6 +1103,84 @@ window.__ModuleLoader__.load({
             return ks.slice(0, 5).map((k) => k + '=' + fmtVal(v[k], d + 1)).join('  ');
           }
           return String(v);
+        }
+
+        /**
+         * 把 diff 的 JSON 路径翻译成人能读的分组与标签。
+         *   npcs.0.好感              → 分组「田曦薇」 标签「好感」
+         *   protagonist.金钱          → 分组「主角」   标签「金钱」
+         *   world.当前日期时间        → 分组「时间」   标签「当前日期时间」
+         * 没有这张表的话，界面上是一行行 npcs.0.好感，得自己脑补 0 是谁。
+         */
+        function diffMeta(d, st) {
+          const path = Array.isArray(d && d.path) ? d.path : [];
+          const k0 = String(path[0] || '');
+          const rest = (from) => path.slice(from).map(String).join(' · ');
+          let group = '其他';
+          let label = path.map(String).join(' · ');
+          if (k0 === 'world') {
+            group = '时间与世界';
+            label = rest(1);
+          } else if (k0 === 'protagonist') {
+            group = '主角';
+            label = rest(1);
+          } else if (k0 === 'npcs') {
+            const n = st && Array.isArray(st.npcs) ? st.npcs[Number(path[1])] : null;
+            group = (n && n.姓名) || '角色' + (path[1] == null ? '' : path[1]);
+            label = rest(2);
+          } else if (k0 === 'relationships') {
+            const r = st && Array.isArray(st.relationships) ? st.relationships[Number(path[1])] : null;
+            group = (r && r.对象) || '关系' + (path[1] == null ? '' : path[1]);
+            label = rest(2);
+          } else if (k0 === 'skills_items' || k0 === 'entities' || k0 === 'virtual') {
+            group = '资产';
+            label = rest(1);
+          }
+          return { group: group, label: label || '值' };
+        }
+
+        /**
+         * 结算详情：把这一轮的 diffs 按「谁」分组，每条写成 标签 旧值 → 新值。
+         * 新增用「＋」开头、删除用「−」开头 —— 比 空 → 值 好认。
+         */
+        function SettleDetail(diffs, st) {
+          const groups = [];
+          const index = {};
+          diffs.forEach((d, i) => {
+            const m = diffMeta(d, st);
+            if (!index[m.group]) {
+              index[m.group] = { name: m.group, rows: [] };
+              groups.push(index[m.group]);
+            }
+            index[m.group].rows.push({ d: d, m: m, i: i });
+          });
+          return groups.map((g) =>
+            h(
+              'div',
+              { className: 'sim-dg', key: 'g-' + g.name },
+              h('div', { className: 'sim-dg-h' }, g.name),
+              g.rows.map((x) => {
+                const hasFrom = x.d.from !== undefined || x.d._prev !== undefined;
+                const f = fmtVal(x.d.from !== undefined ? x.d.from : x.d._prev);
+                const t = fmtVal(x.d.to);
+                const isNew = !hasFrom && t !== '';
+                const isDel = t === '' && hasFrom;
+                return h(
+                  'div',
+                  {
+                    className: 'sim-df' + (isNew ? ' add' : isDel ? ' del' : ''),
+                    key: 'r' + x.i,
+                  },
+                  h('span', { className: 'k' }, x.m.label),
+                  isNew
+                    ? h('span', { className: 'v' }, '＋ ' + t)
+                    : isDel
+                      ? h('span', { className: 'v' }, '− ' + f)
+                      : h('span', { className: 'v' }, f + ' → ' + t)
+                );
+              })
+            )
+          );
         }
 
         function DiffRow(d) {
@@ -4694,6 +4780,35 @@ function App({ gameId, close }) {
             if (asSaveRef.current) window.clearTimeout(asSaveRef.current);
           }
 
+          /**
+           * 导出正文：宿主拼好 Markdown（只取 body，不取 think / ctx / diffs），
+           * 前端做成 Blob 直接下载。1000 轮约 3 MB，一次下载没问题。
+           * 成功不弹提示 —— 下载框本身就是反馈；失败才报错。
+           */
+          function exportStory() {
+            call('exportStory', {}, gameId)
+              .then((r) => {
+                if (!r || !r.ok || !r.text) {
+                  setErr('导出失败：' + ((r && r.msg) || '没拿到内容'));
+                  return;
+                }
+                try {
+                  const blob = new Blob([r.text], { type: 'text/markdown;charset=utf-8' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = r.name || 'story.md';
+                  document.body.appendChild(a);
+                  a.click();
+                  document.body.removeChild(a);
+                  window.setTimeout(() => URL.revokeObjectURL(url), 4000);
+                } catch (e) {
+                  setErr('下载失败：' + msg(e));
+                }
+              })
+              .catch((e) => setErr(msg(e)));
+          }
+
           /** 拉对话列表，顺带把当前对话的消息装进来 */
           function loadThreads(keepOpen) {
             return call('threadsList', {}, gameId)
@@ -6400,11 +6515,13 @@ onDoubleClick: () => {
                       h(
                         'details',
                         { className: 'sim-fact' },
-                        h('summary', null, '🔧 变量变化' + (t.diffs && t.diffs.length ? '（' + t.diffs.length + '）' : '')),
+                        h('summary', null, '结算详情' + (t.diffs && t.diffs.length ? '（' + t.diffs.length + ' 项）' : '')),
                         h(
                           'div',
                           { className: 'sim-fact-b' },
-                          t.diffs && t.diffs.length ? t.diffs.map((d, i) => DiffRow(Object.assign({ key: i }, d))) : '（本轮无变化）'
+                          t.diffs && t.diffs.length
+                            ? SettleDetail(t.diffs, state)
+                            : '（本轮无变化）'
                         )
                       )
                     )
@@ -9596,6 +9713,13 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
               '开发',
               null,
               h(GitCfg, { key: 'gitcfg' }),
+            h('div', { className: 'sim-card' },
+              h('div', { style: { fontWeight: 600, marginBottom: 6 } }, '导出'),
+              h('div', { className: 'sim-hint' }, '把这一局的正文导出成 Markdown。只含正文与角色表。'),
+              h('div', { className: 'sim-acts' },
+                h(Btn, { disabled: busy, onClick: exportStory }, '📄 导出正文')
+              )
+            ),
               h('div', { className: 'sim-card' },
                 h('div', { style: { fontWeight: 600, marginBottom: 6 } }, '清空本局'),
                 h('div', { className: 'sim-hint' }, '清空【本局】的全部数据（世界观 / 主角 / 正文 / 资产 / NPC），回到空白创建状态。测试时反复用。'),

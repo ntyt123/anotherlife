@@ -5069,6 +5069,76 @@ reg('parseRealPerson', async ({ gameId, name, fields }) => {
 
 
 
+/**
+ * 把这一局的正文导出成 Markdown。
+ * 只取 body（正文），不取 think / ctx / diffs —— 那三样是诊断信息，
+ * 出现在导出的故事里只会碍事。1000 轮大约 3 MB，前端用 Blob 下载。
+ */
+reg('exportStory', async ({ gameId }) => {
+  const s = await loadState(gameId);
+  const list = Array.isArray(s.transcript) ? s.transcript : [];
+  const w = s.world || {};
+  const p = s.protagonist || {};
+  const out = [];
+  out.push('# ' + (String(w.世界名称 || w.时代与年份 || '').trim() || '故事'));
+  out.push('');
+  const who = [p.姓名, p.年龄 ? p.年龄 + '岁' : '', p.身份].filter(Boolean).join(' · ');
+  if (who) {
+    out.push('> 主角：' + who);
+    out.push('');
+  }
+  if (w.当前日期时间) {
+    out.push('> 最后时间：' + String(w.当前日期时间));
+    out.push('');
+  }
+  out.push('---');
+  out.push('');
+  let seq = null;
+  list.forEach((t) => {
+    if (!t || !t.body) return;
+    if (t.seq !== seq) {
+      seq = t.seq;
+      out.push('## 第 ' + seq + ' 轮');
+      out.push('');
+    }
+    const isUser = t.role === 'user';
+    out.push(isUser ? '**我**' : '**叙事**');
+    out.push('');
+    out.push(String(t.body).trim());
+    out.push('');
+  });
+
+  // 角色表附在最后，方便事后对照
+  const npcs = Array.isArray(s.npcs) ? s.npcs : [];
+  if (npcs.length) {
+    out.push('---');
+    out.push('');
+    out.push('## 角色');
+    out.push('');
+    npcs.forEach((n) => {
+      if (!n) return;
+      const rel = (Array.isArray(s.relationships) ? s.relationships : []).find(
+        (r) => r && String(r.对象 || '') === String(n.姓名 || '')
+      );
+      out.push(
+        '- **' + String(n.姓名 || '未命名') + '**' +
+          (n.身份 ? ' · ' + String(n.身份) : '') +
+          (rel && rel.关系 ? ' · ' + String(rel.关系) : '')
+      );
+    });
+    out.push('');
+  }
+
+  const text = out.join('\n');
+  return {
+    ok: true,
+    text: text,
+    chars: text.length,
+    rounds: new Set(list.map((x) => x && x.seq)).size,
+    name: (String(w.世界名称 || '').trim() || '故事').replace(/[\\/:*?"<>|]/g, '_') + '.md',
+  };
+});
+
   /** 清空当前对话的消息（不删对话本身） */
   reg('assistantClear', async ({ gameId, threadId }) => {
     const db = await readThreads(gameId);
