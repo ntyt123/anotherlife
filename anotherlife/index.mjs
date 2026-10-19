@@ -6198,6 +6198,14 @@ reg('parseRealPerson', async ({ gameId, name, fields }) => {
     latest.diffs = diffs;
     latest.summary = String(sj.summary || '');
     latest.options = pickOptions(sj.options, latest.options);
+    // 重算成功 = 这一轮的变量已经补上了。顺手清掉「结算没成」那条提示 ——
+    // 否则玩家点了重算、数字明明变了，正文下面还挂着红字说没更新。
+    // 只清结算这一类，别的步骤（检索失败之类）原样留着。
+    if (Array.isArray(latest.issues) && latest.issues.length) {
+      const rest = latest.issues.filter((x) => x && x.step !== 'settle');
+      if (rest.length) latest.issues = rest;
+      else delete latest.issues;
+    }
     applyDiffs(s, diffs);
     setProg(gameId, 'save', '写回存档');
     await saveState(s);
