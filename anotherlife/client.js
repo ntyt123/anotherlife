@@ -541,6 +541,8 @@ window.__ModuleLoader__.load({
       // 降级但没断：黄灯常亮（红的是彻底挂了）
       '.sim-stage-step.warn{color:#b07514;border-color:rgba(176,117,20,.6);background:rgba(176,117,20,.1);font-weight:700}',
       '.sim-stage-step.warn .ic{margin-left:3px;font-size:var(--sim-fs-2)}',
+      '.sim-stage-note{margin-top:4px;padding:4px 8px;border-radius:6px;background:rgba(176,117,20,.09);border-left:3px solid rgba(176,117,20,.55);color:#8a5c10;font-size:var(--sim-fs-2);line-height:1.6;word-break:break-word}',
+      '.sim-stage.err .sim-stage-note{background:rgba(195,74,74,.09);border-left-color:rgba(195,74,74,.6);color:#a33}',
       '@keyframes simPulse{0%,100%{opacity:1}50%{opacity:.62}}',
       '@keyframes simFlash{0%,100%{opacity:1}50%{opacity:.3}}',
       '.sim-stage-txt{font-size:var(--sim-fs-1);color:var(--sim-t2);word-break:break-word}',
@@ -3627,6 +3629,8 @@ function App({ gameId, close }) {
           const [slotErr, setSlotErr] = React.useState({}); // { [slot]: 错误文字 }
           const stageAtRef = React.useRef(''); // 最近一次已知的阶段名（出错时用来标是哪一步挂的）
           const [warnSteps, setWarnSteps] = React.useState([]); // 降级过的步骤：标黄灯（检索兜底、结算没成）
+          // 每个降级步骤的原因（宿主 markWarn 的第三参数），在进度条下面显示一行
+          const [warnWhy, setWarnWhy] = React.useState({});
           // 注意：hook 必须全部放在下面那个「state 还没加载好就 return」之前，否则各次渲染的 hook 数量会变（React #310）
           const [parseSec, setParseSec] = React.useState(0); // AI 解析已用秒数（按钮上显示）
           const parseTimer = React.useRef(0);
@@ -10366,6 +10370,7 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
                   if (st !== 'idle' && st !== 'error' && st !== 'ok' && st !== 'done') stageAtRef.current = st;
                   setStage({ stage: st, text: p.text || '' });
                   setWarnSteps(Array.isArray(p.warn) ? p.warn : []);
+                  setWarnWhy(p.why && typeof p.why === 'object' ? p.why : {});
                 })
                 .catch(() => {});
             };
@@ -10413,6 +10418,15 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
                 })
               ),
               h('span', { className: 'sim-stage-txt' }, (stage && stage.text) || '')
+              ,
+              // 降级/失败的原因：光有 ⚠ 看不出发生了什么
+              warnSteps.length
+                ? h(
+                    'div',
+                    { className: 'sim-stage-note' },
+                    warnSteps.map((k) => (warnWhy[k] || (STAGE_LABEL[k] ? STAGE_LABEL[k][1] : k) + ' 走了兜底')).join('　·　')
+                  )
+                : null
             );
           }
 

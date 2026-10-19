@@ -3852,7 +3852,7 @@ function footActive(s, body) {
     setProg(gid, 'retrieve', 'AI 提取信息 · 筛选本轮要注入的状态');
     const sys = await storySystemPrompt(s, opts.all ? '' : sendText, opts);
     // 检索没成功（走了关键词兜底）：这一轮注入的状态可能挑不准，阶段条上标个黄灯
-    if (lastContext && lastContext.via === 'keyword') markWarn(gid, 'retrieve');
+    if (lastContext && lastContext.via === 'keyword') markWarn(gid, 'retrieve', '检索模型没成功，这一轮的上下文是关键词兜底挑的（可能漏掉相关条目）');
     if (lastContext) userEntry.ctx = { mode: lastContext.mode, via: lastContext.via, count: lastContext.count, text: lastContext.text };
     // 重写模式：玩家这一轮的行动已经定下来了，这次不是「他说了什么」，
   // 而是「把已经发生的这一轮换个写法再写一遍」。所以发给模型的不是原始输入，
@@ -3979,7 +3979,7 @@ function footActive(s, body) {
           );
         } else {
           await turnLog('[settle] gameId=' + gid + ' seq=' + seq + ' JSON 解析失败：' + String(settleRaw || '').slice(0, 400));
-          markWarn(gid, 'settle'); // 没解析出 JSON = 这一轮变量没更新
+          markWarn(gid, 'settle', '结算没有返回可解析的 JSON —— 这一轮的变量（时间、角色状态、穿着等）都没有更新');
         }
       } catch (e) {
         await turnLog('[settle] gameId=' + gid + ' seq=' + seq + ' 失败：' + String((e && e.message) || e));
@@ -4266,13 +4266,16 @@ function footActive(s, body) {
    * （比如检索模型没成功、只能关键词兜底；结算失败、这一轮变量没更新）。
    * 只标在阶段条上，不打断流程。
    */
-  function markWarn(gameId, step) {
+  function markWarn(gameId, step, why) {
     const k = String(gameId || '');
     if (!k || !step) return;
-    const prev = PROGRESS[k] || { stage: '', text: '', at: Date.now(), seq: 0, warn: [] };
+    const prev = PROGRESS[k] || { stage: '', text: '', at: Date.now(), seq: 0, warn: [], why: {} };
     const warn = (prev.warn || []).slice();
+    const whyMap = Object.assign({}, prev.why || {});
     if (warn.indexOf(step) < 0) warn.push(step);
-    PROGRESS[k] = Object.assign({}, prev, { warn: warn, at: Date.now() });
+    // 原因只留一行、限长：它是给界面看的，不是日志
+    if (why) whyMap[step] = String(why).slice(0, 220);
+    PROGRESS[k] = Object.assign({}, prev, { warn: warn, why: whyMap, at: Date.now() });
   }
   /** 新一轮开始时把进度整个清掉（含上一轮的降级标记） */
   function resetProg(gameId) {
@@ -4755,7 +4758,7 @@ function footActive(s, body) {
   reg('turnProgress', async ({ gameId }) => {
     const p = PROGRESS[String(gameId || '')];
     return p
-      ? { ok: true, stage: p.stage, text: p.text, at: p.at, warn: p.warn || [] }
+      ? { ok: true, stage: p.stage, text: p.text, at: p.at, warn: p.warn || [], why: p.why || {} }
       : { ok: true, stage: 'idle', text: '', warn: [] };
   });
 
