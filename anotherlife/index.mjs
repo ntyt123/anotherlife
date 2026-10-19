@@ -4017,7 +4017,7 @@ function seasonText(s) {
         // 只要求「输出 JSON」时模型常常只丢一个日期就交卷。
         // 首选工具调用：参数由 API 层保证是结构化对象；拿不到再走文本解析（兼容不支持 tools 的模型）
         const settleRes = await callSlot(s, 'settle', msgs, {
-          maxTokens: 6000,
+          maxTokens: 10000,
           tag: '结算',
           tools: [SETTLE_TOOL],
           wantTools: true,
@@ -4025,8 +4025,18 @@ function seasonText(s) {
             // 不占工具参数那点输出空间（正文只有几十字时尤其明显）
             reasoningEffort: await reasoningOf(s, 'settle'),
         });
-        const settleRaw = String(settleRes && settleRes.text != null ? settleRes.text : settleRes == null ? '' : settleRes);
-        const sj = pickToolCall(settleRes) || parseJsonLoose(settleRaw);
+        // text 空时退回 reasoning：推理模型偶尔把整段（含 <think>）放进思考通道，
+        // 正文留空。只取 text 会拿到空串，结算直接判失败。
+        const settleText = String((settleRes && settleRes.text) || '');
+        const settleThink = String((settleRes && settleRes.reasoning) || '');
+        const settleRaw = settleText.trim() ? settleText : (settleThink || '');
+        // 剥掉 <think> 块再解析：思考里常出现完整或半截的 {}，
+        // extractJson 抓到那个会拿到一堆不完整的东西，真正的 JSON 反而被跳过。
+        const settleBody = settleRaw
+          .replace(/<think>[\s\S]*?<\/think>/gi, '')
+          // 没有闭合的 <think>（被输出预算截断）：从 <think> 起整段丢掉
+          .replace(/<think>[\s\S]*$/i, '');
+        const sj = pickToolCall(settleRes) || parseJsonLoose(settleBody);
         if (sj) {
           diffs = settleToDiffs(s, sj);
           summary = String(sj.summary || '');
