@@ -334,9 +334,9 @@ window.__ModuleLoader__.load({
       '@keyframes sim-flash{0%{background:rgba(255,200,80,.30)}100%{background:transparent}}',
       '.sim-dg:last-child{margin-bottom:0}',
       '.sim-dg-h{font-size:var(--sim-fs-2);color:var(--sim-t3);font-weight:600;margin-bottom:3px}',
-      '.sim-df{display:flex;gap:8px;align-items:baseline;padding:2px 0;font-size:var(--sim-fs-3);line-height:1.7}',
+      '.sim-df{display:flex;gap:8px;align-items:baseline;padding:2px 0;font-size:var(--sim-fs-3);line-height:1.7;flex-wrap:wrap}',
       '.sim-df .k{flex:0 0 auto;color:var(--sim-t2);min-width:64px}',
-      '.sim-df .v{flex:1;min-width:0;word-break:break-word}',
+      '.sim-df .v{flex:1 1 200px;min-width:0;word-break:break-all;white-space:pre-wrap;line-height:1.65}',
       '.sim-df.add .v{color:#3f9d6a}',
       '.sim-df.del .v{color:#d9534f}',
       '.sim-diff{display:flex;gap:8px;font-size:var(--sim-fs-2);padding:2px 0;flex-wrap:wrap;align-items:baseline}',
@@ -1107,23 +1107,31 @@ window.__ModuleLoader__.load({
          * 把变量值显示成人能读的样子。
          * 之前直接 String(v)，对象/数组会变成「[object Object],[object Object]」。
          */
+        /**
+         * 把一个值渲染成结算详情里能读的文字。
+         *
+         * 全部展开，不做「等 N 项」/「N 个字段」的省略 —— 结算详情就是拿来看
+         * 到底改了什么，省掉的正好是最需要看的那部分（比如 27 项 → 29 项，
+         * 多了哪两个角色，省略之后完全看不出来）。长就长，正文区本来就能滚。
+         *
+         * 唯一保留的收敛：嵌套超过 6 层时停手，防止异常数据把界面撑爆。
+         */
         function fmtVal(v, depth) {
           const d = depth || 0;
           if (v == null) return '';
           if (typeof v === 'string') return v;
           if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+          if (d > 6) return '…';
           if (Array.isArray(v)) {
             if (!v.length) return '（空）';
-            const head = v.slice(0, 8).map((x) => fmtVal(x, d + 1)).join('、');
-            return head + (v.length > 8 ? ' 等 ' + v.length + ' 项' : '');
+            return v.map((x) => fmtVal(x, d + 1)).join('、');
           }
           if (typeof v === 'object') {
             const nm = v.名称 || v.名字 || v.姓名 || v.对象 || v.物品 || v.title || v.name;
             if (nm && d > 0) return String(nm);
             const ks = Object.keys(v);
             if (!ks.length) return '（空）';
-            if (d >= 2) return ks.length + ' 个字段';
-            return ks.slice(0, 5).map((k) => k + '=' + fmtVal(v[k], d + 1)).join('  ');
+            return ks.map((k) => k + '=' + fmtVal(v[k], d + 1)).join('  ');
           }
           return String(v);
         }
