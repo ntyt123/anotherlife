@@ -9172,8 +9172,11 @@ function toggleFans(npc) {
                       ? h(
                         'div',
                         { className: 'sim-grid' },
+                        // 备注和依据是长文本：用多行框 + 占满整行，否则会截成一行看不全
                         ['对象', '关系', '好感度', '信任度', '欲望', '依据', '印象标签', '当前状况', '备注'].map((k) =>
                           h(Field, {
+                          multiline: k === '备注' || k === '依据',
+                          wide: k === '备注' || k === '依据',
                             key: k,
                             label: k,
                             value: rel[k] == null ? '' : rel[k],
