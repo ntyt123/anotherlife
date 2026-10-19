@@ -5542,14 +5542,17 @@ function App({ gameId, close }) {
                       { className: 'sim-tip-rows' },
                       o.tip.map((t, i) => {
                         const label = String(t[0] == null ? '' : t[0]);
-                        const value = String(t[1] == null ? '' : t[1]);
+                        // 不要 String()：浓度那一行传的是 React 元素，转成字符串就成了 [object Object]
+                        const rawVal = t[1];
+                        const value = rawVal == null ? '' : rawVal;
+                        const valueText = typeof value === 'string' ? value : '';
                         // 简介/气味 这类长文本单独换行显示；气味再用引文条强调一下
                         const wide = label === '简介' || label === '气味';
                         return h(
                           'span',
                           {
                             className:
-                              'sim-tip-row' + (wide ? ' wide' : '') + (label === '气味' ? ' scent' : '') + (value === '（未记录）' ? ' dim' : ''),
+                              'sim-tip-row' + (wide ? ' wide' : '') + (label === '气味' ? ' scent' : '') + (valueText === '（未记录）' ? ' dim' : ''),
                             key: i,
                           },
                           h('span', { className: 'sim-tip-k' }, label),
@@ -8027,8 +8030,7 @@ onDoubleClick: () => {
             if (String(slot.穿着时长 || '').trim()) tip.push(['穿着', String(slot.穿着时长).trim()]);
             if (k === '袜子' && !male) {
               const sc = String(slot.气味 || '').trim();
-              const dots = scentDots(slot);
-              tip.push(['气味', (sc || '（未记录）') + (dots ? '　' + dots : '')]);
+              tip.push(['气味', sc || '（未记录）']);
               // 0~100 的浓度条：圆点只有四档，看不出 12 和 39 的差别
               const lv = Number(slot && slot.气味强度);
               if (Number.isFinite(lv)) {
