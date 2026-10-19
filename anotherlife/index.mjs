@@ -6208,7 +6208,11 @@ reg('parseRealPerson', async ({ gameId, name, fields }) => {
     setProg(gameId, 'settle', '重算变量中 · 变量变化 + 小总结');
     const msgs = [
       { role: 'system', content: await settleSystemPrompt(s, gameId, latest.body) },
-      { role: 'user', content: '本轮正文：\n' + latest.body },
+      { role: 'user', content: '本轮正文：\n' + latest.body + '\n\n' +
+        '【这是重新结算】上一轮的变量结算没成功，所以「当前状态变量」还停在**这一轮之前**的样子 —— ' +
+        '那里面写的 舆论／粉丝动态／当前状态／当前想法／穿着 都是旧值。' +
+        '请**完全按上面这段正文重新判断**，不要把「当前状态变量」里的旧值当成这一轮的结果：' +
+        '正文里发生了什么（谁塌房了、谁被牵连、谁的处境变了），就写成什么，哪怕和旧值一样也要重写一遍。' }
     ];
     const res2 = await callSlot(s, 'settle', msgs, {
       maxTokens: tokOf(s, 'settle'),
