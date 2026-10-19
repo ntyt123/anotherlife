@@ -8044,7 +8044,12 @@ function renderTrace(v) {
                     if (it == null) return '';
                     if (typeof it === 'object') {
                       return Object.keys(it)
-                        .map((k) => String(it[k] == null ? '' : it[k]).trim())
+                        .map((k) => {
+                          const v = it[k];
+                          if (v == null || String(v).trim() === '') return '';
+                          if (typeof v === 'number') return k;   // 敏感度那种：只取键名
+                          return k + ' ' + String(v).trim();
+                        })
                         .filter(Boolean)
                         .join(' · ');
                     }
@@ -8053,11 +8058,17 @@ function renderTrace(v) {
                   .filter(Boolean);
               }
               if (value && typeof value === 'object') {
-                const one = Object.keys(value)
-                  .map((k) => String(value[k] == null ? '' : value[k]).trim())
-                  .filter(Boolean)
-                  .join(' · ');
-                return one ? [one] : [];
+                // 值是对象：键名带上（经验 {"穴":"熟悉"} 应该显示成「穴 熟悉」，不是光一个「熟悉」）
+                // 值是数字的（敏感度 {"足心":80}）只取键名 —— 数值另有条表示
+                const parts = Object.keys(value)
+                  .map((k) => {
+                    const v = value[k];
+                    if (v == null || String(v).trim() === '') return '';
+                    if (typeof v === 'number') return k;
+                    return k + ' ' + String(v).trim();
+                  })
+                  .filter(Boolean);
+                return parts;
               }
               const raw = String(value == null ? '' : value).trim();
               if (!raw || raw === '未知') return [];
