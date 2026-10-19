@@ -228,6 +228,9 @@ window.__ModuleLoader__.load({
       '.sim-tip-row.wide .sim-tip-k{flex:none}',
       '.sim-tip-row.scent .sim-tip-v{background:var(--sim-bg);border-left:3px solid var(--sim-ac);border-radius:0 7px 7px 0;padding:4px 9px;font-style:italic;white-space:pre-wrap}',
       '.sim-tip-row.dim .sim-tip-v{color:var(--sim-t2)}',
+      '.sim-scent-bar{position:relative;height:15px;border-radius:8px;background:var(--sim-bd);overflow:hidden;min-width:150px}',
+      '.sim-scent-fill{height:100%;border-radius:8px;background:linear-gradient(90deg,#7fb87a 0%,#d9a441 55%,#c9563f 100%);background-size:260% 100%;background-position:0 0;transition:width .2s}',
+      '.sim-scent-n{position:absolute;right:6px;top:0;line-height:15px;font-size:10px;color:var(--sim-t2);font-variant-numeric:tabular-nums}',
       // ── 正文底部：小总结 / 变量变化 ──
       '.sim-facts{margin-top:10px;padding-top:8px;border-top:1px dashed var(--sim-bd);display:flex;flex-direction:column;gap:6px}',
       '.sim-fact{background:var(--sim-bg);border:1px solid var(--sim-bd);border-radius:8px;padding:7px 9px}',
@@ -7990,6 +7993,16 @@ onDoubleClick: () => {
               const sc = String(slot.气味 || '').trim();
               const dots = scentDots(slot);
               tip.push(['气味', (sc || '（未记录）') + (dots ? '　' + dots : '')]);
+              // 0~100 的浓度条：圆点只有四档，看不出 12 和 39 的差别
+              const lv = Number(slot && slot.气味强度);
+              if (Number.isFinite(lv)) {
+                tip.push(['浓度', h(
+                  'div',
+                  { className: 'sim-scent-bar' },
+                  h('div', { className: 'sim-scent-fill', style: { width: Math.max(0, Math.min(100, lv)) + '%' } }),
+                  h('span', { className: 'sim-scent-n' }, Math.round(lv) + '/100')
+                )]);
+              }
             }
             // 鞋袜是「身体」里同一个部位的外壳：这里顺手给一个入口，不用再翻到身体区
             if ((k === '袜子' || k === '鞋子') && owner && owner.身体 && typeof owner.身体 === 'object') {
