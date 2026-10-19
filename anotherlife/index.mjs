@@ -3134,6 +3134,9 @@ function pickToolCall(r) {
       ...jbHead,
       '你是人生模拟器的后台变量结算器。依据本轮正文事实和当前变量快照，产出这一轮**全部**变量变化与一句话小总结。',
       '只记录正文已发生的事实，不猜测。',
+      '【最低要求】每一轮都必须更新 world.当前日期时间 —— 哪怕故事里只过了几分钟。',
+      '  · 正文里出现「第二天」「两天后」「一周后」「转眼到了」「等我再回来时」这类时间跳转，日期就必须跟着改（星期几也要对）。',
+      '  · 这一条没有例外：日期不动 = 所有按时间推进的东西（袜子气味、身体痕迹、体液、生理周期）全部停摆，玩家会看到「明明过了几天，什么都没变」。',
       '',
       '【当前状态变量】',
       settleSnapshot(s),
@@ -3977,13 +3980,19 @@ function footActive(s, body) {
                     .join('/')
                 : '')
           );
+              // 返回了合法 JSON 但一条变化都没有 —— 多半是模型给了一个空壳。
+              // 不标的话，正文和变量会悄悄脱节（正文说着「两天后」，时间还停在原地，
+              // 所有按小时衰减的东西都不动），用户只会觉得「功能坏了」。
+              if (!diffs.length) {
+                markWarn(gid, 'settle', '结算返回了但没有产出任何变量变化 —— 这一轮的时间、角色状态、穿着都没更新，正文和变量会脱节');
+              }
         } else {
           await turnLog('[settle] gameId=' + gid + ' seq=' + seq + ' JSON 解析失败：' + String(settleRaw || '').slice(0, 400));
           markWarn(gid, 'settle', '结算没有返回可解析的 JSON —— 这一轮的变量（时间、角色状态、穿着等）都没有更新');
         }
       } catch (e) {
         await turnLog('[settle] gameId=' + gid + ' seq=' + seq + ' 失败：' + String((e && e.message) || e));
-        markWarn(gid, 'settle');
+        markWarn(gid, 'settle', '结算调用失败（' + String((e && e.message) || e).slice(0, 120) + '）—— 这一轮的变量都没更新');
         console.error('[dsh-tavern-simulator] 结算失败', e);
       }
     }
