@@ -318,7 +318,7 @@ window.__ModuleLoader__.load({
       '.sim-snap .x{flex:0 0 auto;width:20px;height:20px;padding:0;border:none;border-radius:50%;background:transparent;color:var(--sim-t3);font-size:12px;line-height:1;cursor:pointer;opacity:0;transition:opacity .12s}',
       '.sim-snap:hover .x{opacity:1}',
       '.sim-snap .x:hover{background:rgba(0,0,0,.42);color:#fff}',
-      '.sim-find{display:flex;align-items:center;gap:6px;margin-bottom:10px;padding:6px 8px;border:1px solid var(--sim-bd);border-radius:8px;background:var(--sim-bg2)}',
+      '.sim-find{display:flex;align-items:center;gap:6px;margin:8px 12px 0;padding:6px 8px;border:1px solid var(--sim-bd);border-radius:8px;background:var(--sim-bg2)}',
       '.sim-find-in{flex:1;min-width:0;background:transparent;border:none;outline:none;color:var(--sim-t);font-size:var(--sim-fs-3);font-family:inherit;padding:2px 0}',
       '.sim-find-in::placeholder{color:var(--sim-t3)}',
       '.sim-find-n{flex:0 0 auto;font-size:var(--sim-fs-2);color:var(--sim-t3);font-variant-numeric:tabular-nums}',
@@ -6645,32 +6645,6 @@ onDoubleClick: () => {
           const playView = h(
             'div',
             null,
-            // 正文内搜索：输入即定位，↑↓ 在命中之间跳
-            h(
-              'div',
-              { className: 'sim-find' },
-              h('input', {
-                className: 'sim-find-in',
-                placeholder: '搜索正文…',
-                value: findQ,
-                onChange: (e) => {
-                  setFindQ(e.target.value);
-                  setFindAt(0);
-                  if (e.target.value.trim()) window.setTimeout(() => jumpToHit(0), 30);
-                },
-                onKeyDown: (e) => {
-                  if (e.key === 'Enter') { e.preventDefault(); jumpToHit(findAt + (e.shiftKey ? -1 : 1)); }
-                  else if (e.key === 'Escape') { setFindQ(''); }
-                },
-              }),
-              findQ.trim() ? h('span', { className: 'sim-find-n' }, (function () {
-                const hits = findHits(findQ);
-                return hits.length ? (findAt + 1) + '/' + hits.length : '0';
-              })()) : null,
-              findQ.trim() ? h('button', { className: 'sim-find-b', title: '上一个', onClick: () => jumpToHit(findAt - 1) }, '↑') : null,
-              findQ.trim() ? h('button', { className: 'sim-find-b', title: '下一个', onClick: () => jumpToHit(findAt + 1) }, '↓') : null,
-              findQ.trim() ? h('button', { className: 'sim-find-b', title: '清除', onClick: () => setFindQ('') }, '✕') : null,
-            ),
             more > 0 ? h('div', { style: { marginBottom: 8 } }, h(Btn, { onClick: () => setShown(shown + 14) }, '加载更早（还有 ' + more + ' 段）')) : null,
             list.length === 0
               ? h('div', { className: 'sim-card' }, '正文从这里开始。在下方输入你的行动，或点击行动选项。')
@@ -10108,6 +10082,36 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
               'div',
               { className: 'sim-main' },
               top,
+              // 正文内搜索栏：放在滚动容器外面，滚正文时它不动
+              tab === 'play'
+                ? h(
+                    'div',
+                    { className: 'sim-find' },
+                    h('input', {
+                      className: 'sim-find-in',
+                      placeholder: '搜索正文…',
+                      value: findQ,
+                      onChange: (e) => {
+                        setFindQ(e.target.value);
+                        setFindAt(0);
+                        if (e.target.value.trim()) window.setTimeout(() => jumpToHit(0), 30);
+                      },
+                      onKeyDown: (e) => {
+                        if (e.key === 'Enter') { e.preventDefault(); jumpToHit(findAt + (e.shiftKey ? -1 : 1)); }
+                        else if (e.key === 'Escape') { setFindQ(''); }
+                      },
+                    }),
+                    findQ.trim()
+                      ? h('span', { className: 'sim-find-n' }, (function () {
+                          const hits = findHits(findQ);
+                          return hits.length ? (findAt + 1) + '/' + hits.length : '0';
+                        })())
+                      : null,
+                    findQ.trim() ? h('button', { className: 'sim-find-b', title: '上一个', onClick: () => jumpToHit(findAt - 1) }, '↑') : null,
+                    findQ.trim() ? h('button', { className: 'sim-find-b', title: '下一个', onClick: () => jumpToHit(findAt + 1) }, '↓') : null,
+                    findQ.trim() ? h('button', { className: 'sim-find-b', title: '清除', onClick: () => setFindQ('') }, '✕') : null,
+                  )
+                : null,
               h(
                 'div',
                 {
