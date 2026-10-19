@@ -368,7 +368,7 @@ window.__ModuleLoader__.load({
       '.sim-diff .t{color:var(--sim-good);word-break:break-word}',
       '.sim-diff .arrow{color:var(--sim-mut);flex:0 0 auto}',
       // ── 角色卡片墙 ──
-      '.sim-npc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px;margin-top:8px}',
+      '.sim-npc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(268px,1fr));gap:10px;margin-top:8px}',
       // 穿着/物品胶囊在弹窗里可能很长，允许换行
       '.sim-panel .sim-chips{display:flex;flex-wrap:wrap;gap:6px}',
       // ── 头像块（角色卡 / 弹窗标题 / 主角页共用；有图就显示图，没有就显示占位符号）──
@@ -428,9 +428,10 @@ window.__ModuleLoader__.load({
       '.sim-face{width:152px;height:190px;font-size:66px;border-radius:18px}',
       '.sim-npc-body{flex:1 1 auto;min-width:0}',
       '.sim-npc-h{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px}',
-      '.sim-npc-h .nm{font-weight:700;font-size:var(--sim-fs-5);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1 1 auto}',
+      '.sim-npc-h .nm{font-weight:700;font-size:var(--sim-fs-5);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1 1 0;min-width:0}',
       // 卡片上的星标与删除：平时淡出，鼠标移上去才显形；标了重要的星一直亮着
-      '.sim-npc-star{border:0;background:none;color:var(--sim-t3);cursor:pointer;font-size:var(--sim-fs-4);padding:0 3px;opacity:0;transition:opacity .12s,color .12s;flex:none}',
+      '.sim-npc-star{border:0;background:none;color:var(--sim-t3);cursor:pointer;font-size:var(--sim-fs-3);padding:0 2px;opacity:0;transition:opacity .12s,color .12s;flex:0 0 auto;line-height:1}',
+      '.sim-npc-h{gap:4px}',
       '.sim-npc:hover .sim-npc-star,.sim-npc-star.on{opacity:1}',
       '.sim-npc-star.on{color:#e8a33d}',
       '.sim-npc-del{border:0;background:none;color:var(--sim-t3);cursor:pointer;font-size:var(--sim-fs-3);padding:0 3px;opacity:0;transition:opacity .12s,color .12s;flex:none}',
@@ -8588,7 +8589,7 @@ function toggleFans(npc) {
                 h(
                   'div',
                   { className: 'sim-npc-h' },
-                  h('span', { className: 'nm' }, '☆ ' + c.nm),
+                  h('span', { className: 'nm' }, c.nm),
                   // 重要的角色打个星，列表里排在最前
                   npc
                     ? h('button', {
