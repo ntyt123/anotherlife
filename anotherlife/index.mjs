@@ -1773,6 +1773,18 @@ function humanSockHours(h) {
  * 纯算术，不叫模型：只要 world.当前日期时间 有变化就能算。
  * 返回的条目自带 from —— applyDiffs 已经跑过，重算/删轮才退得回去。
  */
+/**
+ * 每轮结算后推进袜子的气味状态。四件事：
+ *   ⓪ 老数据没有 气味强度 的，先按文本补一个初始值
+ *   ① 穿着的袜子按小时涨
+ *   ② 换了新袜子就归零（物品名变了就是换了）
+ *   ③ 物品栏里脱下来的袜子按小时掉（比积累慢 2.5 倍）
+ *
+ * 补初始值放在时间判断之前 —— 否则第一次调用只记基准、不补值，
+ * 老存档要等到第二轮才生效，用户会觉得「重新生成了还是老样子」。
+ *
+ * 返回的条目自带 from —— applyDiffs 已经跑过，重算/删轮才退得回去。
+ */
 function tickSockScent(s) {
   const out = [];
   try {
@@ -1781,25 +1793,49 @@ function tickSockScent(s) {
     s.story = s.story || {};
     const prev = Number(s.story.sockTick);
     s.story.sockTick = now;
+    const npcs = Array.isArray(s.npcs) ? s.npcs : [];
+    
+    // ⓪ 老数据补初始值（不依赖时间基准，第一轮就补上）
+    npcs.forEach((n, i) => {
+      const w = n && n.穿着 && n.穿着.袜子;
+      if (!w || !String(w.物品 || '').trim()) return;
+      if (w.气味强度 != null && w.气味强度 !== '') return;
+      const g = guessSockStrength(w.穿着时长, w.气味);
+      const sv = g ? g.s : 45;
+      const hv = g ? g.h : 8;
+      const mat1 = detectSockMaterial(w.物品);
+      const t1 = scentTextOf(scentLevel(sv), mat1, w.物品);
+      out.push({ path: ['npcs', i, '穿着', '袜子', '气味强度'], from: undefined, to: sv, bySock: true });
+      out.push({ path: ['npcs', i, '穿着', '袜子', '穿着小时'], from: undefined, to: hv, bySock: true });
+      out.push({ path: ['npcs', i, '穿着', '袜子', '材质'], from: undefined, to: mat1, bySock: true });
+      out.push({ path: ['npcs', i, '穿着', '袜子', '气味'], from: String(w.气味 || ''), to: t1, bySock: true });
+      out.push({ path: ['npcs', i, '穿着', '袜子', '穿着时长'], from: String(w.穿着时长 || ''), to: humanSockHours(hv), bySock: true });
+      w.气味强度 = sv;
+      w.穿着小时 = hv;
+      w.材质 = mat1;
+      w.气味 = t1;
+      w.穿着时长 = humanSockHours(hv);
+    });
+    
+    // 没有上一轮基准：补完值就结束，这一轮不累加
     if (!Number.isFinite(prev)) return out;
     const dh = (now - prev) / 60;
     if (!(dh > 0) || dh > 240) return out;
     
     // ① 穿着中的
-    const npcs = Array.isArray(s.npcs) ? s.npcs : [];
     npcs.forEach((n, i) => {
       const w = n && n.穿着 && n.穿着.袜子;
       if (!w || !String(w.物品 || '').trim()) return;
-      // 换了新袜子：先归零，别把上一双的浓度接着算下去
       const curName = String(w.物品 || '').trim();
       const prevName = String(w._上一双 || '').trim();
+      // 换了新袜子：先归零，别把上一双的浓度接着算下去
       if (prevName && prevName !== curName) {
         const oldStr = Number(w.气味强度) || 0;
         const mat0 = detectSockMaterial(curName);
+        const t0 = scentTextOf(0, mat0, curName);
         out.push({ path: ['npcs', i, '穿着', '袜子', '气味强度'], from: oldStr, to: 0, bySock: true });
         out.push({ path: ['npcs', i, '穿着', '袜子', '穿着小时'], from: Number(w.穿着小时) || 0, to: 0, bySock: true });
         out.push({ path: ['npcs', i, '穿着', '袜子', '材质'], from: w.材质 || '', to: mat0, bySock: true });
-        const t0 = scentTextOf(0, mat0, curName);
         out.push({ path: ['npcs', i, '穿着', '袜子', '气味'], from: String(w.气味 || ''), to: t0, bySock: true });
         out.push({ path: ['npcs', i, '穿着', '袜子', '穿着时长'], from: String(w.穿着时长 || ''), to: '刚换上', bySock: true });
         w.气味强度 = 0;
@@ -1809,11 +1845,7 @@ function tickSockScent(s) {
         w.穿着时长 = '刚换上';
       }
       w._上一双 = curName;
-      if (w.睡眠中 === true) {
-        return;
-      }
-      // 老数据还没迁移过：跳过，等「升级袜子强度」补上基准值
-      if (w.气味强度 == null || w.气味强度 === '') return;
+      if (w.睡眠中 === true) return;
       const mat = w.材质 || detectSockMaterial(w.物品);
       const rate = 100 / (SOCK_FULL_HOURS[mat] || SOCK_FULL_HOURS.混纺);
       const before = Number(w.气味强度) || 0;
@@ -1823,15 +1855,12 @@ function tickSockScent(s) {
         w.材质 = mat;
       }
       if (after === before) return;
-      // 穿着小时也要累计并记进 diff —— 它是强度与「已穿多久」的唯一依据，
-      // 不回滚的话重新生成之后时长会一直往前跑。
       const beforeH = Number(w.穿着小时) || 0;
       const afterH = Math.min(160, Math.round((beforeH + dh) * 10) / 10);
       out.push({ path: ['npcs', i, '穿着', '袜子', '穿着小时'], from: beforeH, to: afterH, bySock: true });
       w.穿着小时 = afterH;
       out.push({ path: ['npcs', i, '穿着', '袜子', '气味强度'], from: before, to: after, bySock: true });
       w.气味强度 = after;
-      // 气味文案与「已穿多久」只在跨档时重写 —— 每轮都改会让界面上那句话一直闪。
       const lvBefore = Math.floor(before / 17);
       const lvAfter = Math.floor(after / 17);
       const oldText = String(w.气味 || '');
@@ -1848,7 +1877,7 @@ function tickSockScent(s) {
       }
     });
     
-    // ② 物品栏里脱下来的袜子：放着会变淡，比穿着时积累慢 2.5 倍
+    // ② 物品栏里脱下来的袜子：放着会变淡，速度是积累的 1/2.5
     const bag = s.protagonist && Array.isArray(s.protagonist.物品) ? s.protagonist.物品 : [];
     bag.forEach((it, i) => {
       if (!it || typeof it !== 'object') return;
@@ -1868,11 +1897,6 @@ function tickSockScent(s) {
   return out;
 }
 
-/**
- * 老存档的「穿着时长」是自由文本（半日 / 刚换上 / 一整天），
- * 这里把它映射成一个 0~100 的初始强度 + 小时数。
- * 返回 null 表示映射不了，交给 AI 兜底。
- */
 /**
  * 老存档的「穿着时长」是自由文本（半日 / 刚换上 / 一整天），这里映射成 0~100。
  * 第二个参数是气味描述 —— 很多老数据时长为空，但描述里写着「半日穿着」「刚洗过」，
