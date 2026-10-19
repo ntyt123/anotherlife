@@ -3454,6 +3454,15 @@ const WARN_FALLBACK = {
          * 变了说明有新正文，那就该跳到新的开头，而不是固执地回到旧位置。
          */
         const SCROLL_KEY = (gid) => 'sim-scroll-' + String(gid || 'default');
+        /**
+         * 本次会话是否已经打开过正文页（刷新页面重置）。
+         *
+         * 首次打开时忽略记忆里的阅读进度、直接翻到最后一页 —— 玩家想看的
+         * 是「现在到哪儿了」，不是上次关掉时停在半山腰。之后再切页签，
+         * 位置照旧按 readScrollPos 还原。
+         */
+        let playOpenedOnce = false;
+
         function readScrollPos(gid) {
           try {
             const s = window.localStorage.getItem(SCROLL_KEY(gid));
