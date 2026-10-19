@@ -4355,6 +4355,14 @@ function seasonText(s) {
       summary,
       diffs,
       options: pickOptions(sp.options, settleOptions),
+      // 这一轮出过的问题（降级/结算失败）：跟着正文一起存进 transcript，
+      // 玩家回来翻到这一轮就能看到 —— 进度条上的黄灯一刷新就没了。
+      issues: (function () {
+        const p = PROGRESS[String(gid || '')];
+        if (!p || !Array.isArray(p.warn) || !p.warn.length) return [];
+        const why = p.why || {};
+        return p.warn.map((k) => ({ step: k, why: String(why[k] || '') }));
+      })(),
       ts: Date.now(),
     };
     s.transcript.push(entry);

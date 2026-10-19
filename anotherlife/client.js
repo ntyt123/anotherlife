@@ -170,6 +170,10 @@ window.__ModuleLoader__.load({
       '.sim-trace{display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap}',
 
       '.sim-fan-total{display:flex;align-items:baseline;gap:10px;margin-bottom:8px}',
+      '.sim-issues{margin:10px 0 2px;display:flex;flex-direction:column;gap:4px}',
+      '.sim-issue{display:flex;gap:8px;align-items:flex-start;padding:5px 9px;border-radius:7px;background:rgba(176,117,20,.09);border-left:3px solid rgba(176,117,20,.55);font-size:var(--sim-fs-2);line-height:1.6}',
+      '.sim-issue .step{flex:0 0 auto;color:#8a5c10;font-weight:700}',
+      '.sim-issue .why{flex:1 1 auto;min-width:0;color:#8a5c10;word-break:break-word}',
       '.sim-fan-total .big{font-size:calc(var(--sim-fs-4) * 1.35);font-weight:800;letter-spacing:.3px}',
       '.sim-fan-total .wk{font-size:var(--sim-fs-2);color:var(--sim-t2)}',
       '.sim-fan-total .wk.up{color:#2e9e5b}',
@@ -6905,6 +6909,22 @@ onDoubleClick: () => {
                     )
                   : null,
                 h('div', { className: 'sim-body-text' }, editing ? null : renderBody(t.body, av)),
+                // 这一轮出过的问题：不折叠、直接列在正文下面。
+                // 进度条上的黄灯一刷新就没了，玩家事后回来看不出哪轮出过事。
+                t.issues && t.issues.length
+                  ? h(
+                      'div',
+                      { className: 'sim-issues' },
+                      t.issues.map((x, i) =>
+                        h(
+                          'div',
+                          { className: 'sim-issue', key: i },
+                          h('span', { className: 'step' }, (STAGE_LABEL[x.step] && STAGE_LABEL[x.step][1]) || x.step),
+                          h('span', { className: 'why' }, x.why || '这一步没有成功'),
+                        )
+                      )
+                    )
+                  : null,
                 // （行动选项已移到输入框左边的 🎯 图标里，不再显示在正文中）
                 // 正文最下方：小总结 + 变量变化（默认收起，点一下展开，再点收起）
                 t.role === 'assistant'
