@@ -2636,6 +2636,10 @@ function pickToolCall(r) {
     const idleMs = opts.idleMs || opts.stallMs || 120000;
     let gotAny = false;
     const it = llm.stream(options)[Symbol.asyncIterator]();
+    // 无论正常结束还是抛错（超时、上游断流），都必须把迭代器关掉。
+    // 不关的话上游连接会挂在那里占着连接池 —— 表现是「一次失败之后，
+    // 整个 DSH 的模型调用全部失败，重启才好」，神谕那次就是这么来的。
+    try {
     for (;;) {
       const waitMs = gotAny ? idleMs : firstMs;
       const step = await Promise.race([
@@ -2690,6 +2694,13 @@ function pickToolCall(r) {
     }
     await apiLog('[' + tag + '] ' + who + ' → ' + text.length + ' 字', t0);
     return { text, reasoning, finish, toolCalls: callList };
+    } finally {
+      try {
+        if (it && typeof it.return === 'function') await it.return();
+      } catch (e) {
+        /* 关不掉也没别的办法，至少不能因为清理失败盖掉真正的错误 */
+      }
+    }
   }
 
   /** 走用户自填的 OpenAI 兼容端点；密钥从凭据服务实时取 */
