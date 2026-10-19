@@ -810,12 +810,26 @@ async function activeWritingSkill() {
    * 全文留着会越攒越大（实测占到存档的四成）。只保留最近几轮的全文，更早的留下统计数字。
    */
   const CTX_KEEP = 5;
+  const THINK_KEEP = 5;
+  /**
+   * 归档：只留最近几轮的「注入详情」和「思考过程」全文，更早的压掉。
+   * 这两样都是诊断信息，不是剧情状态，却占了存档的一大半 ——
+   * 实测 28 轮里 ctx 16 万字、think 1.7 万字，正文才 3 万字。
+   * 不归档的话 1000 轮能把存档顶到几十 MB，而每轮保存是整份重写。
+   */
   function slimContext(s) {
     const list = s && Array.isArray(s.transcript) ? s.transcript : [];
     let seen = 0;
+    let seenThink = 0;
     for (let i = list.length - 1; i >= 0; i--) {
       const t = list[i];
-      if (!t || !t.ctx) continue;
+      if (!t) continue;
+      // 思考过程：老轮次直接丢掉 —— 没人会回看 500 轮前的思考
+      if (t.think) {
+        seenThink++;
+        if (seenThink > THINK_KEEP) t.think = '';
+      }
+      if (!t.ctx) continue;
       seen++;
       if (seen > CTX_KEEP && t.ctx.text) {
         t.ctx = { mode: t.ctx.mode, via: t.ctx.via, count: t.ctx.count, archived: true };
