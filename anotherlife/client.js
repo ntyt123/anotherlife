@@ -21,7 +21,7 @@ window.__ModuleLoader__.load({
       // 字体同样收口到 --sim-font（等宽、楷体/宋体那几处功能性字体不跟着变）
       '.sim-root{display:flex;flex-direction:row;height:100%;max-width:100%;min-height:0;box-sizing:border-box;font-size:var(--sim-fs-3);line-height:1.6;font-family:var(--sim-font,system-ui,"PingFang SC","Microsoft YaHei",sans-serif);overflow:hidden;background:var(--sim-bg);color:var(--sim-t)}',
       '.sim-main{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0}',
-      '.sim-rail{flex:0 0 auto;width:60px;background:var(--sim-bg2);border-right:1px solid var(--sim-bd);display:flex;flex-direction:column;padding:8px 0;overflow:hidden}',
+      '.sim-rail{flex:0 0 auto;width:60px;height:100%;box-sizing:border-box;background:var(--sim-bg2);border-right:1px solid var(--sim-bd);display:flex;flex-direction:column;padding:8px 0;overflow:hidden}',
       '.sim-rail-tabs{flex:1 1 auto;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:2px}',
       '.sim-rail-tab{display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 0;background:transparent;border:none;border-left:3px solid transparent;cursor:pointer;color:var(--sim-t2);font-family:inherit;font-size:var(--sim-fs-1);line-height:1.2}',
       '.sim-rail-tab .ic{font-size:var(--sim-fs-6);line-height:1}',
@@ -954,7 +954,7 @@ window.__ModuleLoader__.load({
       '.skin-parchment{--sim-bg:#141013;--sim-bg2:#1c1619;--sim-bd:#5c4630;--sim-t:#f1e2c8;--sim-t2:#c9a86a;--sim-t3:#9b8a6b;--sim-ac:#f0b357;--sim-acfg:#141013;--sim-mut:#c77b3a;--sim-good:#8fbf6f;--sim-err:#e06c5a;--sim-say:#8fb4f0}',
       '.skin-neon{--sim-bg:#141726;--sim-bg2:#1a1d2e;--sim-bd:rgba(255,255,255,.09);--sim-t:#e6e8f2;--sim-t2:#9aa0b8;--sim-t3:#5c6080;--sim-ac:#7c5cff;--sim-acfg:#fff;--sim-mut:#f0a35e;--sim-good:#31d0d8;--sim-err:#ff5c7a;--sim-say:#8ea8ff}',
       '@media(max-width:820px){',
-      '.sim-rail{width:48px}',
+      '.sim-rail{width:48px;height:100%}',
       '.sim-rail-tab .lb{display:none}',
       '.sim-rail-tab{padding:9px 0}',
       '.sim-when-chip{font-size:var(--sim-fs-4)}',
