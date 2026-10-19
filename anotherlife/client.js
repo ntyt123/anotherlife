@@ -309,6 +309,14 @@ window.__ModuleLoader__.load({
       '.sim-fold>summary{cursor:pointer;color:var(--sim-t2);font-size:var(--sim-fs-1);user-select:none}',
       '.sim-fold-body{margin-top:6px;white-space:pre-wrap;color:var(--sim-t2);font-size:var(--sim-fs-2)}',
       '.sim-dg{margin:0 0 8px}',
+      '.sim-find{display:flex;align-items:center;gap:6px;margin-bottom:10px;padding:6px 8px;border:1px solid var(--sim-bd);border-radius:8px;background:var(--sim-bg2)}',
+      '.sim-find-in{flex:1;min-width:0;background:transparent;border:none;outline:none;color:var(--sim-t);font-size:var(--sim-fs-3);font-family:inherit;padding:2px 0}',
+      '.sim-find-in::placeholder{color:var(--sim-t3)}',
+      '.sim-find-n{flex:0 0 auto;font-size:var(--sim-fs-2);color:var(--sim-t3);font-variant-numeric:tabular-nums}',
+      '.sim-find-b{flex:0 0 auto;width:22px;height:22px;padding:0;border:1px solid var(--sim-bd);border-radius:5px;background:transparent;color:var(--sim-t2);font-size:var(--sim-fs-2);line-height:1;cursor:pointer}',
+      '.sim-find-b:hover{color:var(--sim-t);border-color:var(--sim-ac)}',
+      '.sim-msg.sim-flash{animation:sim-flash 1.9s ease-out}',
+      '@keyframes sim-flash{0%{background:rgba(255,200,80,.30)}100%{background:transparent}}',
       '.sim-dg:last-child{margin-bottom:0}',
       '.sim-dg-h{font-size:var(--sim-fs-2);color:var(--sim-t3);font-weight:600;margin-bottom:3px}',
       '.sim-df{display:flex;gap:8px;align-items:baseline;padding:2px 0;font-size:var(--sim-fs-3);line-height:1.7}',
@@ -3417,6 +3425,9 @@ function App({ gameId, close }) {
           const [asThreads, setAsThreads] = React.useState([]);
           const [asThreadId, setAsThreadId] = React.useState('');
           const [asListOpen, setAsListOpen] = React.useState(false);
+          // 正文内搜索
+          const [findQ, setFindQ] = React.useState('');
+          const [findAt, setFindAt] = React.useState(0);
           // 助手浮窗的位置（拖标题栏改）。存 localStorage，刷新后还在
           const [asPos, setAsPos] = React.useState(() => {
             try {
@@ -4230,6 +4241,43 @@ function App({ gameId, close }) {
            * 生成期间「用户没滚、位置却变了」一律算被外力挪走：keep 保持不动，
            * 由钉住循环放回去。用户自己滚动会先有滚轮/按住/触摸事件，走下面正常分支。
            */
+          /** 正文里搜关键词：返回命中的轮次列表（只按轮次定位，不做逐字高亮） */
+          function findHits(q) {
+            const s = String(q || '').trim();
+            if (!s) return [];
+            const hits = [];
+            (Array.isArray(state && state.transcript) ? state.transcript : []).forEach((t) => {
+              if (!t || !t.body) return;
+              if (String(t.body).indexOf(s) >= 0 || String(t.body).toLowerCase().indexOf(s.toLowerCase()) >= 0) {
+                hits.push(t.seq);
+              }
+            });
+            return hits;
+          }
+
+          /** 跳到第 n 个命中：滚到那一轮，闪一下 */
+          function jumpToHit(idx) {
+            const hits = findHits(findQ);
+            if (!hits.length) return;
+            const n = ((idx % hits.length) + hits.length) % hits.length;
+            setFindAt(n);
+            const el = bodyRef.current;
+            if (!el) return;
+            const node = el.querySelector('.sim-msg[data-seq="' + hits[n] + '"]');
+            if (!node) {
+              // 目标那一轮还没渲染出来（「加载更早」一次只显示若干轮）：
+              // 先把显示条数拉到全量，等一帧再跳
+              setShown(99999);
+              window.setTimeout(() => jumpToHit(n), 60);
+              return;
+            }
+            const top = node.getBoundingClientRect().top - el.getBoundingClientRect().top + el.scrollTop;
+            smoothTo(el, Math.max(0, top - 8));
+            // 闪一下：加 class，2 秒后去掉（React 重渲染会重建节点，所以直接操作 DOM）
+            node.classList.add('sim-flash');
+            window.setTimeout(() => { try { node.classList.remove('sim-flash'); } catch (e) {} }, 2000);
+          }
+
           function onBodyScroll(e) {
             const el = e.currentTarget;
             const v = el.scrollTop;
@@ -6533,6 +6581,32 @@ onDoubleClick: () => {
           const playView = h(
             'div',
             null,
+            // 正文内搜索：输入即定位，↑↓ 在命中之间跳
+            h(
+              'div',
+              { className: 'sim-find' },
+              h('input', {
+                className: 'sim-find-in',
+                placeholder: '搜索正文…',
+                value: findQ,
+                onChange: (e) => {
+                  setFindQ(e.target.value);
+                  setFindAt(0);
+                  if (e.target.value.trim()) window.setTimeout(() => jumpToHit(0), 30);
+                },
+                onKeyDown: (e) => {
+                  if (e.key === 'Enter') { e.preventDefault(); jumpToHit(findAt + (e.shiftKey ? -1 : 1)); }
+                  else if (e.key === 'Escape') { setFindQ(''); }
+                },
+              }),
+              findQ.trim() ? h('span', { className: 'sim-find-n' }, (function () {
+                const hits = findHits(findQ);
+                return hits.length ? (findAt + 1) + '/' + hits.length : '0';
+              })()) : null,
+              findQ.trim() ? h('button', { className: 'sim-find-b', title: '上一个', onClick: () => jumpToHit(findAt - 1) }, '↑') : null,
+              findQ.trim() ? h('button', { className: 'sim-find-b', title: '下一个', onClick: () => jumpToHit(findAt + 1) }, '↓') : null,
+              findQ.trim() ? h('button', { className: 'sim-find-b', title: '清除', onClick: () => setFindQ('') }, '✕') : null,
+            ),
             more > 0 ? h('div', { style: { marginBottom: 8 } }, h(Btn, { onClick: () => setShown(shown + 14) }, '加载更早（还有 ' + more + ' 段）')) : null,
             list.length === 0
               ? h('div', { className: 'sim-card' }, '正文从这里开始。在下方输入你的行动，或点击行动选项。')
