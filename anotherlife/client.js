@@ -3179,6 +3179,35 @@ window.__ModuleLoader__.load({
         }
         // ────────────── 主界面 ──────────────
 
+        /**
+         * 正文的阅读进度。
+         * 存 localStorage 而不是存档：它只是「我看到哪儿了」，不是剧情状态，
+         * 也不该跟着存档走（同一个存档在两台机器上读到的地方本来就可以不同）。
+         * 一起存下当时的正文条数 —— 条数没变说明没生成新内容，可以直接还原位置；
+         * 变了说明有新正文，那就该跳到新的开头，而不是固执地回到旧位置。
+         */
+        const SCROLL_KEY = (gid) => 'sim-scroll-' + String(gid || 'default');
+        function readScrollPos(gid) {
+          try {
+            const s = window.localStorage.getItem(SCROLL_KEY(gid));
+            if (!s) return null;
+            const o = JSON.parse(s);
+            return o && typeof o.top === 'number' ? o : null;
+          } catch (e) {
+            return null;
+          }
+        }
+        function writeScrollPos(gid, top, stamp) {
+          try {
+            window.localStorage.setItem(
+              SCROLL_KEY(gid),
+              JSON.stringify({ top: Math.round(top), stamp: String(stamp || ''), at: Date.now() })
+            );
+          } catch (e) {
+            /* localStorage 不可用或满了：记不住就算了，不影响阅读 */
+          }
+        }
+
         function App({ gameId, close }) {
           const [state, setState] = React.useState(null);
           // 界面字体与字号：存 localStorage，改完立即生效（挂到根元素的 CSS 变量上）
@@ -3406,6 +3435,7 @@ window.__ModuleLoader__.load({
           const playScrollRef = React.useRef(0); // 离开正文时读到哪儿（切回来还原用）
           const prevTabRef = React.useRef('play'); // 上一个页签（认得出「刚离开正文」）
           const lastPlayTopRef = React.useRef(0); // 在正文页时持续记下的滚动位置
+          const scrollSaveRef = React.useRef(0); // 上次写 localStorage 的时间（节流用）
           const keepScrollRef = React.useRef(0); // 用户看到的滚动位置（生成期间用它把位置钉住）
           const pinTsRef = React.useRef(0); // 最近一次由我们写回 scrollTop 的时间（区分用户滚动）
           const pinValueRef = React.useRef(-1); // 我们刚写回的那个值（它引起的 scroll 事件不算用户滚动）
@@ -3414,6 +3444,16 @@ window.__ModuleLoader__.load({
 
           currentGameId = gameId;
 
+          // 第一次进这一局：把上次读到的位置读回来。这样即便刷新过，
+          // 切页签用的 playScrollRef / lastPlayTopRef 也有值，不会退回顶部。
+          React.useEffect(() => {
+            const saved = readScrollPos(gameId);
+            if (saved && saved.top > 0) {
+              lastPlayTopRef.current = saved.top;
+              playScrollRef.current = saved.top;
+            }
+          }, [gameId]);
+          
           /**
            * 切页签时的滚动位置处理。
            * 离开正文 → 记住读到哪儿；回到正文 → 还原到那儿。
@@ -3480,9 +3520,25 @@ window.__ModuleLoader__.load({
            * （一轮里的两段（玩家行动 + 叙事）seq 相同，取这一段里的第一个就是开头。）
            */
           React.useEffect(() => {
+            if (tab !== 'play') return;
+            // 内容没变（条数一样）说明这次不是新生成 —— 回到上次读到的位置。
+            // 只有条数变了（生成/删除/重开）才跳到最新那一轮的开头。
+            // 判的是 saved 存不存在，不是 top > 0 —— 读到最顶上（0）也是有效进度。
+            const saved = readScrollPos(gameId);
+            if (saved && saved.stamp && saved.stamp === txStamp) {
+              const restore = () => {
+                const e2 = bodyRef.current;
+                if (!e2) return;
+                e2.scrollTop = Math.min(saved.top, Math.max(0, e2.scrollHeight - e2.clientHeight));
+              };
+              restore();
+              const r0 = window.requestAnimationFrame ? window.requestAnimationFrame(restore) : 0;
+              return () => {
+                if (r0 && window.cancelAnimationFrame) window.cancelAnimationFrame(r0);
+              };
+            }
             const el = bodyRef.current;
             if (!el) return;
-            if (tab !== 'play') return;
             const jump = () => {
               const list = (state && state.transcript) || [];
               const last = list.length ? list[list.length - 1] : null;
@@ -4020,6 +4076,13 @@ window.__ModuleLoader__.load({
             if (v === pinValueRef.current) return; // 我们自己刚写回去的那次
             if (pinHoldRef.current > 0 && Date.now() - userActRef.current > 700) return;
             keepScrollRef.current = v;
+            lastPlayTopRef.current = v;
+            // 阅读进度落盘（500ms 节流，别每滚一像素写一次）
+            const nowTap = Date.now();
+            if (nowTap - scrollSaveRef.current > 500) {
+              scrollSaveRef.current = nowTap;
+              writeScrollPos(gameId, v, txStamp);
+            }
           }
           // 用户真的要滚：记下时间，钉住循环在这之后 700ms 内不干预
           function markUserScroll() {
