@@ -809,9 +809,8 @@ async function activeWritingSkill() {
    * 每一轮往 transcript 里记的「本轮注入了哪些状态」是诊断信息，不是游戏状态，
    * 全文留着会越攒越大（实测占到存档的四成）。只保留最近几轮的全文，更早的留下统计数字。
    */
-  const CTX_KEEP = 3;
-  const THINK_KEEP = 2;
-  const THINK_MAX = 1500; // 留下的思考最多这么长，再长就截断
+  const CTX_KEEP = 5;
+  const THINK_KEEP = 5;
   /**
    * 归档：只留最近几轮的「注入详情」和「思考过程」全文，更早的压掉。
    * 这两样都是诊断信息，不是剧情状态，却占了存档的一大半 ——
@@ -829,8 +828,6 @@ async function activeWritingSkill() {
       if (t.think) {
         seenThink++;
         if (seenThink > THINK_KEEP) t.think = '';
-        // 留下的那几轮也截断：单轮思考动辄四五千字，只留前面一段够了
-        else if (String(t.think).length > THINK_MAX) t.think = String(t.think).slice(0, THINK_MAX) + '…（后略）';
       }
       if (!t.ctx) continue;
       seen++;
