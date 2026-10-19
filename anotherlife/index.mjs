@@ -2728,7 +2728,7 @@ function tokOf(s, key) {
         }
         if (opts.wantTools) {
           await apiLog(
-            '[槽位·' + tag + '] ' + who + ' → 工具 ' + ((r && r.toolCalls) || []).length + ' 次 / 正文 ' + String((r && r.text) || '').length + ' 字',
+            '[槽位·' + tag + '] ' + who + ' → 工具 ' + ((r && r.toolCalls) || []).length + ' 次 / 正文 ' + String((r && r.text) || '').length + ' 字' + '（思考 ' + String((r && r.reasoning) || '').length + '）思考档=' + String(opts.reasoningEffort || '未设') + ' 耗时=' + (Date.now() - t0) + 'ms',
             t0
           );
           return r;
