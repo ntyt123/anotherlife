@@ -8094,6 +8094,14 @@ function fanBlock(obj) {
         )
       )
     : [];
+  // 老数据只有单字段「当前舆论评价」：没有分层的 舆论 时退回显示它，
+  // 至少不是一片空白（那是上一版的字段，新轮次不会再写）
+  if (!pubRows.length && obj && String(obj.当前舆论评价 || '').trim()) {
+    pubRows.push(h('div', { className: 'sim-know', key: 'pub-old' },
+      h('span', { className: 'k' }, '综合'),
+      h('span', { className: 'v' }, String(obj.当前舆论评价).trim())
+    ));
+  }
   return h(
     'div',
     { className: 'sim-fan-box' },
