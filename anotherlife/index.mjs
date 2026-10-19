@@ -1788,6 +1788,45 @@ function traceDecayRate(desc) {
 }
 
 /**
+ * 敏感度随时间退。
+ *
+ * 数据：角色.敏感度 = { 足心: 30, 后颈: 0 }，键是部位名（与「敏感点」数组对应）。
+ * 涨由结算模型给（情事里被重点用到 +8），这里只管退。
+ *
+ * 速率 0.2/小时 —— 十天不做会掉 48 分，大约退一档多一点。
+ * 退到 0 就停在 0（不删键：删了 applyDiffs 回滚不回来）。
+ */
+function tickSensitivity(s, dh) {
+  const out = [];
+  if (!(dh > 0)) return out;
+  const walk = (owner, basePath) => {
+    const m = owner && owner.敏感度;
+    if (!m || typeof m !== 'object' || Array.isArray(m)) return;
+    Object.keys(m).forEach((k) => {
+      const v = Number(m[k]);
+      if (!Number.isFinite(v) || v <= 0) return;
+      const next = Math.max(0, Math.round((v - dh * 0.2) * 10) / 10);
+      if (next === v) return;
+      out.push({ path: basePath.concat(['敏感度', k]), from: v, to: next, bySens: true });
+      m[k] = next;
+    });
+  };
+  walk(s.protagonist, []);
+  (Array.isArray(s.npcs) ? s.npcs : []).forEach((n, i) => walk(n, ['npcs', i]));
+  return out;
+}
+
+/** 敏感度的五档名字，界面与提示词共用 */
+function sensTier(v) {
+  const n = Number(v) || 0;
+  if (n <= 20) return '没碰过';
+  if (n <= 40) return '有点反应';
+  if (n <= 60) return '会出声';
+  if (n <= 80) return '一碰就软';
+  return '开关';
+}
+
+/**
  * 身体痕迹随时间消退。
  *
  * 数据形状兼容两种：
@@ -3111,6 +3150,9 @@ function pickToolCall(r) {
       '      · 生理：潮吹／失禁／哺乳／妊娠／疼痛／咬痕／压痕。',
       '      表里没有的，按同样的风格自己补一个名词；不要写句子、不要解释。',
       '    · 敏感点：**只写身体部位名**，一个部位一条：左乳／右乳／乳尖／后颈／耳／唇／腰／臀／腿根／大腿内侧／小穴／后穴／足心／趾缝。**同一个部位不许拆成两条**（「双乳丰盈」和「重力揉搓会哀求」是同一处，只留部位名）。',
+      '    · **敏感度**（和敏感点配套）：一个数值表，键就是上面那些部位名，值 0~100 —— {"足心":35,"后颈":0}。含义：0~20 没碰过、一碰就躲／21~40 有点反应但能忍住／41~60 会出声、会主动凑／61~80 一碰就软／81~100 已经成了开关。',
+      '      **怎么加**：这一轮情事里某个部位被重点用到、而且她有明确反应（出声、发抖、主动凑、求），就 +8；一次最多加两处；只是碰到、没特别的反应，不加。',
+      '      **不用管减**：后台会自动随时间退（十天不做掉一档多）。你只管往上加、以及在下一次看到它时按新数值写反应。',
       '    · 底线：一条一句能说出口的话（如「不接受被拍照」「不许提那个名字」）。',
       '    · 经验：**按「部位：程度」写**，形如「口：熟练」「穴：熟悉」。部位只用这六个 —— 口／手／足／乳／穴／肛；程度只用这六档 —— 未涉足／生涩／熟悉／接受／熟练／炉火纯青。**正文里明确说过「没碰过／从没」的部位才写「未涉足」，完全没提到的部位一条都不写。**',
       '  · 新角色出场时这四项一律写「未知」——**禁止**凭年龄、职业、外貌、人设去推断，也不许为了填满而编；',
@@ -3871,6 +3913,10 @@ function footActive(s, body) {
           // 身体痕迹消退：复用 tickSockScent 刚算好的小时差
           const traceDiffs = tickBodyTraces(s, Number(s._lastDh) || 0);
           traceDiffs.forEach((d) => diffs.push(d));
+
+          // 敏感度随时间退（十天不做掉一档多）
+          const sensDiffs = tickSensitivity(s, Number(s._lastDh) || 0);
+          sensDiffs.forEach((d) => diffs.push(d));
           await turnLog(
             '[settle] gameId=' +
               gid +

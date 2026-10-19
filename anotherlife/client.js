@@ -182,6 +182,7 @@ window.__ModuleLoader__.load({
       // 值可能是一句话那么长的标签：包一层让它在标签右侧换行；底色用中性的淡底深字，主题色底看不清
       '.sim-know .vals{flex:1 1 auto;min-width:0;display:flex;flex-wrap:wrap;gap:5px}',
       '.sim-know .tag{display:inline-block;max-width:100%;padding:2px 9px;border-radius:8px;background:var(--sim-bg);border:1px solid var(--sim-bd);color:var(--sim-t);font-size:var(--sim-fs-5);line-height:1.6;white-space:normal;word-break:break-word}',
+      '.sim-know .tag .sens{display:inline-block;width:5px;height:5px;border-radius:50%;background:#d97a41;margin-left:5px;vertical-align:middle}',
       // 内容长的（角色弹窗那种）用单列，两列会被长标签撑错位
       '.sim-know-list{display:flex;flex-direction:column;gap:9px}',
       '.sim-know .k{flex:0 0 auto;font-size:var(--sim-fs-4);color:var(--sim-t2);min-width:74px}',
@@ -7938,7 +7939,7 @@ function renderTrace(v) {
            * 值可能是字符串、字符串数组、对象或对象数组 —— 直接 String() 对象会得到
            * [object Object]，所以按类型分别摊平：对象取各字段的值串成一句。
            */
-          function knowField(label, value) {
+          function knowField(label, value, sens) {
             const flat = (() => {
               if (Array.isArray(value)) {
                 return value
@@ -7979,7 +7980,16 @@ function renderTrace(v) {
                   h(
                     'span',
                     { className: 'vals' },
-                    flat.map((c, i) => h('span', { className: 'tag', key: i }, c))
+                    flat.map((c, i) => {
+                      // 敏感点会带一个第三参数（部位→0~100）：点越亮表示这里越敏感
+                      const sv = sens && typeof sens === 'object' ? Number(sens[c]) : NaN;
+                      const has = Number.isFinite(sv) && sv > 0;
+                      return h('span', { className: 'tag', key: i }, c,
+                        has
+                          ? h('span', { className: 'sens', title: Math.round(sv) + '/100', style: { opacity: Math.max(0.25, Math.min(1, sv / 100 + 0.15)) } })
+                          : null
+                      );
+                    })
                   )
             );
           }
@@ -8838,7 +8848,9 @@ function starPanel(n) {
                     h(
                       'div',
                       { className: 'sim-know-list' },
-                      ['性癖', '敏感点', '底线', '经验'].map((k) => knowField(k, npc && npc[k]))
+                      ['性癖', '敏感点', '底线', '经验'].map((k) =>
+            k === '敏感点' ? knowField(k, npc && npc[k], npc && npc.敏感度) : knowField(k, npc && npc[k])
+          )
                     )
                   ),
                   bodyBlock(npc),
