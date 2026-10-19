@@ -4360,6 +4360,17 @@ function App({ gameId, close }) {
                        * 那条链还负责对白染色、粗斜体、行内代码，改它风险大。
                        * 文本节点是安全的插入点 —— 不会破坏已有的 span/strong。
                        */
+                      /**
+                       * 把搜索词在正文里标黄。
+                       *
+                       * 只处理 .sim-body-text —— 那是 renderBody(t.body) 的容器，
+                       * 正好对应 findHits 读的 t.body。两边口径一致，计数和标黄永远对得上。
+                       * 思考过程、AI 提取到的信息、小总结、结算详情、角色标签、按钮
+                       * 全都不在这个容器里，所以不用维护排除名单（那种写法迟早漏一个）。
+                       *
+                       * 走 DOM 而不是改 mdNodes：那条链还负责对白染色、粗斜体、行内代码，
+                       * 为高亮去改它风险大。文本节点是安全的插入点。
+                       */
                       function applyHighlight(q) {
                         const el = bodyRef.current;
                         if (!el) return;
@@ -4375,25 +4386,11 @@ function App({ gameId, close }) {
                         const low = s.toLowerCase();
                         // 逐轮处理：同一轮里从 0 开始数，和 findHits 的 n 对齐
                         el.querySelectorAll('.sim-msg.assistant[data-seq]').forEach((msgEl) => {
+                          const textEl = msgEl.querySelector('.sim-body-text');
+                          if (!textEl) return;
                           const seq = msgEl.getAttribute('data-seq');
                           let n = 0;
-                          // 只认正文：跳过思考过程、角色标签（「叙事 · 第 3 轮」）、
-                          // 行内按钮和结算详情 —— 那些不是故事，标黄了只会误导。
-                          const SKIP_CLS = ['sim-think', 'sim-role', 'sim-acts-inline', 'sim-fact', 'sim-acts'];
-                          const walker = document.createTreeWalker(msgEl, NodeFilter.SHOW_TEXT, {
-                            acceptNode: (nd) => {
-                              let p = nd.parentNode;
-                              while (p && p !== msgEl) {
-                                if (p.classList && p.classList.length) {
-                                  for (let i = 0; i < SKIP_CLS.length; i++) {
-                                    if (p.classList.contains(SKIP_CLS[i])) return NodeFilter.FILTER_REJECT;
-                                  }
-                                }
-                                p = p.parentNode;
-                              }
-                              return NodeFilter.FILTER_ACCEPT;
-                            },
-                          });
+                          const walker = document.createTreeWalker(textEl, NodeFilter.SHOW_TEXT, null);
                           const targets = [];
                           let node;
                           while ((node = walker.nextNode())) {
