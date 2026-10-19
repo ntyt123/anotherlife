@@ -9343,25 +9343,47 @@ function toggleFans(npc) {
                         'div',
                         { className: 'sim-grid' },
                         // 备注和依据是长文本：用多行框 + 占满整行，否则会截成一行看不全
-                        ['对象', '关系', '好感度', '信任度', '欲望', '依据', '印象标签', '当前状况', '备注'].map((k) =>
-                          h(Field, {
-                          multiline: k === '备注' || k === '依据',
-                          wide: k === '备注' || k === '依据',
+                        // 好感度／信任度／欲望 这三个数值存在**角色条目**（npcs）上，不在关系表里；
+                        // 关系表只有 对象/关系/当前状况/备注。所以取值和写回都要分两处。
+                        ['对象', '关系', '好感度', '信任度', '欲望', '依据', '印象标签', '当前状况', '备注'].map((k) => {
+                          const isNum = ['好感度', '信任度', '欲望'].indexOf(k) >= 0;
+                          // 好感度／信任度／欲望 模型不写成独立字段，只写「当前状况」那一行：
+                          //   好感 弱 · 信任 无 · 欲望 无
+                          // 所以这里从那一行里抠出来显示；角色条目上如果真有独立字段，优先用它的。
+                          const cv = (function () {
+                            const t = String(rel.当前状况 || '');
+                            const out = {};
+                            [["好感度", /好感\s*([强弱中无])/], ["信任度", /信任\s*([强弱中无])/], ["欲望", /欲望\s*([强弱中无])/]].forEach(function (p) {
+                              const mm = p[1].exec(t);
+                              if (mm) out[p[0]] = mm[1];
+                            });
+                            return out;
+                          })();
+                          const val = isNum
+                            ? (npc && npc[k] != null ? npc[k] : (cv[k] != null ? cv[k] : ''))
+                            : (rel[k] != null ? rel[k] : '');
+                          return h(Field, {
+                            multiline: k === '备注' || k === '依据',
+                            wide: k === '备注' || k === '依据',
                             key: k,
                             label: FIELD_LABELS[k] || k,
-                            value: rel[k] == null ? '' : rel[k],
+                            value: val,
                             onChange: (v) => {
-                              const kind2 = 'relationships';
-                              const arr = pickSrc(kind2);
-                              // 按对象名定位这一条，改完写回（创角改草稿、游玩写存档）
+                              if (isNum && npc) {
+                                // 写回角色条目
+                                const arr0 = pickSrc('npcs');
+                                writeSrc('npcs', arr0.map((x) => (x === npc ? Object.assign({}, x, { [k]: v }) : x)));
+                                return;
+                              }
+                              const arr = pickSrc('relationships');
                               const nm2 = String(rel.对象 || rel.姓名 || '').trim();
                               writeSrc(
-                                kind2,
+                                'relationships',
                                 arr.map((x) => (String(x && (x.对象 || x.姓名) || '').trim() === nm2 ? Object.assign({}, x, { [k]: v }) : x))
                               );
                             },
-                          })
-                        )
+                          });
+                        })
                       )
                       : h(
                           'div',
