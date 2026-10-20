@@ -9040,11 +9040,22 @@ function toggleFans(npc) {
 
             const seen = new Set();
             const linked = [];
+            // relationships 里可能只写了「对象 + 当前状况」没写「关系」——
+            // 那样这一条就会把 npcs 里同名那条挡住（seen 已经加过了），
+            // 图上表现为「有连线、没标签、默认灰」。先建一张 npcs 的关系表兜底。
+            const npcRel = {};
+            npcs.forEach(function (n) {
+              const nm = String((n && n.姓名) || '').trim();
+              if (!nm) return;
+              const r2 = String((n && (n.与主角关系 || n.关系)) || '').trim();
+              if (r2) npcRel[nm] = r2;
+            });
             rels.forEach(function (r) {
               const nm = String((r && r.对象) || '').trim();
               if (!nm || seen.has(nm)) return;
               seen.add(nm);
-              linked.push({ name: nm, rel: String((r && r.关系) || '').trim(), note: String((r && r.当前状况) || '').trim() });
+              const rel = String((r && r.关系) || '').trim() || npcRel[nm] || '';
+              linked.push({ name: nm, rel: rel, note: String((r && r.当前状况) || '').trim() });
             });
             npcs.forEach(function (n) {
               const nm = String((n && n.姓名) || '').trim();
