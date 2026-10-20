@@ -53,6 +53,9 @@ window.__ModuleLoader__.load({
       // 对白：整段以引号开头 → 单独配色，和叙述一眼分开（取自界面里的蓝）
       '.sim-md-p.say{color:var(--sim-say)}',
       '.sim-md-p .sim-say,.sim-md-block .sim-md-p .sim-say,.sim-as-txt .sim-md-p .sim-say{color:var(--sim-say)}',
+      // 正文里的人名：虚线下划线，悬停变蓝 —— 让人看得出能点，又不至于把正文弄花
+      '.sim-name{cursor:pointer;border-bottom:1px dashed var(--sim-bd);transition:color .12s,border-color .12s}',
+      '.sim-name:hover{color:var(--sim-say);border-bottom-color:var(--sim-say)}',
       // 标题：原来 lv3（14px）比正文还小，层次出不来。现在按 # 的个数拉开字号与间距。
       '.sim-md-h{font-weight:700;margin:16px 0 9px;line-height:1.45}',
       '.sim-md-h.lv1{font-size:calc(var(--sim-fs-6) + 5px)}',
@@ -2258,13 +2261,13 @@ const WARN_FALLBACK = {
          * 极简 Markdown 行内与块级渲染。
          * 正文段与助手回复共用（原来只给助手用，所以放在 App 内部，正文拿不到）。
          */
-        function mdNodes(text) {
+        function mdNodes(text, names, onName) {
           const lines = String(text == null ? '' : text).split(/\r?\n/);
           const out = [];
           let list = null; // { ordered, items: [] }
           const flush = () => {
             if (!list) return;
-            const items = list.items.map((it, i) => h('li', { key: i }, mdInline(it)));
+            const items = list.items.map((it, i) => h('li', { key: i }, mdInline(it, names, onName)));
             out.push(
               h(list.ordered ? 'ol' : 'ul', { key: 'l' + out.length, className: 'sim-md-list' }, items)
             );
@@ -2303,12 +2306,12 @@ const WARN_FALLBACK = {
             const hd = /^(#{1,4})\s+(.*)$/.exec(t);
             if (hd) {
               // 记下层级，好让字号分档次（# 比 ### 大）
-              out.push(h('div', { key: i, className: 'sim-md-h lv' + hd[1].length }, mdInline(hd[2])));
+              out.push(h('div', { key: i, className: 'sim-md-h lv' + hd[1].length }, mdInline(hd[2], names, onName)));
               return;
             }
             const qt = /^>\s?(.*)$/.exec(t);
             if (qt) {
-              if (qt[1]) out.push(h('div', { key: i, className: 'sim-md-q' }, mdInline(qt[1])));
+              if (qt[1]) out.push(h('div', { key: i, className: 'sim-md-q' }, mdInline(qt[1], names, onName)));
               return;
             }
             out.push(
@@ -2316,37 +2319,72 @@ const WARN_FALLBACK = {
                 'div',
                 // 对白不按「整段」判 —— 由 mdInline 把引号里的内容单独配色，
                 { key: i, className: 'sim-md-p' },
-                mdInline(t)
+                mdInline(t, names, onName)
               )
             );
           });
           flush();
           return out;
         }
-        /** 行内：**粗**、*斜*、`代码` */
         /**
+         * 把一段纯文本里的角色名切成可点击的 span。
+         *
+         * 只用于正文段落 —— 思维链、小总结、结算详情不走 renderBody，
+         * 所以它们里面的人名不会被做成链接。
+         *
+         * names: Map<名字, 索引>。按长度倒序匹配，否则「张一山」会被「张一」先吃掉。
+         */
+        function nameChips(str, names, onName) {
+          const s = String(str == null ? '' : str);
+          if (!s || !names || !names.size || typeof onName !== 'function') return [s];
+          const keys = Array.from(names.keys()).filter(Boolean).sort(function (x, y) { return y.length - x.length; });
+          if (!keys.length) return [s];
+          const esc = function (k) { return k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); };
+          const re = new RegExp('(' + keys.map(esc).join('|') + ')', 'g');
+          const out = [];
+          let last = 0;
+          let m;
+          let k2 = 0;
+          while ((m = re.exec(s))) {
+            if (m.index > last) out.push(s.slice(last, m.index));
+            const nm = m[1];
+            out.push(h('span', {
+              key: 'nm' + (k2++),
+              className: 'sim-name',
+              title: '点开看「' + nm + '」的资料',
+              onClick: function (e) { e.stopPropagation(); onName(nm); },
+            }, nm));
+            last = m.index + nm.length;
+          }
+          if (last < s.length) out.push(s.slice(last));
+          return out.length ? out : [s];
+        }
+
+        /** 行内：**粗**、*斜*、`代码` */
+
+         /**
          * 行内渲染：先按引号把对白切出来单独染色，其余交给 mdInlineCore。
          * 之前是「整段以引号开头就整段变蓝」，导致一段里叙述和对话一起变蓝 ——
          * 而正文里最常见的恰恰是「”罗伊？“门被推开…」这种叙述夹对话的段落。
          */
-        function mdInline(s) {
+        function mdInline(s, names, onName) {
           const str = String(s == null ? '' : s);
-          if (!/[“"「『]/.test(str)) return mdInlineCore(str);
+          if (!/[“"「『]/.test(str)) return mdInlineCore(str, names, onName);
           const SAY_RE = /“[^”]*”|"[^"]*"|「[^」]*」|『[^』]*』/g;
           const out = [];
           let last = 0;
           let m;
           let k = 0;
           while ((m = SAY_RE.exec(str))) {
-            if (m.index > last) out.push(...mdInlineCore(str.slice(last, m.index)));
-            out.push(h('span', { key: 'say' + k++, className: 'sim-say' }, m[0]));
+            if (m.index > last) out.push(...mdInlineCore(str.slice(last, m.index), names, onName));
+            out.push(h('span', { key: 'say' + k++, className: 'sim-say' }, nameChips(m[0], names, onName)));
             last = m.index + m[0].length;
           }
-          if (last < str.length) out.push(...mdInlineCore(str.slice(last)));
-          return out.length ? out : mdInlineCore(str);
+          if (last < str.length) out.push(...mdInlineCore(str.slice(last), names, onName));
+          return out.length ? out : mdInlineCore(str, names, onName);
         }
         
-        function mdInlineCore(s) {
+        function mdInlineCore(s, names, onName) {
           const str = String(s == null ? '' : s);
           const parts = [];
           const re = /\*\*([^*]+)\*\*|`([^`]+)`|\*([^*\s][^*]*)\*/g;
@@ -2354,17 +2392,17 @@ const WARN_FALLBACK = {
           let m;
           let k = 0;
           while ((m = re.exec(str))) {
-            if (m.index > last) parts.push(str.slice(last, m.index));
+            if (m.index > last) parts.push.apply(parts, nameChips(str.slice(last, m.index), names, onName));
             if (m[1] != null) parts.push(h('strong', { key: 'b' + k++ }, m[1]));
             else if (m[2] != null) parts.push(h('code', { key: 'c' + k++ }, m[2]));
             else parts.push(h('em', { key: 'i' + k++ }, m[3]));
             last = m.index + m[0].length;
           }
-          if (last < str.length) parts.push(str.slice(last));
+          if (last < str.length) parts.push.apply(parts, nameChips(str.slice(last), names, onName));
           return parts;
         }
 
-        function renderBody(text, av) {
+        function renderBody(text, av, names, onName) {
           const src = String(text == null ? '' : text);
           const lines = src.split(/\r?\n/);
           const FENCE = /^[ \t]*[:：]{3}[ \t]*([A-Za-z_]*)[ \t]*$/;
@@ -2381,7 +2419,7 @@ const WARN_FALLBACK = {
             textBuf.length = 0;
             // 正文段落也走 Markdown —— 模型会写 ### 小标题、--- 分隔线、加粗，
             // 不渲染的话在界面上就是一堆字面符号。
-            out.push(h('div', { className: 'sim-md-block', key: 't' + out.length }, mdNodes(buf)));
+            out.push(h('div', { className: 'sim-md-block', key: 't' + out.length }, mdNodes(buf, names, onName)));
           };
           for (let i = 0; i < lines.length; i++) {
             const L = lines[i];
@@ -3633,6 +3671,25 @@ function App({ gameId, close }) {
           const dingRef = React.useRef(false); // 这一轮生成完成后要响一声（重新生成这种「序号没变但正文换了」的情况靠它）
           const [editingKey, setEditingKey] = React.useState(''); // 正在编辑哪一段：role-seq
           const [npcOpen, setNpcOpen] = React.useState(null); // 打开的角色卡：{kind,i}
+
+          // 正文里的人名做成可点的：Map<名字, npcs 索引>。
+          // 只认 npcs（角色表）—— relationships 是关系条目，不是人，点进去会串。
+          const bodyNames = React.useMemo(function () {
+            const m = new Map();
+            const arr = (draft && Array.isArray(draft.npcs)) ? draft.npcs : [];
+            arr.forEach(function (x, i) {
+              const nm = String((x && (x.姓名 || x.名字)) || '').trim();
+              if (nm) m.set(nm, i);
+            });
+            return m;
+          }, [draft && draft.npcs]);
+
+          // 点名开卡：找不到就什么都不做（正文里可能提到还没建档的人）
+          const openByName = React.useCallback(function (nm) {
+            const i = bodyNames.get(String(nm || ''));
+            if (i == null) return;
+            setNpcOpen({ kind: 'npc', i: i, editing: false });
+          }, [bodyNames]);
           // 角色弹窗里「查真实资料」的结果：null / {loading} / {err} / {fields, note, year, picked}
           const [realInfo, setRealInfo] = React.useState(null);
           const [editText, setEditText] = React.useState('');
@@ -6924,7 +6981,7 @@ onDoubleClick: () => {
                       )
                     )
                   : null,
-                h('div', { className: 'sim-body-text' }, editing ? null : renderBody(t.body, av)),
+                h('div', { className: 'sim-body-text' }, editing ? null : renderBody(t.body, av, bodyNames, openByName)),
                 // 这一轮出过的问题：不折叠、直接列在正文下面。
                 // 进度条上的黄灯一刷新就没了，玩家事后回来看不出哪轮出过事。
                 t.issues && t.issues.length
