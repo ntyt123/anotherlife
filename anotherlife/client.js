@@ -3595,6 +3595,7 @@ function App({ gameId, close }) {
             writeUiPref('adj', '{}');
           };
           const [draft, setDraft] = React.useState(null);
+          const [bfNote, setBfNote] = React.useState('');
           const [tab, setTab] = React.useState('setup');
           const [busy, setBusy] = React.useState(false);
           const [err, setErr] = React.useState('');
@@ -10608,6 +10609,22 @@ function toggleFans(npc) {
                     };
                     inp.click();
                   } }, '导入存档'),
+                  h(Btn, { disabled: busy, onClick: () => {
+                    ask('给这一局里缺回退依据的变量变化补上标记？补完会保存。').then((ok) => {
+                      if (!ok) return;
+                      setBusy(true); setErr(''); setBfNote('');
+                      Promise.resolve(call('backfillDiffs', {}, gameId))
+                        .then((r) => {
+                          setBusy(false);
+                          const fixed = Number(r && r.fixed) || 0;
+                          const sus = Number(r && r.suspicious) || 0;
+                          if (r && r.state) { setState(r.state); setDraft(r.state); setDps(r.state); }
+                          setBfNote(fixed ? ('已补 ' + fixed + ' 条' + (sus ? '，' + sus + ' 条补不准' : '')) : '没有要补的');
+                          window.setTimeout(() => setBfNote(''), 6000);
+                        })
+                        .catch((e) => { setBusy(false); setErr(String((e && e.message) || e)); });
+                    });
+                  } }, bfNote || '补全回退依据'),
                 )
               )
               ),

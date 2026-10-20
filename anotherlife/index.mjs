@@ -2355,6 +2355,48 @@ function guessSockStrength(txt, scent, seed) {
     }
   }
 
+  /**
+   * 给老存档里的 diffs 补 _had / _prev。
+   *
+   * 引擎那几路（袜子气味、身体痕迹、敏感度、体内、固定收支）早期是直接 push
+   * 裸 diff 的，没经过 applyDiffs，所以没有回退依据。rollbackDiffs 对这类只能按
+   * from 猜 —— 大致能用，但有一处系统性偏差：
+   *
+   *   before = Number(w.气味强度) || 0
+   *
+   * 原本不存在时也算成了 0，于是 from 记成 0。回退时 setByPath(…, 0) 会把键设成 0，
+   * 而不是删掉 —— 残留一个 0 和真正的「没有」在界面上看起来不一样。
+   *
+   * 能确定的（from 有值）一律补成 _had:true / _prev:from，和现有兼容分支等价但更明确；
+   * 疑似把「不存在」记成 0 或空串的那些单独计数，报告给玩家 —— 那些确实补不准。
+   */
+  function backfillDiffs(s) {
+    let fixed = 0;
+    let suspicious = 0;
+    const list = Array.isArray(s.transcript) ? s.transcript : [];
+    list.forEach(function (t) {
+      const ds = (t && t.diffs) || [];
+      for (let i = 0; i < ds.length; i++) {
+        const d = ds[i];
+        if (!d || !Array.isArray(d.path) || !d.path.length) continue;
+        if (d._had !== undefined) continue;   // 已经有了，不动
+        const had = d.from !== undefined;
+        d._had = had;
+        try {
+          d._prev = had ? JSON.parse(JSON.stringify(d.from)) : null;
+        } catch (e) {
+          d._prev = had ? d.from : null;
+        }
+        fixed++;
+        // from 是 0 / 空串，但 to 是个对象或数组：多半是「原本不存在」被算成了空值
+        if (had && (d.from === 0 || d.from === '') && d.to != null && typeof d.to === 'object') {
+          suspicious++;
+        }
+      }
+    });
+    return { fixed: fixed, suspicious: suspicious };
+  }
+
   /** 反向应用一批 diff：把变量退回到这批改动发生之前 */
   function rollbackDiffs(s, diffs) {
     for (let i = (diffs || []).length - 1; i >= 0; i--) {
@@ -6384,6 +6426,15 @@ reg('stopGenerate', async ({ gameId }) => {
     }
     await saveState(s);
     return withKeyStatus(s);
+  });
+
+  /** 把老存档里缺 _had / _prev 的 diffs 补上，并报出补不准的条数 */
+  reg('backfillDiffs', async ({ gameId }) => {
+    const s = await loadState(gameId);
+    const r = backfillDiffs(s);
+    await turnLog('[补diffs] 补了 ' + r.fixed + ' 条，疑似补不准 ' + r.suspicious + ' 条');
+    if (r.fixed > 0) await saveState(s);
+    return Object.assign({ ok: true }, r, { state: await loadState(gameId) });
   });
 
   reg('regenerateLatestVars', async ({ gameId }) => {
