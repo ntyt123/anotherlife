@@ -6531,6 +6531,25 @@ reg('stopGenerate', async ({ gameId }) => {
     );
   }
 
+/**
+ * 最近几轮的正文原文（不是目录）。
+ *
+ * 目录只有「每轮前 50 字」，问「刚才那句话怎么说的」根本答不上来。
+ * 对话模式没有工具，所以直接把这部分原文带上 —— 有它就能答大部分基础问题。
+ */
+function recentBodies(s, rounds) {
+  const list = Array.isArray(s.transcript) ? s.transcript : [];
+  const n2 = Math.max(1, Number(rounds) || 2) * 2;
+  const take = list.slice(-n2);
+  const parts = [];
+  take.forEach((t) => {
+    const body = String((t && t.body) || '').trim();
+    if (!body) return;
+    parts.push('【第' + t.seq + '轮·' + (t.role === 'user' ? '玩家' : '叙事') + '】\n' + body.slice(0, 3000));
+  });
+  return parts.length ? '\n\n【最近正文】\n' + parts.join('\n\n---\n\n') : '';
+}
+
   /** 执行一个工具。永远返回字符串，不抛 —— 工具出错也要让模型看到发生了什么 */
   /**
    * 工具参数解析。
@@ -7320,7 +7339,7 @@ reg('importSession', async ({ gameId, json }) => {
         // 对话式：不带工具，一次问答就完
         // 不这么说的话，模型照样会吐工具标记（它记得自己有工具）。
         // 那些标记会被剥掉 → 正文空 → 退回思考过程，读起来像「没说完」。
-        const plainMsgs = msgs.concat([{ role: 'user', content: '【这一轮没有工具可用】直接用你已经掌握的信息回答，不要写任何工具调用或搜索标记。' }]);
+        const plainMsgs = msgs.concat([{ role: 'user', content: '【这一轮没有工具可用】直接用你已经掌握的信息回答，不要写任何工具调用或搜索标记。' + recentBodies(s, 2) }]);
         const plain = await callSlot(s, 'assistant', plainMsgs, {
           maxTokens: tokOf(s, 'oracle'),
           tag: '神谕·对话',
@@ -7344,6 +7363,16 @@ reg('importSession', async ({ gameId, json }) => {
       }
     }
 
+    // 对话模式下模型想调工具（正文被剥空、退回了思考过程）：
+    // 别把那段独白当回答丢给玩家 —— 直接说清楚为什么，以及怎么才能查正文。
+    if (!agentOn && /^（这一轮模型只输出了思考过程/.test(String(out.text || ''))) {
+      out = {
+        text: '对话模式没有工具，我翻不到正文。要看具体哪一轮说了什么，点标题栏的 🧭 切到助手模式 —— 那边能查全文。' +
+          '\n\n---\n\n它刚才想这么做：\n' + String(out.text || '').replace(/^（[^）]*）\n\n/, ''),
+        think: out.think || '',
+        trace: out.trace || [],
+      };
+    }
     th.messages.push({ role: 'user', content: say, at: Date.now() });
     th.messages.push({
       role: 'assistant',
