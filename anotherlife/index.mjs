@@ -3465,6 +3465,19 @@ function tickSockScent(s) {
     npcs.forEach((n, i) => {
       const w = n && n.穿着 && n.穿着.袜子;
       if (!w || !String(w.物品 || '').trim()) return;
+      // 已有强度、但「气味」还是模型写的那一句（没有句号 = 不是三句格式）→ 换掉。
+      // 模型的写法是「清淡皂香混杂着温热的少女汗气」这种单句读数，读起来像传感器；
+      // 三句拼接只有 scentTextOf 能产出，所以这里做一次就地迁移。
+      if (w.气味强度 != null && w.气味强度 !== '' && Number.isFinite(Number(w.气味强度))) {
+        const txt = String(w.气味 || '').trim();
+        if (txt && txt.indexOf('。') < 0) {
+          const mat2 = w.材质 || detectSockMaterial(w.物品);
+          const t2 = scentTextOf(scentLevel(Number(w.气味强度)), mat2, w.物品);
+          out.push(engineDiff(['npcs', i, '穿着', '袜子', '气味'], txt, t2));
+          w.气味 = t2;
+        }
+        return;
+      }
       if (w.气味强度 != null && w.气味强度 !== '') return;
       const g = guessSockStrength(w.穿着时长, w.气味,  String(n.姓名 || '') + '|' + String(w.物品 || ''));
       const sv = g ? g.s : 45;
@@ -3529,13 +3542,16 @@ function tickSockScent(s) {
       w.穿着小时 = afterH;
       out.push(engineDiff(['npcs', i, '穿着', '袜子', '气味强度'], before, after));
       w.气味强度 = after;
-      const lvBefore = Math.floor(before / 17);
-      const lvAfter = Math.floor(after / 17);
+      // 气味这一行完全由代码生成，不再信模型写的那一句 ——
+      // 模型只给一句「清淡皂香混杂着温热的少女汗气」，读起来像传感器读数；
+      // 三句拼接（嗅觉 + 此刻的样子 + 跟了多久）只有这里能产出。
+      // 以前是「跨档才重写」，而且分档用的是 Math.floor(v/17)，和 scentLevel
+      // 的 10/30/50/70/85 不一致 —— 两套分档错位，三句几乎永远出不来。
       const oldText = String(w.气味 || '');
       const newText = scentTextOf(scentLevel(after), mat, w.物品);
-      if (lvBefore !== lvAfter || !oldText) {
-          out.push(engineDiff(['npcs', i, '穿着', '袜子', '气味'], oldText, newText));
-          w.气味 = newText;
+      if (oldText !== newText) {
+        out.push(engineDiff(['npcs', i, '穿着', '袜子', '气味'], oldText, newText));
+        w.气味 = newText;
       }
       const oldDur = String(w.穿着时长 || '');
       const newDur = humanSockHours(afterH);
