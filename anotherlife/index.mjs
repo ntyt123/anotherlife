@@ -2861,7 +2861,9 @@ function tokOf(s, key) {
         // text 空时退回 reasoning：推理模型有时把整段内容放在思考通道里、
         // 正文留空，只取 text 就会得到空串（检索这一路踩过）。
         let out = r && typeof r === 'object' && r.text != null ? String(r.text) : String(r == null ? '' : r);
-        if (!out.trim() && r && typeof r === 'object' && r.reasoning) out = String(r.reasoning);
+        // 正文真的空了才退回思考 —— 但要明说这是思考过程。
+        // 不明说的话玩家会把它当成「没说完的回答」（神谕对话模式踩过）。
+        if (!out.trim() && r && typeof r === 'object' && r.reasoning) out = '（这一轮模型只输出了思考过程，没有给出答案）\n\n' + String(r.reasoning);
         const rLen = r && typeof r === 'object' && r.reasoning ? String(r.reasoning).length : 0;
         await apiLog('[槽位·' + tag + '] ' + who + ' → ' + out.length + ' 字' + (rLen ? '（思考 ' + rLen + ' 字）' : '') + ' 思考档=' + String(opts.reasoningEffort || '未设'), t0);
         return out;
@@ -7316,7 +7318,10 @@ reg('importSession', async ({ gameId, json }) => {
         out = await runOracleAgent(s, msgs, { gameId, tag: '神谕', shouldStop: () => rn.stop });
       } else {
         // 对话式：不带工具，一次问答就完
-        const plain = await callSlot(s, 'assistant', msgs, {
+        // 不这么说的话，模型照样会吐工具标记（它记得自己有工具）。
+        // 那些标记会被剥掉 → 正文空 → 退回思考过程，读起来像「没说完」。
+        const plainMsgs = msgs.concat([{ role: 'user', content: '【这一轮没有工具可用】直接用你已经掌握的信息回答，不要写任何工具调用或搜索标记。' }]);
+        const plain = await callSlot(s, 'assistant', plainMsgs, {
           maxTokens: tokOf(s, 'oracle'),
           tag: '神谕·对话',
         });
@@ -7331,7 +7336,7 @@ reg('importSession', async ({ gameId, json }) => {
       if (agentOn) {
         out = await runOracleAgent(s, msgs, { gameId, tag: '神谕·重试', shouldStop: () => rn.stop });
       } else {
-        const plain2 = await callSlot(s, 'assistant', msgs, {
+        const plain2 = await callSlot(s, 'assistant', plainMsgs, {
           maxTokens: tokOf(s, 'oracle'),
           tag: '神谕·对话重试',
         });
