@@ -2030,12 +2030,12 @@ function tickFluid(s, dh) {
     if (!Number.isFinite(v) || v <= 0) return;
     const next = Math.max(0, Math.round((v - dh * 4) * 10) / 10);
     if (next === v) return;
-    out.push({ path: basePath.concat(['体内', '强度']), from: v, to: next, byFluid: true });
+    out.push(engineDiff(basePath.concat(['体内', '强度']), v, next, 'fluid'));
     f.强度 = next;
     if (next <= 0) {
       // 干透了：描述一起清掉，界面按「描述为空」隐藏。不删键（删了回滚不回来）。
       const desc = String(f.描述 || '');
-      out.push({ path: basePath.concat(['体内', '描述']), from: desc, to: '', byFluid: true });
+      out.push(engineDiff(basePath.concat(['体内', '描述']), desc, '', 'fluid'));
       f.描述 = '';
     }
   };
@@ -2064,7 +2064,7 @@ function tickSensitivity(s, dh) {
       if (!Number.isFinite(v) || v <= 0) return;
       const next = Math.max(0, Math.round((v - dh * 0.2) * 10) / 10);
       if (next === v) return;
-      out.push({ path: basePath.concat(['敏感度', k]), from: v, to: next, bySens: true });
+      out.push(engineDiff(basePath.concat(['敏感度', k]), v, next, 'sens'));
       m[k] = next;
     });
   };
@@ -2107,7 +2107,7 @@ function tickBodyTraces(s, dh) {
       // 老格式：字符串 → 包成对象
       if (typeof raw === 'string') {
         const obj = { 描述: raw, 强度: 55 };
-        out.push({ path: basePath.concat(['身体', k]), from: raw, to: obj, byTrace: true });
+        out.push(engineDiff(basePath.concat(['身体', k]), raw, obj, 'trace'));
         b[k] = obj;
         return;
       }
@@ -2120,11 +2120,11 @@ function tickBodyTraces(s, dh) {
       if (next === v) return;
       if (next <= 0) {
         // 消退干净：清描述、强度归零（不删键，删了回滚不回来）
-        out.push({ path: basePath.concat(['身体', k]), from: { 描述: desc, 强度: v }, to: { 描述: '', 强度: 0 }, byTrace: true });
+        out.push(engineDiff(basePath.concat(['身体', k]), { 描述: desc, 强度: v }, { 描述: '', 强度: 0 }, 'trace'));
         b[k] = { 描述: '', 强度: 0 };
         return;
       }
-      out.push({ path: basePath.concat(['身体', k, '强度']), from: v, to: next, byTrace: true });
+      out.push(engineDiff(basePath.concat(['身体', k, '强度']), v, next, 'trace'));
       raw.强度 = next;
     });
   };
@@ -2133,6 +2133,21 @@ function tickBodyTraces(s, dh) {
   return out;
 }
 
+/**
+ * 造一条可回滚的 diff（袜子/痕迹这几路专用）。
+ *
+ * 这些引擎是「先改 s 再 push diff」，applyDiffs 那时再去 getByPath 拿到的
+ * 已经是改之后的值了 —— _prev 会记错，回滚就退不回去。所以原值必须在
+ * 改之前就抓在手里，由这里显式带上去。
+ */
+function engineDiff(path, before, after, tag) {
+  const had = before !== undefined;
+  let prev = null;
+  if (had) {
+    try { prev = JSON.parse(JSON.stringify(before)); } catch (e) { prev = before; }
+  }
+  return { path: path, from: before, to: after, bySock: true, by: tag || 'sock', _had: had, _prev: prev };
+}
 /**
  * 每轮结算后推进袜子的气味状态。四件事：
  *   ⓪ 老数据没有 气味强度 的，先按文本补一个初始值
@@ -2165,11 +2180,11 @@ function tickSockScent(s) {
       const hv = g ? g.h : 8;
       const mat1 = detectSockMaterial(w.物品);
       const t1 = scentTextOf(scentLevel(sv), mat1, w.物品);
-      out.push({ path: ['npcs', i, '穿着', '袜子', '气味强度'], from: undefined, to: sv, bySock: true });
-      out.push({ path: ['npcs', i, '穿着', '袜子', '穿着小时'], from: undefined, to: hv, bySock: true });
-      out.push({ path: ['npcs', i, '穿着', '袜子', '材质'], from: undefined, to: mat1, bySock: true });
-      out.push({ path: ['npcs', i, '穿着', '袜子', '气味'], from: String(w.气味 || ''), to: t1, bySock: true });
-      out.push({ path: ['npcs', i, '穿着', '袜子', '穿着时长'], from: String(w.穿着时长 || ''), to: humanSockHours(hv), bySock: true });
+      out.push(engineDiff(['npcs', i, '穿着', '袜子', '气味强度'], undefined, sv));
+      out.push(engineDiff(['npcs', i, '穿着', '袜子', '穿着小时'], undefined, hv));
+      out.push(engineDiff(['npcs', i, '穿着', '袜子', '材质'], undefined, mat1));
+      out.push(engineDiff(['npcs', i, '穿着', '袜子', '气味'], String(w.气味 || ''), t1));
+      out.push(engineDiff(['npcs', i, '穿着', '袜子', '穿着时长'], String(w.穿着时长 || ''), humanSockHours(hv)));
       w.气味强度 = sv;
       w.穿着小时 = hv;
       w.材质 = mat1;
@@ -2195,11 +2210,11 @@ function tickSockScent(s) {
         const oldStr = Number(w.气味强度) || 0;
         const mat0 = detectSockMaterial(curName);
         const t0 = scentTextOf(0, mat0, curName);
-        out.push({ path: ['npcs', i, '穿着', '袜子', '气味强度'], from: oldStr, to: 0, bySock: true });
-        out.push({ path: ['npcs', i, '穿着', '袜子', '穿着小时'], from: Number(w.穿着小时) || 0, to: 0, bySock: true });
-        out.push({ path: ['npcs', i, '穿着', '袜子', '材质'], from: w.材质 || '', to: mat0, bySock: true });
-        out.push({ path: ['npcs', i, '穿着', '袜子', '气味'], from: String(w.气味 || ''), to: t0, bySock: true });
-        out.push({ path: ['npcs', i, '穿着', '袜子', '穿着时长'], from: String(w.穿着时长 || ''), to: '刚换上', bySock: true });
+        out.push(engineDiff(['npcs', i, '穿着', '袜子', '气味强度'], oldStr, 0));
+        out.push(engineDiff(['npcs', i, '穿着', '袜子', '穿着小时'], Number(w.穿着小时) || 0, 0));
+        out.push(engineDiff(['npcs', i, '穿着', '袜子', '材质'], w.材质 || '', mat0));
+        out.push(engineDiff(['npcs', i, '穿着', '袜子', '气味'], String(w.气味 || ''), t0));
+        out.push(engineDiff(['npcs', i, '穿着', '袜子', '穿着时长'], String(w.穿着时长 || ''), '刚换上'));
         w.气味强度 = 0;
         w.穿着小时 = 0;
         w.材质 = mat0;
@@ -2213,28 +2228,28 @@ function tickSockScent(s) {
       const before = Number(w.气味强度) || 0;
       const after = Math.min(100, Math.round((before + dh * rate) * 10) / 10);
       if (!w.材质) {
-        out.push({ path: ['npcs', i, '穿着', '袜子', '材质'], to: mat, bySock: true });
+        out.push(engineDiff(['npcs', i, '穿着', '袜子', '材质'], undefined, mat));
         w.材质 = mat;
       }
       if (after === before) return;
       const beforeH = Number(w.穿着小时) || 0;
       const afterH = Math.min(160, Math.round((beforeH + dh) * 10) / 10);
-      out.push({ path: ['npcs', i, '穿着', '袜子', '穿着小时'], from: beforeH, to: afterH, bySock: true });
+      out.push(engineDiff(['npcs', i, '穿着', '袜子', '穿着小时'], beforeH, afterH));
       w.穿着小时 = afterH;
-      out.push({ path: ['npcs', i, '穿着', '袜子', '气味强度'], from: before, to: after, bySock: true });
+      out.push(engineDiff(['npcs', i, '穿着', '袜子', '气味强度'], before, after));
       w.气味强度 = after;
       const lvBefore = Math.floor(before / 17);
       const lvAfter = Math.floor(after / 17);
       const oldText = String(w.气味 || '');
       const newText = scentTextOf(scentLevel(after), mat, w.物品);
       if (lvBefore !== lvAfter || !oldText) {
-          out.push({ path: ['npcs', i, '穿着', '袜子', '气味'], from: oldText, to: newText, bySock: true });
+          out.push(engineDiff(['npcs', i, '穿着', '袜子', '气味'], oldText, newText));
           w.气味 = newText;
       }
       const oldDur = String(w.穿着时长 || '');
       const newDur = humanSockHours(afterH);
       if (newDur !== oldDur) {
-          out.push({ path: ['npcs', i, '穿着', '袜子', '穿着时长'], from: oldDur, to: newDur, bySock: true });
+          out.push(engineDiff(['npcs', i, '穿着', '袜子', '穿着时长'], oldDur, newDur));
           w.穿着时长 = newDur;
       }
     });
@@ -2250,7 +2265,7 @@ function tickSockScent(s) {
       const rate = 100 / ((SOCK_FULL_HOURS[mat] || SOCK_FULL_HOURS.混纺) * 2.5);
       const next = Math.max(0, Math.round((sv - dh * rate) * 10) / 10);
       if (next === sv) return;
-      out.push({ path: ['protagonist', '物品', i, '气味强度'], from: sv, to: next, bySock: true });
+      out.push(engineDiff(['protagonist', '物品', i, '气味强度'], sv, next));
       it.气味强度 = next;
     });
   } catch (e) {
@@ -4521,7 +4536,7 @@ function seasonText(s) {
             s._收支结算月 = monthly.curMonth;
             // 把这条也记进 diff（带上 from）：applyDiffs 已经跑过，它不会再自动快照，
             // 重算这一轮时要靠 from 才能把金钱退回原值。
-            diffs.push({ path: ['protagonist', '金钱'], from: before, to: monthly.next, byMonthly: true });
+            diffs.push(engineDiff(['protagonist', '金钱'], before, monthly.next, 'monthly'));
           }
           
           // 袜子气味强度：纯算术推进，不叫模型。
@@ -7470,7 +7485,7 @@ reg('importCommit', async ({ gameId }) => {
     const delta = inc - exp;
     const next = Math.round((money + delta) * 100) / 100;
     // 记成一条带 from/to 的 diff：与自动结算一致，重算那一轮时能正确回滚
-    const d = { path: ['protagonist', '金钱'], from: money, to: next, byMonthly: true };
+    const d = engineDiff(['protagonist', '金钱'], money, next, 'monthly');
     applyDiffs(s, [d]);
     // 基准推到当前剧情月，免得手动结过之后自动那条又补一次
     const m = String((s.world || {}).当前日期时间 || '').match(/(\d{4})\s*年\s*(\d{1,2})\s*月/);
