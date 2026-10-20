@@ -2438,6 +2438,19 @@ function guessSockStrength(txt, scent) {
    * 上游常常把整段 JSON 又套在 failure.message 里（例如 "503: {\"message\":\"CLI 正在维护…\"}"），
    * 直接摊给用户看等于没说，这里把里面那句剥出来，并按常见原因补一句该怎么办。
    */
+  /**
+   * 这次输出是被 maxTokens 截断的吗？
+   *
+   * 各家的叫法不一样：length / max-tokens / maxTokens / stop_reason: max_tokens。
+   * 截断不等于失败 —— 已经吐出来的那部分通常还能用（正文是半篇、结算 JSON 补括号能救）。
+   * 所以它单独一个标记，不当成错误抛出去。
+   */
+  function isTruncated(finish) {
+    if (!finish || typeof finish !== 'object') return false;
+    const k = String(finish.kind || finish.reason || finish.type || '').toLowerCase();
+    return k === 'length' || k === 'max-tokens' || k === 'maxtokens' || k === 'max_tokens' || k === 'truncated';
+  }
+
   function describeFinish(finish) {
     if (!finish || String(finish.kind || '') !== 'error') return '';
     const f = finish.failure || {};
@@ -2703,8 +2716,9 @@ function pickToolCall(r) {
       if (why) throw new Error('主模型没有返回正文：' + why);
       throw new Error('主模型没有返回内容（chunk 类型：' + Object.keys(seen).join(',') + '）');
     }
-    await apiLog('[' + tag + '] ' + who + ' → ' + text.length + ' 字', t0);
-    return { text, reasoning, finish, toolCalls: callList };
+    const cut = isTruncated(finish);
+    await apiLog('[' + tag + '] ' + who + ' → ' + text.length + ' 字' + (cut ? '（被 maxTokens 截断，只拿到了这些）' : ''), t0);
+    return { text, reasoning, finish, toolCalls: callList, truncated: isTruncated(finish) };
     } finally {
       try {
         if (it && typeof it.return === 'function') await it.return();
@@ -4359,6 +4373,12 @@ function seasonText(s) {
 
         if (bodyEffort) storyOpts.reasoningEffort = bodyEffort;
     let r = await callMainModel([{ role: 'system', content: sys }, { role: 'user', content: userContent }], storyOpts);
+    // 被 maxTokens 截断：不当中断处理，已经吐出来的照样用（半篇总比空白强），
+    // 只在日志和 issues 里留一句，让玩家知道这轮为什么戛然而止。
+    const cutStory = !!(r && r.truncated);
+    if (cutStory) {
+      await turnLog('[正文] 被 maxTokens 截断（' + String(r.text || '').length + ' 字），保留已生成部分');
+    }
     let sp = splitStory(r.text);
     // 有些模型／中转会把内容全塞进「思考」通道，正文一条都不给。
     // 原样保存就会得到一段没有正文的空轮次，所以这里重试一次。
