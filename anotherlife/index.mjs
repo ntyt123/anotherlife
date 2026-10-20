@@ -3103,11 +3103,17 @@ function humanSockHours(h) {
  */
 function traceDecayRate(desc) {
   const t = String(desc || '');
+  // 从快到慢排；同档里先写具体的词，避免被短词截住（"淤青"先于"淤"）
+  if (/鞭痕|抽痕|条痕|藤条/.test(t)) return 6;        // 最深，几天才退
+  if (/掌痕|巴掌印|掌印|打红/.test(t)) return 4;      // 最浅，几小时就淡
+  if (/压痕|深勒|箍痕/.test(t)) return 3.5;           // 紧身衣、束具压出来的
   if (/绳痕|勒痕|绑痕|绳印/.test(t)) return 3;
+  if (/磨痕|磨破|擦破|破皮|磨出血/.test(t)) return 2; // 皮破了，好几天
   if (/吻痕|草莓|吸痕/.test(t)) return 2;
-  if (/红肿|淤青|青紫/.test(t)) return 1.5;
+  if (/淤青|红肿|青紫|紫红/.test(t)) return 1.5;
   if (/抓痕|指甲|划痕/.test(t)) return 1.2;
   if (/咬痕|牙印|齿痕/.test(t)) return 1;
+  if (/淤|肿|青/.test(t)) return 1.5;                 // 单个字的兜底
   return 1.5;
 }
 
@@ -3525,6 +3531,66 @@ function engineDiff(path, before, after, tag) {
  *
  * 返回的条目自带 from —— applyDiffs 已经跑过，重算/删轮才退得回去。
  */
+/**
+ * 身体状态自动过期。
+ *
+ * 为什么要有：身体状态是自由文本，模型写「腿还软着」之后，只要下一轮没主动清，
+ * 就会一直挂着 —— 剧情过了三天，弹窗里还写着「腿还软着」。和袜子气味「挂太久」
+ * 是同一类扫兴，只不过气味有 tickSockScent 管，这个字段一直没人管。
+ *
+ * 做法：每轮比对文本。变了就把累计小时归零；没变就往上加，
+ * 超过这一类状态的天然寿命就清空。
+ *
+ * 用「经过的小时」而不是「轮数」：一轮可能跨一天，按轮数判会错。
+ */
+function bodyStateTTLHours(text) {
+  const t = String(text || '');
+  if (!t) return 0;
+  // 慢性的永远不自动清（残、旧伤、老毛病这类是她的一部分，不是一时的事）
+  if (/残|旧伤|慢性|习惯性|长期|一直|老毛病|常年|后遗/.test(t)) return Infinity;
+  // 重的撑三天
+  if (/伤|骨折|扭|拉伤|感冒|发烧|病|瘸|流血|发烧/.test(t)) return 72;
+  // 轻的半天就散
+  if (/软|酸|麻|哑|抖|晕|喘|没力气|腿沉|发虚/.test(t)) return 12;
+  // 疼、肿、红这类介于两者之间
+  if (/疼|痛|肿|红|僵/.test(t)) return 24;
+  return 24;
+}
+
+function tickBodyState(s, dh) {
+  const out = [];
+  if (!(dh > 0)) return out;
+  const meta = (s._状态追踪 && typeof s._状态追踪 === 'object' && !Array.isArray(s._状态追踪))
+    ? s._状态追踪 : (s._状态追踪 = {});
+  const owners = [];
+  if (s.protagonist) owners.push(['主角', s.protagonist, []]);
+  (Array.isArray(s.npcs) ? s.npcs : []).forEach((n, i) => {
+    if (n && typeof n === 'object') owners.push(['npc' + i, n, ['npcs', i]]);
+  });
+
+  owners.forEach(([key, owner, basePath]) => {
+    const cur = String(owner.身体状态 || '');
+    const rec = meta[key];
+    if (!rec || rec.文本 !== cur) {
+      // 写了新的，或改过内容：重新开始计时
+      meta[key] = { 文本: cur, 时: 0 };
+      return;
+    }
+    if (!cur) return;
+    const ttl = bodyStateTTLHours(cur);
+    if (!Number.isFinite(ttl)) return;
+    const 已过 = (Number(rec.时) || 0) + dh;
+    if (已过 >= ttl) {
+      out.push(engineDiff(basePath.concat(['身体状态']), cur, '', 'bstate'));
+      owner.身体状态 = '';
+      meta[key] = { 文本: '', 时: 0 };
+    } else {
+      rec.时 = 已过;
+    }
+  });
+  return out;
+}
+
 function tickSockScent(s) {
   const out = [];
   try {
@@ -6028,6 +6094,10 @@ function seasonText(s) {
           // 体液残留（只在面板显示，不参与任何判定）
           const fluidDiffs = tickFluid(s, Number(s._lastDh) || 0);
           fluidDiffs.forEach((d) => diffs.push(d));
+
+          // 身体状态自动过期：「腿还软着」「嗓子哑了」这种，不该挂过夜
+          const bstateDiffs = tickBodyState(s, Number(s._lastDh) || 0);
+          bstateDiffs.forEach((d) => diffs.push(d));
 
           // 粉丝：模型给「谁涨跌多少」，这里加总（只对开了「追踪粉丝」标记的角色）
           const fanDiffs = applyFanDeltas(s, sj && sj.粉丝动态, Number(s.story && s.story.sockTick));
