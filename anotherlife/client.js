@@ -53,9 +53,12 @@ window.__ModuleLoader__.load({
       // 对白：整段以引号开头 → 单独配色，和叙述一眼分开（取自界面里的蓝）
       '.sim-md-p.say{color:var(--sim-say)}',
       '.sim-md-p .sim-say,.sim-md-block .sim-md-p .sim-say,.sim-as-txt .sim-md-p .sim-say{color:var(--sim-say)}',
-      // 正文里的人名：虚线下划线，悬停变蓝 —— 让人看得出能点，又不至于把正文弄花
-      '.sim-name{cursor:pointer;border-bottom:1px dashed var(--sim-bd);transition:color .12s,border-color .12s}',
-      '.sim-name:hover{color:var(--sim-say);border-bottom-color:var(--sim-say)}',
+      // 正文里的人名：淡蓝底 + 实线下划 + 加粗 —— 一眼能看出是「能点的人」，
+      // 又不至于把段落切碎。悬停反色（拿对白蓝当底，字变背景色）。
+      '.sim-name{cursor:pointer;color:#3f6a96;font-weight:600;background:rgba(95,131,171,.14);'
+      + 'border-bottom:1.5px solid rgba(95,131,171,.6);border-radius:2px;padding:0 2px;'
+      + 'transition:background .12s,color .12s,border-color .12s}',
+      '.sim-name:hover{background:#5f83ab;color:#fff;border-bottom-color:#5f83ab}',
       // 标题：原来 lv3（14px）比正文还小，层次出不来。现在按 # 的个数拉开字号与间距。
       '.sim-md-h{font-weight:700;margin:16px 0 9px;line-height:1.45}',
       '.sim-md-h.lv1{font-size:calc(var(--sim-fs-6) + 5px)}',
