@@ -2726,24 +2726,24 @@ function pickToolCall(r) {
  * 给太小就会出现「想完了，正式内容没预算了」。
  */
 const TOKEN_DEFAULTS = {
-  retrieve: 6000,      // 检索：挑上下文条目（思考重的槽位）
+  retrieve: 12000,      // 检索：挑上下文条目（思考重的槽位）
   story: 12000,        // 正文（中文 1 字≈1.5 token，4500 只够 3000 字；实测单轮到过 5750 字）
   settle: 20000,       // 结算（实测思考到过 19000 字≈12600 token）：全部变量变化（最费）
-  summary: 2500,       // 剧情总结
-  summaryMerge: 3000,  // 多段总结合并
+  summary: 6000,       // 剧情总结
+  summaryMerge: 6000,  // 多段总结合并
   parse: 8000,         // 创角解析（主角＋名册）
-  realInfo: 4000,      // 真人资料补全
-  oracle: 2000,        // 神谕类追问
-  misc: 1200,          // 其他零散调用
+  realInfo: 8000,      // 真人资料补全
+  oracle: 16000,        // 神谕类追问
+  misc: 4000,          // 其他零散调用
 };
 
-/** 取某个用途的 token 上限：config.tokens[key] 优先，否则用默认；夹在 200~32000 */
+/** 取某个用途的 token 上限：config.tokens[key] 优先，否则用默认；夹在 200~65536 */
 function tokOf(s, key) {
   const t = (s && s.config && s.config.tokens) || {};
   const v = Number(t[key]);
   const def = TOKEN_DEFAULTS[key] || TOKEN_DEFAULTS.misc;
   if (!Number.isFinite(v) || v <= 0) return def;
-  return Math.max(200, Math.min(32000, Math.floor(v)));
+  return Math.max(200, Math.min(65536, Math.floor(v)));
 }
 
   /**
@@ -4982,7 +4982,7 @@ reg('saveTokens', async ({ gameId, tokens }) => {
   Object.keys(TOKEN_DEFAULTS).forEach((k) => {
     const v = Number(t[k]);
     // 留空 / 非数字 / 0 都不写：让它回退到默认值
-    if (Number.isFinite(v) && v > 0) out[k] = Math.max(200, Math.min(32000, Math.floor(v)));
+    if (Number.isFinite(v) && v > 0) out[k] = Math.max(200, Math.min(65536, Math.floor(v)));
   });
   s.config.tokens = out;
   await saveState(s);

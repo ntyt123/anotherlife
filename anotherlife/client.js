@@ -10473,7 +10473,7 @@ function toggleFans(npc) {
                       h('input', {
                         type: 'number',
                         min: 200,
-                        max: 32000,
+                        max: 65536,
                         step: 500,
                         // 非受控（defaultValue）：受控 value 每次按键都触发 onChange，
                         // 而每次 onChange 都跑一遍 run(...) 会跟后端返回的状态打架，
@@ -10481,7 +10481,6 @@ function toggleFans(npc) {
                         // key 带当前存档值：存完之后组件重挂载，框里显示的就是真值。
                         key: key + ':' + String((dcfg.tokens && dcfg.tokens[key] != null) ? dcfg.tokens[key] : def),
                         defaultValue: (dcfg.tokens && dcfg.tokens[key] != null) ? dcfg.tokens[key] : def,
-                        placeholder: String(def),
                         onBlur: (e) => {
                           const rawV = Number(e.target.value);
                           const cfg2 = Object.assign({}, dcfg);
