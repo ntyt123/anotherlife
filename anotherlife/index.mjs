@@ -7167,6 +7167,7 @@ reg('exportStory', async ({ gameId }) => {
     // 助手模式：开着走 Agent（能调工具去翻正文、查记忆、按时间线核对）；
     // 关掉就是纯对话 —— 只凭当前上下文回答，和以前一样。
     // 默认开着，因为翻正文的能力是这个浮窗存在的理由；关掉是给「只想聊两句」的时候用。
+    let out;
     const agentOn = !(s.config && s.config.oracleAgent === false);
     try {
       if (agentOn) {
