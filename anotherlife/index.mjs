@@ -6463,6 +6463,95 @@ reg('stopGenerate', async ({ gameId }) => {
   });
 
   /** 把老存档里缺 _had / _prev 的 diffs 补上，并报出补不准的条数 */
+  /**
+   * 只重算某个角色的穿着：拿最新一段正文当依据，让结算模型单独跑一次。
+   *
+   * 为什么单独开一条路：正常结算只写「这一轮正文里出现过的人」，
+   * 家人这种开局就建档、但某轮正文没提的角色，穿着会一直是空的。
+   * 重发那一轮代价太大（整轮结算都会重跑、时间金钱都可能变），
+   * 所以给一个「只补衣服」的入口。
+   */
+  reg('refreshWear', async ({ gameId, name }) => {
+    const s = await loadState(gameId);
+    const nm = String(name || '').trim();
+    if (!nm) throw new Error('没指明是谁');
+    const idx = (s.npcs || []).findIndex(function (n) {
+      return String((n && n.姓名) || '').trim() === nm;
+    });
+    if (idx < 0) throw new Error('角色表里没有「' + nm + '」');
+    const npc = s.npcs[idx];
+    const last = (s.transcript || []).slice().reverse().find(function (t) {
+      return t && t.role === 'assistant' && String(t.body || '').trim();
+    });
+    if (!last) throw new Error('还没有正文可以参照');
+  
+    const body = String(last.body || '').trim();
+    // 长正文只取后半段：穿着描写通常就在最近发生的事里
+    const clip = body.length > 6000 ? body.slice(-6000) : body;
+  
+    const sys = [
+      '你在给一个小说模拟器补录某个角色的穿着。只输出一个 JSON 对象，不要任何解释。',
+      '',
+      '【输出格式】',
+      '{"穿着":{"头部":{...},"上衣":{...},"下衣":{...},"袜子":{...},"鞋子":{...},"饰品":{...}}}',
+      '每个部位六个键：物品／稀有度／状态／气味／简介／穿着时长。',
+      '· 物品=衣物名称；判断不了就留空字符串。',
+      '· 稀有度 N/R/SR/SSR/UR（按这个世界的珍贵程度判，普通日常衣物一律 N）。',
+      '· 状态只在非正常时才写（如「褶皱」「袖口开线」），正常整洁留空。',
+      '· 气味只有女性角色的「袜子」写，一句短语；其他部位留空。',
+      '· 简介每件都要写，10~25 字，写这件衣服的由来或当下的样子，不要复述物品名。',
+      '· 穿着时长一句话（如「刚换上」「一整天」），不知道留空。',
+      '',
+      '【判据】',
+      '依据下面这段正文里关于这个人的描写，加上他的身份／年龄／性别／当前状态，',
+      '给出「现在这一刻」身上穿的东西。正文没细写的，按身份与场合给合理的常规衣着——',
+      '人不会不穿衣服，宁可写「白色的短袖校服衬衫」这种平常的，也不要整块留空。',
+      '确实判断不了的部位（比如从没提过饰品）留空字符串即可。',
+    ].join('\n');
+  
+    const user = [
+      '角色：' + nm,
+      '性别：' + String(npc.性别 || ''),
+      '年龄：' + String(npc.年龄 == null ? '' : npc.年龄),
+      '身份：' + String(npc.身份 || ''),
+      '当前状态：' + String(npc.当前状态 || ''),
+      '',
+      '【最新一段正文】',
+      clip,
+    ].join('\n');
+  
+    const raw = await callSlot(s, 'settle', [
+      { role: 'system', content: sys },
+      { role: 'user', content: user },
+    ], { maxTokens: tokOf(s, 'settle'), tag: '刷新穿着' });
+  
+    let parsed = null;
+    try { parsed = JSON.parse(repairJson(extractJson(raw))); } catch (e) { parsed = null; }
+    const got = parsed && parsed.穿着 && typeof parsed.穿着 === 'object' ? parsed.穿着 : null;
+    if (!got) throw new Error('模型没给出可用的穿着');
+  
+    // 只覆盖模型给了内容的部位 —— 它没提的部位保留原样，不要把已有的衣服抹掉
+    const before = JSON.parse(JSON.stringify(npc.穿着 || {}));
+    const dirty = {};
+    WEAR_KEYS.forEach(function (k) {
+      const v = got[k];
+      if (!v || typeof v !== 'object') return;
+      if (!String(v.物品 || '').trim()) return;
+      dirty[k] = v;
+    });
+    if (!Object.keys(dirty).length) throw new Error('模型返回的穿着是空的');
+  
+    const merged = normalizeWear(Object.assign({}, before, dirty));
+    npc.穿着 = merged;
+    WEAR_KEYS.forEach(function (k) {
+      if (JSON.stringify(before[k]) === JSON.stringify(merged[k])) return;
+      engineDiff(['npcs', idx, '穿着', k], before[k], merged[k], 'wear');
+    });
+    await turnLog('[刷新穿着] ' + nm + ' → ' + Object.keys(dirty).join(' / '));
+    await saveState(s);
+    return { ok: true, name: nm, filled: Object.keys(dirty), state: await loadState(gameId) };
+  });
+  
   reg('backfillDiffs', async ({ gameId }) => {
     const s = await loadState(gameId);
     const r = backfillDiffs(s);

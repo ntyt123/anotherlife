@@ -3600,6 +3600,8 @@ function App({ gameId, close }) {
           };
           const [draft, setDraft] = React.useState(null);
           const [bfNote, setBfNote] = React.useState('');
+          // 正在刷新穿着的角色名（空 = 没在刷）
+          const [wearBusy, setWearBusy] = React.useState('');
           // 关系图回放：-1 表示看最新一轮，否则看第 N 轮结束时的关系网
           const [relRound, setRelRound] = React.useState(-1);
           const [tab, setTab] = React.useState('setup');
@@ -9521,10 +9523,28 @@ function toggleFans(npc) {
                     return h(
                       'div',
                       { className: 'sim-panel' },
-                      h('div', { className: 'sim-panel-h' }, '👕 穿着'),
-                      hasWear
+                      h('div', { className: 'sim-panel-h' },
+                        '👕 穿着',
+                        h('button', {
+                          className: 'sim-ibtn',
+                          title: '让 AI 按最新一段正文重新写这个人的穿着',
+                          disabled: busy || !!wearBusy,
+                          onClick: function () {
+                            const nm = String((obj && (obj.姓名 || obj.对象)) || '').trim();
+                            if (!nm) return;
+                            setWearBusy(nm); setErr('');
+                            Promise.resolve(call('refreshWear', { name: nm }, gameId))
+                              .then(function (r) {
+                                setWearBusy('');
+                                if (r && r.state) { setState(r.state); setDraft(r.state); setDps(r.state); }
+                              })
+                              .catch(function (e) { setWearBusy(''); setErr(String((e && e.message) || e)); });
+                          },
+                        }, wearBusy ? '…' : '⟳')
+                      ),
+                        hasWear
                         ? null
-                        : h('div', { className: 'sim-hint', style: { marginBottom: 8 } }, '这个角色的穿着还没被记录 —— 想补上，用正文里那一行的 ⟳ 重新生成。'),
+                        : h('div', { className: 'sim-hint', style: { marginBottom: 8 } }, '这个角色的穿着还没被记录。点上面的 ⟳，让 AI 按最新一段正文补一份。'),
                       h(
                         'div',
                         { className: 'sim-chips' },
