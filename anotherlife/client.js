@@ -3599,8 +3599,6 @@ function App({ gameId, close }) {
           // 存档快照
           const [snapNote, setSnapNote] = React.useState('');
           // 袜子强度升级：进度与结果分开提示，别跟快照共用一条
-          const [migBusy, setMigBusy] = React.useState(false);
-          const [migNote, setMigNote] = React.useState('');
           // 读快照：正文页「读快照」按钮打开的列表
           const [snapOpen, setSnapOpen] = React.useState(false);
   const [snaps, setSnaps] = React.useState([]);
@@ -5172,29 +5170,6 @@ function App({ gameId, close }) {
               .catch((e) => setErr(msg(e)));
           }
 
-          /** 老存档升级：给还没有气味强度的袜子补初始值。幂等，可反复点。 */
-          /** 老存档升级：给还没有气味强度的袜子补初始值。幂等，可反复点。 */
-          function migrateSocks() {
-              ask('升级老存档的袜子气味强度？已有强度的一律不动。').then((ok) => {
-                if (!ok) return;
-                setMigBusy(true);
-                setMigNote('升级中…');
-                call('migrateSockScent', {}, gameId)
-                  .then((r) => {
-                    setMigBusy(false);
-                    const cnt = Number((r && r.changed) || 0);
-                    const ai = Number((r && r.ai) || 0);
-                    setMigNote(cnt ? '已升级 ' + cnt + ' 双' + (ai ? '（' + ai + ' 双问过 AI）' : '') : '没有要升级的');
-                    window.setTimeout(() => setMigNote(''), 5000);
-                    return run(call('getState', {}, gameId), true);
-                  })
-                  .catch((e) => {
-                    setMigBusy(false);
-                    setMigNote('');
-                    setErr('升级失败：' + msg(e));
-                  });
-              });
-          }
 
           /** 拉快照列表（存 / 删之后都要刷一次） */
           function loadSnaps() {
@@ -10736,7 +10711,6 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
               h('div', { className: 'sim-hint' }, '把这一局的正文导出成 Markdown。只含正文与角色表。'),
               h('div', { className: 'sim-acts' },
                 h(Btn, { disabled: busy, onClick: exportStory }, '📄 导出正文'),
-                h(Btn, { disabled: busy || migBusy, onClick: migrateSocks }, migBusy ? '升级中…' : (migNote || '🔄 升级袜子强度'))
               )
             ),
               h('div', { className: 'sim-card' },
