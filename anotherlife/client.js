@@ -10539,7 +10539,8 @@ function toggleFans(npc) {
                       if (!f) return;
                       const rd = new FileReader();
                       rd.onload = () => {
-                        if (!window.confirm('用这个文件覆盖当前这一局？原来的存档会先备份。')) return;
+                        ask('用这个文件覆盖当前这一局？原来的存档会先备份。').then((ok) => {
+                          if (!ok) return;
                         // callHost 一次只能传 256 KB，存档动辄 600 KB 以上 —— 必须分片。
                         // 中文按 UTF-8 每字 3 字节，50000 字 ≈ 150 KB，留足余量。
                         const json = String(rd.result || '');
@@ -10566,6 +10567,7 @@ function toggleFans(npc) {
                             }
                           })
                           .catch((e) => { setBusy(false); setErr(String((e && e.message) || e)); });
+                        });
                       };
                       rd.readAsText(f);
                     };
