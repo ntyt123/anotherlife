@@ -8996,7 +8996,7 @@ function toggleFans(npc) {
 
               // 关系深浅：从「当前状况」里读（"好感 中 · 信任 弱 · 欲望 无"）
               // 取三项里最高的一档，作为这条线的轻重。读不出来就当 0。
-              function relScore(note) {
+              function relScore(note, rel) {
                 const m = String(note || '');
                 function lv(w) {
                   const r = new RegExp(w + '\\s*(无|弱|中|强|极强|很高|较高|较低|高|低)').exec(m);
@@ -9008,7 +9008,17 @@ function toggleFans(npc) {
                   if (/弱|低/.test(t)) return 1;
                   return 0;
                 }
-                return Math.max(lv('好感'), lv('信任'), lv('欲望'));
+                const best = Math.max(lv('好感'), lv('信任'), lv('欲望'));
+                // 读不出档位时按关系类型给个基础分 —— 家人的关系条目里往往没有
+                // 「好感/信任/欲望」那串（它们来自 npcs.与主角关系），只看 note 会让
+                // 父亲比室友还细，图上反过来读就错了。
+                if (best === 0 && rel) {
+                  if (/父|母|爸|妈|哥|姐|弟|妹|儿|女|妻|夫|恋|爱|未婚/.test(rel)) return 3;
+                  if (/师|导|徒|同学|室友|同事|同班|学/.test(rel)) return 2;
+                  if (/敌|仇|对手|竞争|前任|前妻/.test(rel)) return 2;
+                  return 1;
+                }
+                return best;
               }
             
               // 关系类型 → 分组键。同组的人在图上是相邻的一段扇区，视觉上成团。
@@ -9038,7 +9048,7 @@ function toggleFans(npc) {
             });
               // 没记录关系的按「最近出场」倒序 —— 常露面的人该排在没有存在感的角色前面
                 // 算出每条边的轻重，再按组排序 —— 同组的人排在一起，图上是连续的扇区
-                linked.forEach(function (x) { x.score = relScore(x.note); });
+                linked.forEach(function (x) { x.score = relScore(x.note, x.rel); });
                 linked.sort(function (x, y) {
                   return GROUP_ORDER.indexOf(relGroup(x.rel)) - GROUP_ORDER.indexOf(relGroup(y.rel));
                 });
