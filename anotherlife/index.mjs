@@ -4808,6 +4808,29 @@ function seasonText(s) {
    * 每轮的进行阶段（界面轮询显示用）。
    * stages: prep 整理状态 → retrieve 提取信息 → story 请求正文 → settle 结算 → save 保存 → done/error
    */
+  /**
+   * 正在跑的长任务（正文生成、神谕）。按 gameId 记一个 { stop } 标记。
+   *
+   * 停止是「软停」：不 abort 底层连接，只在流式循环里每收到一块检查一次，
+   * 命中就跳出循环、把已经拿到的内容照常返回 —— 和「被 maxTokens 截断」同样的处理。
+   * 这样停下来的半篇还能用，不会因为按了停止就把整轮丢掉。
+   */
+  const RUNNING = new Map();
+  function beginRun(gid) {
+    const r = { stop: false };
+    RUNNING.set(String(gid), r);
+    return r;
+  }
+  function endRun(gid) {
+    RUNNING.delete(String(gid));
+  }
+  function stopRun(gid) {
+    const r = RUNNING.get(String(gid));
+    if (!r) return false;
+    r.stop = true;
+    return true;
+  }
+
   const PROGRESS = {};
   function setProg(gameId, stage, text) {
     const k = String(gameId || '');
