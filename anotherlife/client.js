@@ -11321,6 +11321,7 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
                 },
                 // 报错贴在视口底部（见 inputBar 之后那条），不放这里 ——
                 // 它是滚动容器的一部分，玩家在页面底部操作时它已经滚到上面去了。
+                view
               ),
               inputBar,
               // 报错固定在视口底部：不管正文滚到哪儿都看得见。点 ✕ 关掉。
