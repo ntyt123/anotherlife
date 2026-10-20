@@ -596,6 +596,11 @@ window.__ModuleLoader__.load({
       '.sim-optbar-list{overflow:auto;padding:0 12px 10px;display:flex;flex-direction:column;gap:6px}',
       '.sim-opt-i{flex:0 0 auto;color:var(--sim-t2);font-size:var(--sim-fs-1);padding-top:2px;min-width:16px;text-align:right}',
       '.sim-input textarea{flex:1;min-width:0;min-height:48px;background:var(--sim-bg);border:1px solid var(--sim-bd);border-radius:8px;color:var(--sim-t);padding:8px;font-size:var(--sim-fs-3);font-family:inherit}',
+      // 报错条：fixed 在底部，不跟内容滚动 —— 在页面底部点按钮时也能立刻看到
+      '.sim-err-toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:10000;max-width:min(640px,calc(100vw - 40px));display:flex;align-items:flex-start;gap:10px;padding:10px 14px;border-radius:10px;background:var(--sim-bg2);border:1px solid var(--sim-err);color:var(--sim-err);font-size:var(--sim-fs-3);line-height:1.5;box-shadow:0 10px 28px rgba(0,0,0,.22)}',
+      '.sim-err-toast .t{flex:1 1 auto;min-width:0;word-break:break-word}',
+      '.sim-err-toast .x{flex:none;border:0;background:transparent;color:var(--sim-err);cursor:pointer;font-size:var(--sim-fs-4);line-height:1;opacity:.65;padding:0 2px}',
+      '.sim-err-toast .x:hover{opacity:1}',
       '.sim-err{color:var(--sim-err);font-size:var(--sim-fs-2);padding:4px 0;word-break:break-word}',
       '.sim-pre{white-space:pre-wrap;font-family:monospace;font-size:var(--sim-fs-1);background:var(--sim-bg);border:1px solid var(--sim-bd);border-radius:8px;padding:8px;max-height:320px;overflow:auto;color:var(--sim-t2)}',
       '.sim-hero{display:flex;align-items:center;gap:14px;padding:16px;border-radius:12px;margin-bottom:14px;background:var(--sim-bg);border:1px solid var(--sim-bd);border-left:4px solid var(--sim-ac)}',
@@ -11314,10 +11319,17 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
                   onPointerDown: markUserScroll,
                   onKeyDown: markUserScroll,
                 },
-                err ? h('div', { className: 'sim-err' }, err) : null,
-                view
+                // 报错贴在视口底部（见 inputBar 之后那条），不放这里 ——
+                // 它是滚动容器的一部分，玩家在页面底部操作时它已经滚到上面去了。
               ),
-              inputBar
+              inputBar,
+              // 报错固定在视口底部：不管正文滚到哪儿都看得见。点 ✕ 关掉。
+              err
+                ? h('div', { className: 'sim-err-toast' },
+                    h('span', { className: 't' }, err),
+                    h('button', { className: 'x', title: '关掉', onClick: function () { setErr(''); } }, '✕')
+                  )
+                : null,
             ),
             /**
              * 这两个要**直呼**、不能写成 h(Comp)。
