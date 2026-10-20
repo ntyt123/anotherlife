@@ -3001,7 +3001,7 @@ function sockLooks(name) {
  * 按档位生成一句气味描写。
  * 同一档位内固定用同一句（跨档才换）—— 每轮换一句会让界面上那句话一直闪。
  */
-function scentTextOf(level, material, sockName) {
+function scentTextOf(level, material, sockName, extra) {
   const lv = Math.max(0, Math.min(5, Number(level) || 0));
   const looks = sockLooks(sockName);
   const fill = function (s) {
@@ -3018,7 +3018,8 @@ function scentTextOf(level, material, sockName) {
   };
   // 三句各用不同系数错开：否则同一档同一双袜子永远是同一组搭配，
   // 反复看到就成了一句话。
-  const seed = Math.abs(lv * 31 + String(sockName || '').length);
+  // 掺进角色名：只按「档位 + 袜子名长度」算，同档同长度的两个人会撞成同一句
+  const seed = Math.abs(lv * 31 + String(sockName || '').length + Math.round(sockSeed(extra) * 997));
   const p1 = SCENT_TEXT[lv] || SCENT_TEXT[2];
   const p2 = SOCK_LOOK_TEXT[lv];
   const p3 = SOCK_WEAR_TEXT[lv];
@@ -3194,7 +3195,7 @@ function migrateScentText(s) {
     const sv = Number(w.气味强度);
     if (!Number.isFinite(sv)) return;        // 没强度的留给 tickSockScent 补
     const mat = w.材质 || detectSockMaterial(w.物品);
-    w.气味 = scentTextOf(scentLevel(sv), mat, w.物品);
+    w.气味 = scentTextOf(scentLevel(sv), mat, w.物品, String(n.姓名 || ''));
     changed++;
   });
   return changed;
@@ -3505,7 +3506,7 @@ function tickSockScent(s) {
         const txt = String(w.气味 || '').trim();
         if (txt && txt.indexOf('。') < 0) {
           const mat2 = w.材质 || detectSockMaterial(w.物品);
-          const t2 = scentTextOf(scentLevel(Number(w.气味强度)), mat2, w.物品);
+          const t2 = scentTextOf(scentLevel(Number(w.气味强度)), mat2, w.物品, String(n.姓名 || ''));
           out.push(engineDiff(['npcs', i, '穿着', '袜子', '气味'], txt, t2));
           w.气味 = t2;
         }
@@ -3516,7 +3517,7 @@ function tickSockScent(s) {
       const sv = g ? g.s : 45;
       const hv = g ? g.h : 8;
       const mat1 = detectSockMaterial(w.物品);
-      const t1 = scentTextOf(scentLevel(sv), mat1, w.物品);
+      const t1 = scentTextOf(scentLevel(sv), mat1, w.物品, String(n.姓名 || ''));
       out.push(engineDiff(['npcs', i, '穿着', '袜子', '气味强度'], undefined, sv));
       out.push(engineDiff(['npcs', i, '穿着', '袜子', '穿着小时'], undefined, hv));
       out.push(engineDiff(['npcs', i, '穿着', '袜子', '材质'], undefined, mat1));
@@ -3546,7 +3547,7 @@ function tickSockScent(s) {
       if (prevName && prevName !== curName) {
         const oldStr = Number(w.气味强度) || 0;
         const mat0 = detectSockMaterial(curName);
-        const t0 = scentTextOf(0, mat0, curName);
+        const t0 = scentTextOf(0, mat0, curName, String(n.姓名 || ''));
         out.push(engineDiff(['npcs', i, '穿着', '袜子', '气味强度'], oldStr, 0));
         out.push(engineDiff(['npcs', i, '穿着', '袜子', '穿着小时'], Number(w.穿着小时) || 0, 0));
         out.push(engineDiff(['npcs', i, '穿着', '袜子', '材质'], w.材质 || '', mat0));
@@ -3581,7 +3582,7 @@ function tickSockScent(s) {
       // 以前是「跨档才重写」，而且分档用的是 Math.floor(v/17)，和 scentLevel
       // 的 10/30/50/70/85 不一致 —— 两套分档错位，三句几乎永远出不来。
       const oldText = String(w.气味 || '');
-      const newText = scentTextOf(scentLevel(after), mat, w.物品);
+      const newText = scentTextOf(scentLevel(after), mat, w.物品, String(n.姓名 || ''));
       if (oldText !== newText) {
         out.push(engineDiff(['npcs', i, '穿着', '袜子', '气味'], oldText, newText));
         w.气味 = newText;
@@ -8633,7 +8634,7 @@ reg('migrateSockScent', async ({ gameId }) => {
     w.气味强度 = sVal;
     w.穿着小时 = hVal;
     w.材质 = detectSockMaterial(w.物品);
-    w.气味 = scentTextOf(scentLevel(sVal), w.材质, w.物品);
+    w.气味 = scentTextOf(scentLevel(sVal), w.材质, w.物品, String(x.姓名 || ''));
     w.穿着时长 = humanSockHours(hVal);
     changed += 1;
   });
