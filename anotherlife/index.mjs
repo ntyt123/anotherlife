@@ -8193,7 +8193,18 @@ reg('stopGenerate', async ({ gameId }) => {
     });
     const raw = String(res2 && res2.text != null ? res2.text : res2 == null ? '' : res2);
     const sj = pickToolCall(res2) || parseJsonLoose(raw);
-    if (!sj) throw new Error('结算模型未返回有效 JSON');
+    if (!sj) {
+      // 把模型实际返回的开头带进错误里 —— 只看「未返回有效 JSON」永远不知道是
+      // 模型回了句无关的话、还是被中转改写了、还是真被截断。
+      const head = String(raw || '').trim().slice(0, 300);
+      const toolN = (res2 && Array.isArray(res2.toolCalls)) ? res2.toolCalls.length : 0;
+      await turnLog('[重算结算×] 工具 ' + toolN + ' 次，正文 ' + String(raw || '').length + ' 字；开头：' + head);
+      throw new Error(
+        '结算模型没给出有效的变量更新。' +
+        (toolN ? '' : '（它这次一次工具都没调）') +
+        (head ? '它回的是：\n' + head : '（正文是空的）')
+      );
+    }
     // 先把这个旧轮已经应用过的变量改动退回去，再按新结果重新算 —— 否则是叠加两次
     rollbackDiffs(s, latest.diffs || []);
     const diffs = settleToDiffs(s, sj);
