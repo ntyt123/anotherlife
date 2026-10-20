@@ -53,12 +53,12 @@ window.__ModuleLoader__.load({
       // 对白：整段以引号开头 → 单独配色，和叙述一眼分开（取自界面里的蓝）
       '.sim-md-p.say{color:var(--sim-say)}',
       '.sim-md-p .sim-say,.sim-md-block .sim-md-p .sim-say,.sim-as-txt .sim-md-p .sim-say{color:var(--sim-say)}',
-      // 正文里的人名：绿字 + 淡绿底 + 实线下划 + 加粗。
-      // 用绿而不是蓝：对白本来就是蓝的（--sim-say），名字再蓝会跟引号里的句子糊成一片。
-      '.sim-name{cursor:pointer;color:#2f7d54;font-weight:600;background:rgba(47,125,84,.13);'
-      + 'border-bottom:1.5px solid rgba(47,125,84,.55);border-radius:2px;padding:0 2px;'
-      + 'transition:background .12s,color .12s,border-color .12s}',
-      '.sim-name:hover{background:#2f7d54;color:#fff;border-bottom-color:#2f7d54}',
+      // 正文里的人名：绿字 + 加粗 + 实线下划，不铺底色 ——
+      // 底色会把段落切碎，人名密集时正文看起来像打了一排补丁。
+      '.sim-name{cursor:pointer;color:#2f7d54;font-weight:600;'
+      + 'border-bottom:1.5px solid rgba(47,125,84,.55);'
+      + 'transition:color .12s,border-color .12s}',
+      '.sim-name:hover{color:#1c5a3c;border-bottom-color:#1c5a3c}',
       // 标题：原来 lv3（14px）比正文还小，层次出不来。现在按 # 的个数拉开字号与间距。
       '.sim-md-h{font-weight:700;margin:16px 0 9px;line-height:1.45}',
       '.sim-md-h.lv1{font-size:calc(var(--sim-fs-6) + 5px)}',
