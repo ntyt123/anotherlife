@@ -10560,6 +10560,9 @@ function toggleFans(npc) {
                               setState(s);
                               setDps(JSON.parse(JSON.stringify(s)));
                               setDraft(JSON.parse(JSON.stringify(s)));
+                              // 导入进来的那一局，主角名可能和当前侧栏标题对不上 —— 顺手改一次。
+                              // 不改的话「游玩历史」里还是新档那个占位的名字。
+                              renamePlayTitle(s.protagonist);
                             }
                           })
                           .catch((e) => { setBusy(false); setErr(String((e && e.message) || e)); });
