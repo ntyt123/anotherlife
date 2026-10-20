@@ -6630,7 +6630,7 @@ reg('parseRealPerson', async ({ gameId, name, fields }) => {
         s,
         'assistant',
         messages,
-        Object.assign({ maxTokens: tokOf(s, 'oracle'), tag: o.tag || '神谕' }, o.slotOpts || {}, {
+        Object.assign({ tag: o.tag || '神谕' }, o.slotOpts || {}, {
           tools: ORACLE_TOOLS,
           wantTools: true,
         })
