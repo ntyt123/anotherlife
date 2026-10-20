@@ -2527,6 +2527,39 @@ const SETTLE_TOOL = {
  * 但 diff 是 0，就是这种情况）。
  * 所以解析失败时走一次 repairJson：括号补全后能救回大部分字段。
  */
+/**
+ * 有些模型不在 tool_calls 通道里给工具调用，而是把标记直接写进正文：
+ *   <｜DSML｜ calls><｜DSML｜ invoke name="search_transcript">
+ *     <｜DSML｜ parameter name="query" string="true">刘天池</｜DSML｜ parameter>
+ *   </｜DSML｜ invoke></｜DSML｜ calls>
+ * （DSML 是 DeepSeek 的标记；竖线可能是全角 ｜，也可能是半角 |，都容下）
+ *
+ * 不认它的话，这段会原样当成回答存进对话里 —— 界面上就是一串乱码标记。
+ * 所以这里先扒出来转成标准 toolCalls，再把标记从正文里删掉。
+ */
+function parseDsmlTools(text) {
+  const t = String(text || '');
+  if (!/DSML/i.test(t)) return null;
+  const calls = [];
+  const reInv = /invoke\s+name="([^"]+)"\s*>([\s\S]*?)<\/[^>]*invoke>/g;
+  let m;
+  while ((m = reInv.exec(t))) {
+    const name = String(m[1] || '').trim();
+    if (!name) continue;
+    const body = m[2] || '';
+    const args = {};
+    const reP = /parameter\s+name="([^"]+)"[^>]*>([\s\S]*?)<\/[^>]*parameter>/g;
+    let p;
+    while ((p = reP.exec(body))) {
+      const k = String(p[1] || '').trim();
+      if (!k) continue;
+      args[k] = String(p[2] == null ? '' : p[2]).trim();
+    }
+    calls.push({ id: 'dsml-' + calls.length, name: name, args: JSON.stringify(args) });
+  }
+  return calls.length ? calls : null;
+}
+
 function pickToolCall(r) {
   const calls = (r && Array.isArray(r.toolCalls)) ? r.toolCalls : [];
   for (const c of calls) {
@@ -2705,7 +2738,7 @@ function pickToolCall(r) {
         cur.args += String(c.argumentsDelta || '');
       } else if (c.type === 'finish') finish = c.reason;
     }
-    const callList = Object.keys(toolCalls)
+    let callList = Object.keys(toolCalls)
       .sort((a, b) => Number(a) - Number(b))
       .map((k) => toolCalls[k])
       .filter((x) => x && (x.args || x.name));
@@ -2714,7 +2747,18 @@ function pickToolCall(r) {
         .sort((a, b) => Number(a) - Number(b))
         .map((k) => map[k])
         .join('');
-    const text = joinMap(texts);
+    let text = joinMap(texts);
+    // 模型把工具调用写进正文的情况（DSML 标记）：扒出来当 toolCalls，
+    // 并把这段标记从正文里删掉 —— 否则它会原样存进对话、显示成一串乱码。
+    if (!callList.length && /DSML/i.test(text)) {
+      const ds = parseDsmlTools(text);
+      if (ds && ds.length) {
+        callList = ds;
+        // 工具标记总在最后；把它前面那段人话留下
+        text = text.replace(/<[^<]*DSML[\s\S]*$/i, '').trim();
+        await apiLog('[' + tag + '] 从正文里扒出 ' + ds.length + ' 个工具调用（DSML）：' + ds.map(function (c) { return c.name; }).join(', '), t0);
+      }
+    }
     const reasoning = joinMap(reasonings);
     if (!text && !reasoning && !callList.length) {
       const why = describeFinish(finish);
