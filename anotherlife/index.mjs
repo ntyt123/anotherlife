@@ -3690,8 +3690,24 @@ function tickSockScent(s, body) {
     s.story.sockTick = now;
     const npcs = Array.isArray(s.npcs) ? s.npcs : [];
     
+    // 男性袜子不算气味（设定：气味只记女性袜子）。
+    // 但历史存档里可能已经被写进去了 —— 清掉，别让界面上还挂着「三天没洗」。
+    npcs.forEach((n, i) => {
+      if (String(n && n.性别 || '').indexOf('男') < 0) return;
+      const w0 = n && n.穿着 && n.穿着.袜子;
+      if (!w0 || typeof w0 !== 'object') return;
+      ['气味强度', '气味', '穿着时长', '穿着小时', '材质'].forEach((k) => {
+        // 设成 undefined 而不是 0/''：JSON 序列化时键会消失，
+        // 界面上 Number.isFinite(NaN) 也不成立 —— 胶囊上的浓度环就不会画出来。
+        if (w0[k] === undefined) return;
+        out.push(engineDiff(['npcs', i, '穿着', '袜子', k], w0[k], undefined, 'male'));
+        delete w0[k];
+      });
+    });
+
     // ⓪ 老数据补初始值（不依赖时间基准，第一轮就补上）
     npcs.forEach((n, i) => {
+      if (String(n && n.性别 || '').indexOf('男') >= 0) return;
       const w = n && n.穿着 && n.穿着.袜子;
       if (!w || !String(w.物品 || '').trim()) return;
       // 已有强度、但「气味」还是模型写的那一句（没有句号 = 不是三句格式）→ 换掉。
@@ -3741,6 +3757,7 @@ function tickSockScent(s, body) {
 
     // ① 穿着中的
     npcs.forEach((n, i) => {
+      if (String(n && n.性别 || '').indexOf('男') >= 0) return;
       const w = n && n.穿着 && n.穿着.袜子;
       if (!w || !String(w.物品 || '').trim()) return;
       const nmNow = String(n.姓名 || '').trim();
