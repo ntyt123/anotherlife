@@ -3715,9 +3715,12 @@ function tickSockScent(s, body) {
       // 三句拼接只有 scentTextOf 能产出，所以这里做一次就地迁移。
       if (w.气味强度 != null && w.气味强度 !== '' && Number.isFinite(Number(w.气味强度))) {
         const txt = String(w.气味 || '').trim();
-        if (txt && txt.indexOf('。') < 0) {
-          const mat2 = w.材质 || detectSockMaterial(w.物品);
-          const t2 = scentTextOf(scentLevel(Number(w.气味强度)), mat2, w.物品, String(n.姓名 || ''));
+        const mat2 = w.材质 || detectSockMaterial(w.物品);
+        const t2 = scentTextOf(scentLevel(Number(w.气味强度)), mat2, w.物品, String(n.姓名 || ''));
+        // 判据不能是「文本里有没有句号」—— 模型写的长句只要结尾带一个句号就逃过去了
+        // （实测「…焐了一整日…；…脚跟处磨得薄了一层。」这一句半，正好躲过旧判据）。
+        // 改成拿库产出的那句直接比对：不一样就换。气味这一行只认引擎写的。
+        if (txt && t2 && txt !== t2) {
           out.push(engineDiff(['npcs', i, '穿着', '袜子', '气味'], txt, t2));
           w.气味 = t2;
         }
@@ -8220,6 +8223,10 @@ reg('stopGenerate', async ({ gameId }) => {
       else delete latest.issues;
     }
     applyDiffs(s, diffs);
+    // 重算只跑了 applyDiffs —— 补「气味强度 / 穿着小时 / 材质」那段在 tickSockScent 里，
+    // 不跑它的话模型新写的袜子会一直缺字段：胶囊上的浓度环退化成点阵，气味还是模型写的那句。
+    // 这时 dh 通常是 0（时间没动），所以它只补值、不累加。
+    tickSockScent(s, latest.body).forEach((d) => diffs.push(d));
     setProg(gameId, 'save', '写回存档');
     await saveState(s);
     return withKeyStatus(s);
