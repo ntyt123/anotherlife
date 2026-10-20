@@ -7887,8 +7887,11 @@ onDoubleClick: () => {
               })(),
               // AI 自己加的字段（不在上面分组里的）兜底显示
               (function () {
+                // 这一串都是「已经另有地方渲染」的字段：穿着/物品是胶囊、粉丝是横条、
+                // 身体是部位条、舆论是分圈层框 —— 让兜底再显示一遍就是 JSON 原文糊一屏。
+                const SELF_RENDERED = ['穿着', '物品', '粉丝', '舆论', '身体', '身体状态'];
                 const extra = Object.keys(draft.protagonist || {}).filter(
-                  (k) => PROT_KNOWN.indexOf(k) < 0 && ['穿着', '物品'].indexOf(k) < 0
+                  (k) => PROT_KNOWN.indexOf(k) < 0 && SELF_RENDERED.indexOf(k) < 0
                 ).filter((k) => hasVal(draft.protagonist[k]));
                 if (!extra.length) return null;
                 return block('其他字段', h(KVView, { obj: draft.protagonist, only: extra, twoCol: true }));
