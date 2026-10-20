@@ -7260,6 +7260,11 @@ reg('importSession', async ({ gameId, json }) => {
   const cur = await loadState(gameId);
   // 保留当前的密钥状态之外的东西全换掉 —— 用存档内容覆盖，但不丢 config 里的凭据标记
   const next = Object.assign({}, cur, st);
+  // 关键：gameId 必须用**当前这一局**的。存档里带的是导出那台机器上的 id，
+  // 而 saveState 是按 s.gameId 决定写哪个文件的 —— 不覆盖就等于写到别处去了，
+  // 当前这一局原封不动（踩过：导入完还是创角界面）。
+  next.gameId = String(gameId);
+  await turnLog('[导入] 写入 ' + String(gameId) + '：' + (st.transcript || []).length + ' 轮，phase=' + String(st.phase || ''));
   if (cur.config && st.config) next.config = Object.assign({}, cur.config, st.config);
   await saveState(next);
   return withKeyStatus(await loadState(gameId));
