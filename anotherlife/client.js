@@ -10537,7 +10537,29 @@ function toggleFans(npc) {
                       const rd = new FileReader();
                       rd.onload = () => {
                         if (!window.confirm('用这个文件覆盖当前这一局？原来的存档会先备份。')) return;
-                        run(call('importSession', { json: String(rd.result || '') }, gameId), true);
+                        // callHost 一次只能传 256 KB，存档动辄 600 KB 以上 —— 必须分片。
+                        // 中文按 UTF-8 每字 3 字节，50000 字 ≈ 150 KB，留足余量。
+                        const json = String(rd.result || '');
+                        const CH = 50000;
+                        const parts = [];
+                        for (let i = 0; i < json.length; i += CH) parts.push(json.slice(i, i + CH));
+                        setBusy(true); setErr('');
+                        Promise.resolve(call('importBegin', {}, gameId))
+                          .then(async () => {
+                            for (let i = 0; i < parts.length; i++) {
+                              await call('importChunk', { data: parts[i] }, gameId);
+                            }
+                            return call('importCommit', {}, gameId);
+                          })
+                          .then((s) => {
+                            setBusy(false);
+                            if (s && typeof s === 'object') {
+                              setState(s);
+                              setDps(JSON.parse(JSON.stringify(s)));
+                              setDraft(JSON.parse(JSON.stringify(s)));
+                            }
+                          })
+                          .catch((e) => { setBusy(false); setErr(String((e && e.message) || e)); });
                       };
                       rd.readAsText(f);
                     };

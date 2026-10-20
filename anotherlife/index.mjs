@@ -7244,12 +7244,16 @@ reg('exportSession', async ({ gameId }) => {
  * 两种写法都认：带 _type 标记的包装 { state }，或者直接就是存档对象本身。
  * 覆盖前先把当前存档写成 .bak —— 导错了还能从「读快照」那套找回来。
  */
-reg('importSession', async ({ gameId, json }) => {
-  const raw = String(json || '').trim();
-  if (!raw) throw new Error('文件是空的');
+/** 导入缓冲：callHost 一次只能传 256 KB，大存档必须分片攒起来再解析 */
+const IMPORT_BUF = new Map();
+
+/** 把一段「导出格式」的 JSON 落到当前这一局。两处（整段/分片）共用 */
+async function applyImport(gameId, raw) {
+  const text = String(raw || '').trim();
+  if (!text) throw new Error('文件是空的');
   let pack = null;
   try {
-    pack = JSON.parse(raw);
+    pack = JSON.parse(text);
   } catch (e) {
     throw new Error('不是合法的 JSON 文件');
   }
@@ -7258,16 +7262,43 @@ reg('importSession', async ({ gameId, json }) => {
     throw new Error('这不是模拟器的存档（找不到 transcript）');
   }
   const cur = await loadState(gameId);
-  // 保留当前的密钥状态之外的东西全换掉 —— 用存档内容覆盖，但不丢 config 里的凭据标记
   const next = Object.assign({}, cur, st);
-  // 关键：gameId 必须用**当前这一局**的。存档里带的是导出那台机器上的 id，
-  // 而 saveState 是按 s.gameId 决定写哪个文件的 —— 不覆盖就等于写到别处去了，
-  // 当前这一局原封不动（踩过：导入完还是创角界面）。
+  // gameId 必须用**当前这一局**的：存档里带的是导出那台机器上的 id，
+  // 而 saveState 按 s.gameId 决定写哪个文件 —— 不覆盖就等于写到别处去了。
   next.gameId = String(gameId);
   await turnLog('[导入] 写入 ' + String(gameId) + '：' + (st.transcript || []).length + ' 轮，phase=' + String(st.phase || ''));
   if (cur.config && st.config) next.config = Object.assign({}, cur.config, st.config);
   await saveState(next);
   return withKeyStatus(await loadState(gameId));
+}
+
+/** 小存档：一次传完（老路径，保留兼容） */
+reg('importSession', async ({ gameId, json }) => {
+  return applyImport(gameId, json);
+});
+
+/** 分片导入第 1 步：清空缓冲 */
+reg('importBegin', async ({ gameId }) => {
+  IMPORT_BUF.delete(String(gameId));
+  IMPORT_BUF.set(String(gameId), { parts: [], at: Date.now() });
+  return { ok: true };
+});
+
+/** 分片导入第 2 步：追加一段（前端按 ~50 KB 一段切） */
+reg('importChunk', async ({ gameId, data }) => {
+  const b = IMPORT_BUF.get(String(gameId));
+  if (!b) throw new Error('没有进行中的导入，请重新选文件');
+  b.parts.push(String(data == null ? '' : data));
+  return { ok: true, got: b.parts.length };
+});
+
+/** 分片导入第 3 步：拼起来落盘 */
+reg('importCommit', async ({ gameId }) => {
+  const b = IMPORT_BUF.get(String(gameId));
+  if (!b) throw new Error('没有进行中的导入，请重新选文件');
+  const all = b.parts.join('');
+  IMPORT_BUF.delete(String(gameId));
+  return applyImport(gameId, all);
 });
 
   /** 清空当前对话的消息（不删对话本身） */
