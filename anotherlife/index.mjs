@@ -2175,7 +2175,7 @@ function tickSockScent(s) {
       const w = n && n.穿着 && n.穿着.袜子;
       if (!w || !String(w.物品 || '').trim()) return;
       if (w.气味强度 != null && w.气味强度 !== '') return;
-      const g = guessSockStrength(w.穿着时长, w.气味);
+      const g = guessSockStrength(w.穿着时长, w.气味,  String(n.姓名 || '') + '|' + String(w.物品 || ''));
       const sv = g ? g.s : 45;
       const hv = g ? g.h : 8;
       const mat1 = detectSockMaterial(w.物品);
@@ -2280,29 +2280,36 @@ function tickSockScent(s) {
  * 合并判断能把该交 AI 的比例压下去。返回 null 表示真判不出来。
  * 顺序从轻到重：先说干净的，再说浓的，否则「刚洗过」会被「一整天」之类的词抢走。
  */
-function guessSockStrength(txt, scent) {
+function guessSockStrength(txt, scent, seed) {
+  // 同一档描述不该让所有人拿到一样的数字。用姓名做种子在区间内偏一点：
+  // 强度 ±6，时长 0.55~1.9 倍。同一角色永远同一个偏移，彼此不同，也扛得住回滚。
+  const _r = sockSeed(seed);
+  const mk = (s, h) => ({
+    s: Math.max(0, Math.min(100, Math.round((s + (_r - 0.5) * 12) * 10) / 10)),
+    h: Math.max(0.1, Math.round(h * (0.55 + _r * 1.35) * 10) / 10),
+  });
   const t = String(txt || '') + ' ' + String(scent || '');
   if (!t.trim()) return null;
   // 干净那一端
-  if (/刚洗|刚换|更换|换上|才穿|新拆|洗过|皂香|皂粉|沐浴|奶香|香水|没有味道|什么都没|晒过太阳/.test(t)) return { s: 5, h: 0.5 };
+  if (/刚洗|刚换|更换|换上|才穿|新拆|洗过|皂香|皂粉|沐浴|奶香|香水|没有味道|什么都没|晒过太阳/.test(t)) return mk(5, 0.5);
   // 持续时间
-  if (/三天|多天|好几天|一周/.test(t)) return { s: 95, h: 60 };
-  if (/两天|二天|隔天/.test(t)) return { s: 82, h: 36 };
-  if (/整天|一天|一整天|全天|整日/.test(t)) return { s: 65, h: 14 };
-  if (/半日|半天|几小时|数小时|一上午|一下午/.test(t)) return { s: 40, h: 6 };
+  if (/三天|多天|好几天|一周/.test(t)) return mk(95, 60);
+  if (/两天|二天|隔天/.test(t)) return mk(82, 36);
+  if (/整天|一天|一整天|全天|整日/.test(t)) return mk(65, 14);
+  if (/半日|半天|几小时|数小时|一上午|一下午/.test(t)) return mk(40, 6);
   if (/小时/.test(t)) {
     const m = /(\d+)\s*小时/.exec(t);
     if (m) {
       const h = Number(m[1]);
-      if (h >= 0) return { s: Math.min(100, Math.round((h * 100) / 60)), h: h };
+      if (h >= 0) return mk(Math.min(100, Math.round((h * 100) / 60)), h);
     }
   }
   // 描述里的强弱词（没写时长时靠它们）
-  if (/呛|刺鼻|绕不过|满屋|不敢靠近/.test(t)) return { s: 88, h: 48 };
-  if (/浓|发苦|板结|硬了|翻出来/.test(t)) return { s: 76, h: 30 };
-  if (/明显|发闷|实实在在|顶上来|闻得到|皱眉/.test(t)) return { s: 62, h: 13 };
-  if (/极淡|微弱|很浅|若有若无|淡得|几乎|忽略/.test(t)) return { s: 25, h: 3 };
-  if (/一点|些许|薄薄|浅浅|微微/.test(t)) return { s: 35, h: 5 };
+  if (/呛|刺鼻|绕不过|满屋|不敢靠近/.test(t)) return mk(88, 48);
+  if (/浓|发苦|板结|硬了|翻出来/.test(t)) return mk(76, 30);
+  if (/明显|发闷|实实在在|顶上来|闻得到|皱眉/.test(t)) return mk(62, 13);
+  if (/极淡|微弱|很浅|若有若无|淡得|几乎|忽略/.test(t)) return mk(25, 3);
+  if (/一点|些许|薄薄|浅浅|微微/.test(t)) return mk(35, 5);
   return null;
 }
 
@@ -7038,7 +7045,7 @@ reg('migrateSockScent', async ({ gameId }) => {
       物品: String(w.物品 || ''),
       时长: String(w.穿着时长 || ''),
       气味: String(w.气味 || ''),
-      guess: guessSockStrength(w.穿着时长, w.气味),
+      guess: guessSockStrength(w.穿着时长, w.气味,  String(n.姓名 || '') + '|' + String(w.物品 || '')),
     });
   });
   if (!todo.length) return { ok: true, changed: 0, total: 0, ai: 0 };
