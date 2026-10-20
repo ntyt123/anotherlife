@@ -8970,6 +8970,7 @@ function toggleFans(npc) {
             const me = String(p.姓名 || '主角').trim();
               // 拖动时间轴时按「第 N 轮结束时」反推，不动就把当前值原样拿来
               const rels = relsAtRound(state, relRound);
+              const npcs = Array.isArray(draft.npcs) ? draft.npcs : [];
           
                 // 回放：从当前状态反推「第 N 轮结束时」的 relationships。
                 // relationships 的 diff 是整数组替换，所以从后往前反推一遍就够，不用重算别的字段。
