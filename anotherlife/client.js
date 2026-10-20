@@ -60,6 +60,10 @@ window.__ModuleLoader__.load({
       + 'transition:color .12s,border-color .12s}',
       '.sim-name:hover{color:#1c5a3c;border-bottom-color:#1c5a3c}',
       // 标题：原来 lv3（14px）比正文还小，层次出不来。现在按 # 的个数拉开字号与间距。
+      // 关系图的时间轴：吸在面板顶部，拖动回放
+      '.sim-relaxis{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:10px;padding:7px 2px 9px;margin-bottom:6px;background:var(--sim-bg);border-bottom:1px solid var(--sim-bd);font-size:var(--sim-fs-2);color:var(--sim-t2)}',
+      '.sim-relaxis input[type=range]{flex:1;min-width:100px;accent-color:#5f83ab}',
+      '.sim-relaxis .ev{white-space:nowrap;opacity:.72}',
       '.sim-md-h{font-weight:700;margin:16px 0 9px;line-height:1.45}',
       '.sim-md-h.lv1{font-size:calc(var(--sim-fs-6) + 5px)}',
       '.sim-md-h.lv2{font-size:calc(var(--sim-fs-5) + 3px)}',
@@ -3596,6 +3600,8 @@ function App({ gameId, close }) {
           };
           const [draft, setDraft] = React.useState(null);
           const [bfNote, setBfNote] = React.useState('');
+          // 关系图回放：-1 表示看最新一轮，否则看第 N 轮结束时的关系网
+          const [relRound, setRelRound] = React.useState(-1);
           const [tab, setTab] = React.useState('setup');
           const [busy, setBusy] = React.useState(false);
           const [err, setErr] = React.useState('');
@@ -8962,9 +8968,58 @@ function toggleFans(npc) {
           const relationsView = (function () {
             const p = draft.protagonist || {};
             const me = String(p.姓名 || '主角').trim();
-            const rels = Array.isArray(draft.relationships) ? draft.relationships : [];
-            const npcs = Array.isArray(draft.npcs) ? draft.npcs : [];
+              // 拖动时间轴时按「第 N 轮结束时」反推，不动就把当前值原样拿来
+              const rels = relsAtRound(state, relRound);
           
+                // 回放：从当前状态反推「第 N 轮结束时」的 relationships。
+                // relationships 的 diff 是整数组替换，所以从后往前反推一遍就够，不用重算别的字段。
+                // roundNo < 0 表示看最新，直接返回当前值。
+                function relsAtRound(s, roundNo) {
+                  let rels = [];
+                  try { rels = JSON.parse(JSON.stringify((s && s.relationships) || [])); } catch (e) { rels = []; }
+                  if (roundNo == null || roundNo < 0) return rels;
+                  const tr = (s && Array.isArray(s.transcript) ? s.transcript : [])
+                    .filter(function (t) { return Number(t && t.seq) > roundNo; });
+                  for (let i = tr.length - 1; i >= 0; i--) {
+                    const ds = (tr[i] && tr[i].diffs) || [];
+                    for (let j = ds.length - 1; j >= 0; j--) {
+                      const d = ds[j];
+                      if (!d || !Array.isArray(d.path) || d.path[0] !== 'relationships') continue;
+                      if (d._had === false) { rels = []; continue; }
+                      const prev = d._prev != null ? d._prev : d.from;
+                      rels = Array.isArray(prev) ? JSON.parse(JSON.stringify(prev)) : [];
+                    }
+                  }
+                  return rels;
+                }
+
+              // 关系深浅：从「当前状况」里读（"好感 中 · 信任 弱 · 欲望 无"）
+              // 取三项里最高的一档，作为这条线的轻重。读不出来就当 0。
+              function relScore(note) {
+                const m = String(note || '');
+                function lv(w) {
+                  const r = new RegExp(w + '\\s*(无|弱|中|强|极强|很高|较高|较低|高|低)').exec(m);
+                  if (!r) return 0;
+                  const t = r[1];
+                  if (/极强|很高/.test(t)) return 4;
+                  if (/强|高/.test(t)) return 3;
+                  if (/中/.test(t)) return 2;
+                  if (/弱|低/.test(t)) return 1;
+                  return 0;
+                }
+                return Math.max(lv('好感'), lv('信任'), lv('欲望'));
+              }
+            
+              // 关系类型 → 分组键。同组的人在图上是相邻的一段扇区，视觉上成团。
+              function relGroup(rel) {
+                if (/妻|夫|恋|情|爱|未婚|男友|女友/.test(rel)) return 'love';
+                if (/父|母|爸|妈|哥|姐|弟|妹|儿|女|亲属|家/.test(rel)) return 'family';
+                if (/师|导|徒|同学|室友|同事|同班|学/.test(rel)) return 'study';
+                if (/敌|仇|对手|竞争|前任|前妻/.test(rel)) return 'rival';
+                return 'other';
+              }
+              const GROUP_ORDER = ['family', 'love', 'study', 'rival', 'other'];
+
             const seen = new Set();
             const linked = [];
             rels.forEach(function (r) {
@@ -8981,6 +9036,12 @@ function toggleFans(npc) {
               linked.push({ name: nm, rel: rel, note: '' });
             });
               // 没记录关系的按「最近出场」倒序 —— 常露面的人该排在没有存在感的角色前面
+                // 算出每条边的轻重，再按组排序 —— 同组的人排在一起，图上是连续的扇区
+                linked.forEach(function (x) { x.score = relScore(x.note); });
+                linked.sort(function (x, y) {
+                  return GROUP_ORDER.indexOf(relGroup(x.rel)) - GROUP_ORDER.indexOf(relGroup(y.rel));
+                });
+
               const others = npcs.slice()
                 .sort(function (x, y) { return (Number(y && y.最近出场) || 0) - (Number(x && x.最近出场) || 0); })
                 .map(function (n) { return String((n && n.姓名) || '').trim(); })
@@ -9000,6 +9061,21 @@ function toggleFans(npc) {
                 const s = String(v || '');
                 return s.length > 6 ? s.slice(0, 5) + '…' : s;
               }
+
+              // 时间轴数据：一共几轮、哪几轮关系变过
+              const seqs = (state && Array.isArray(state.transcript) ? state.transcript : [])
+                .filter(function (t) { return t && t.role === 'assistant'; })
+                .map(function (t) { return Number(t.seq) || 0; });
+              const maxSeq = seqs.length ? Math.max.apply(null, seqs) : 0;
+              const changedSeqs = [];
+              (state && Array.isArray(state.transcript) ? state.transcript : []).forEach(function (t) {
+                if (!t || t.role !== 'assistant') return;
+                const hit = (t.diffs || []).some(function (d) {
+                  return d && Array.isArray(d.path) && d.path[0] === 'relationships';
+                });
+                if (hit) changedSeqs.push(Number(t.seq) || 0);
+              });
+              const curSeq = relRound < 0 ? maxSeq : relRound;
 
             const idxOf = {};
             npcs.forEach(function (n, i) {
@@ -9022,7 +9098,7 @@ function toggleFans(npc) {
             linked.forEach(function (x, i) {
               const pt = pos(i, linked.length, R1);
               const col = relColor(x.rel);
-              g.push(h('line', { key: 'l' + i, x1: cx, y1: cy, x2: pt.x, y2: pt.y, stroke: col, strokeWidth: 1.6, strokeOpacity: 0.5 }));
+              g.push(h('line', { key: 'l' + i, x1: cx, y1: cy, x2: pt.x, y2: pt.y, stroke: col, strokeWidth: 1.1 + x.score * 1.15, strokeOpacity: 0.45 + x.score * 0.1 }));
               g.push(h('text', { key: 'lt' + i, x: cx + (pt.x - cx) * 0.56, y: cy + (pt.y - cy) * 0.56 - 4, fill: col, fontSize: 11, textAnchor: 'middle', opacity: 0.9 },
                 x.rel || ''));
               g.push(h(
@@ -9031,7 +9107,8 @@ function toggleFans(npc) {
                   if (idxOf[x.name] == null) return;
                   setNpcOpen({ kind: 'npc', i: idxOf[x.name], editing: false });
                 } },
-                h('circle', { cx: pt.x, cy: pt.y, r: 7, fill: col }),
+                h('title', null, x.name + (x.rel ? ' · ' + x.rel : '') + (x.note ? '\n' + x.note : '')),
+                h('circle', { cx: pt.x, cy: pt.y, r: 5 + x.score * 1.7, fill: col }),
                 h('text', { x: pt.x, y: pt.y + 21, fill: 'var(--sim-t1, #333)', fontSize: 12.5, textAnchor: 'middle', fontWeight: 600 }, shortName(x.name))
               ));
             });
@@ -9059,6 +9136,18 @@ function toggleFans(npc) {
                 h(
                   'div',
                   { className: 'sim-panel-b', style: { overflow: 'auto' } },
+                  h('div', { className: 'sim-relaxis' },
+                    h('span', { className: 'lab' }, relRound < 0 ? ('现在 · 第 ' + maxSeq + ' 轮') : ('第 ' + curSeq + ' 轮')),
+                    h('input', {
+                      type: 'range', min: 0, max: maxSeq || 1, value: curSeq,
+                      onChange: function (e) {
+                        const v = Number(e.target.value);
+                        setRelRound(v >= maxSeq ? -1 : v);
+                      },
+                    }),
+                    h('span', { className: 'ev' }, changedSeqs.length ? (changedSeqs.length + ' 次关系变化') : '关系未变过'),
+                    relRound >= 0 ? h('button', { className: 'sim-btn mini', onClick: function () { setRelRound(-1); } }, '回到现在') : null
+                  ),
                   hasAny
                     ? h(
                         'svg',
