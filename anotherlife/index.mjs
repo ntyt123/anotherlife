@@ -810,6 +810,12 @@ async function activeWritingSkill() {
     // 一定会出现但开局没露脸的）界面上会整个缺一块，刷新页面也看不到。
     // 只补空壳，不编内容 —— 真正的衣服还是等模型下一轮写到。
     ensureWear(s);
+    // 老存档里袜子「气味」是模型写的单句，换成三句格式。
+    // 放这里而不是 tickSockScent：那个只在生成新一轮时才跑，
+    // 玩家停着不动的话老文本永远不会被换掉。
+    if (migrateScentText(s) > 0) {
+      try { await saveState(s); } catch (e) { /* 存不下就下次再说 */ }
+    }
     return s;
   }
 
@@ -3167,6 +3173,33 @@ function ensureWear(s) {
   return s;
 }
 
+/**
+ * 把袜子「气味」里模型写的单句换成三句格式。
+ *
+ * 三句（嗅觉 + 此刻的样子 + 跟了多久）只有 scentTextOf 能产出，
+ * 而模型的写法是「清淡皂香混杂着温热的少女汗气」这种单句读数。
+ * 判据用「有没有句号」：三句拼接必然带句号。
+ *
+ * 放在读档时跑，是因为 tickSockScent 只在生成新一轮时才执行 ——
+ * 玩家停着不动的话，老文本永远不会被换掉。
+ * 返回改了几条，调用方据此决定要不要落盘。
+ */
+function migrateScentText(s) {
+  let changed = 0;
+  (Array.isArray(s && s.npcs) ? s.npcs : []).forEach(function (n) {
+    const w = n && n.穿着 && n.穿着.袜子;
+    if (!w || !String(w.物品 || '').trim()) return;
+    const t = String(w.气味 || '').trim();
+    if (t && t.indexOf('。') >= 0) return;   // 已经是三句
+    const sv = Number(w.气味强度);
+    if (!Number.isFinite(sv)) return;        // 没强度的留给 tickSockScent 补
+    const mat = w.材质 || detectSockMaterial(w.物品);
+    w.气味 = scentTextOf(scentLevel(sv), mat, w.物品);
+    changed++;
+  });
+  return changed;
+}
+
  /**
  * 给「追踪粉丝」为真的角色（以及主角）把 粉丝 字段建出来。
  *
@@ -5243,6 +5276,7 @@ let aiPickFail = '';
     const npcs = Array.isArray(s.npcs) ? s.npcs.slice() : [];
     const rels = Array.isArray(s.relationships) ? s.relationships.slice() : [];
     const npcAppend = [];
+    const relAppend = [];
     (Array.isArray(sj.chars) ? sj.chars : []).forEach((raw) => {
       if (!raw || typeof raw !== 'object') return;
       const nm = nameOf(raw, ['姓名', '名字']);
