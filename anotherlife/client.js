@@ -10499,6 +10499,54 @@ function toggleFans(npc) {
               )
             ),
 
+            /* ── 存档文件 ── */
+            group(
+              'io',
+              '存档文件',
+              '把这一局导出成 JSON，或从文件导入。',
+              h(
+                'div',
+                { className: 'sim-card' },
+                h('div', { className: 'sim-hint', style: { marginBottom: 10 } }, '导出的文件带着全部正文、变量与角色，可以拿去别处离线看，也能原样导回来。'),
+                h('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap' } },
+                  h(Btn, { disabled: busy, onClick: () => {
+                    setBusy(true); setErr('');
+                    Promise.resolve(call('exportSession', {}, gameId))
+                      .then((r) => {
+                        setBusy(false);
+                        if (!r || !r.ok || !r.json) { setErr('导出失败：没有拿到存档内容'); return; }
+                        const blob = new Blob([r.json], { type: 'application/json' });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = r.filename || 'simulator.json';
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        setTimeout(() => URL.revokeObjectURL(url), 4000);
+                      })
+                      .catch((e) => { setBusy(false); setErr(String((e && e.message) || e)); });
+                  } }, '导出存档'),
+                  h(Btn, { disabled: busy, onClick: () => {
+                    const inp = document.createElement('input');
+                    inp.type = 'file';
+                    inp.accept = '.json,application/json';
+                    inp.onchange = () => {
+                      const f = inp.files && inp.files[0];
+                      if (!f) return;
+                      const rd = new FileReader();
+                      rd.onload = () => {
+                        if (!window.confirm('用这个文件覆盖当前这一局？原来的存档会先备份。')) return;
+                        run(call('importSession', { json: String(rd.result || '') }, gameId), true);
+                      };
+                      rd.readAsText(f);
+                    };
+                    inp.click();
+                  } }, '导入存档'),
+                )
+              )
+              ),
+
             /* ── 上下文与记忆 ── */
             group(
               'ctx',

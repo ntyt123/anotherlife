@@ -7123,6 +7123,60 @@ reg('exportStory', async ({ gameId }) => {
   };
 });
 
+/**
+ * 把整份存档导成 JSON（浏览器下载）。
+ *
+ * 里面什么都不裁 —— transcript、world、protagonist、npcs、relationships、config 全带着，
+ * 所以能拿去别的机器上离线分析，也能原样导回来。
+ * 带一个 _type/_v 标记：以后存档结构变了，靠它认出这是哪一版的。
+ */
+reg('exportSession', async ({ gameId }) => {
+  const s = await loadState(gameId);
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  const stamp = d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + '-' + pad(d.getHours()) + pad(d.getMinutes());
+  const who = String((s.protagonist || {}).姓名 || '').trim() || '未命名';
+  const name = 'simulator-' + who + '-' + stamp + '.json';
+  return {
+    ok: true,
+    filename: name,
+    json: JSON.stringify({
+      _type: 'anotherlife-session',
+      _v: 1,
+      gameId: String(gameId || ''),
+      exportedAt: d.toISOString(),
+      state: s,
+    }),
+  };
+});
+
+/**
+ * 把导出的 JSON 导回来，覆盖当前这一局。
+ *
+ * 两种写法都认：带 _type 标记的包装 { state }，或者直接就是存档对象本身。
+ * 覆盖前先把当前存档写成 .bak —— 导错了还能从「读快照」那套找回来。
+ */
+reg('importSession', async ({ gameId, json }) => {
+  const raw = String(json || '').trim();
+  if (!raw) throw new Error('文件是空的');
+  let pack = null;
+  try {
+    pack = JSON.parse(raw);
+  } catch (e) {
+    throw new Error('不是合法的 JSON 文件');
+  }
+  const st = pack && pack.state && typeof pack.state === 'object' ? pack.state : pack;
+  if (!st || typeof st !== 'object' || !Array.isArray(st.transcript)) {
+    throw new Error('这不是模拟器的存档（找不到 transcript）');
+  }
+  const cur = await loadState(gameId);
+  // 保留当前的密钥状态之外的东西全换掉 —— 用存档内容覆盖，但不丢 config 里的凭据标记
+  const next = Object.assign({}, cur, st);
+  if (cur.config && st.config) next.config = Object.assign({}, cur.config, st.config);
+  await saveState(next);
+  return withKeyStatus(await loadState(gameId));
+});
+
   /** 清空当前对话的消息（不删对话本身） */
   reg('assistantClear', async ({ gameId, threadId }) => {
     const db = await readThreads(gameId);
