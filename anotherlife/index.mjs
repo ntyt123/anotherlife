@@ -6542,6 +6542,19 @@ reg('stopGenerate', async ({ gameId }) => {
     if (!Object.keys(dirty).length) throw new Error('模型返回的穿着是空的');
   
     const merged = normalizeWear(Object.assign({}, before, dirty));
+      // 模型只写文字描述，不写 气味强度 —— 那是袜子引擎按材质和穿着时长算的。
+      // 这里顺手补一个，否则弹窗里没有浓度条，看着像「没生效」。
+      if (dirty.袜子 && String(dirty.袜子.物品 || '').trim()) {
+        const w = merged.袜子;
+        if (w && (w.气味强度 == null || w.气味强度 === '')) {
+          const g = guessSockStrength(w.穿着时长, w.气味, nm + '|' + String(w.物品 || ''));
+          if (g) {
+            w.气味强度 = g.s;
+            w.穿着小时 = g.h;
+            w.材质 = detectSockMaterial(w.物品);
+          }
+        }
+      }
     npc.穿着 = merged;
     WEAR_KEYS.forEach(function (k) {
       if (JSON.stringify(before[k]) === JSON.stringify(merged[k])) return;
