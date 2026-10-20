@@ -528,8 +528,50 @@ export function apply(ctx) {
     return p;
   }
 
+  /**
+   * 模型偶尔会用英文写字段名 —— current_state / current_thoughts / 金钱名 这类。
+   * 两个存档里都出现过，而且和中文那份内容不同步（一个记 9 月 1 日、另一个记 9 月 4 日），
+   * 说明它以为自己写的是同一个字段。
+   *
+   * 后果：这些键不在 PROT_KNOWN 里，会被「其他字段」兜底区当新字段显示出来 ——
+   * 玩家在主角面板上看到 current_state 和一个跟正文对不上的画面。
+   *
+   * 处理：中文那份有值就保留中文，英文那份只在中文字段空着时补进去，然后删掉英文键。
+   * 不猜哪个更新 —— 中文那份是每轮结算都在维护的正式字段，英文那份是顺手写错。
+   */
+  const ALIAS_KEYS = {
+    current_state: '当前状态',
+    current_action: '当前状态',
+    current_thoughts: '当前想法',
+    current_location: '当前地点',
+    金钱名: '货币名',
+    money_name: '货币名',
+    money_unit: '货币名',
+    currency_name: '货币名',
+  };
+
+  function absorbAliasKeys(o) {
+    if (!o || typeof o !== 'object' || Array.isArray(o)) return o;
+    const hasVal2 = (v) => {
+      if (v == null) return false;
+      if (typeof v === 'string') return v.trim() !== '';
+      if (Array.isArray(v)) return v.length > 0;
+      if (typeof v === 'object') return Object.keys(v).length > 0;
+      return true;
+    };
+    Object.keys(ALIAS_KEYS).forEach((alias) => {
+      if (!(alias in o)) return;
+      const cn = ALIAS_KEYS[alias];
+      const av = o[alias];
+      if (!hasVal2(o[cn]) && hasVal2(av)) o[cn] = av;
+      delete o[alias];
+    });
+    return o;
+  }
+
   function normProtag(src) {
     const p = migrateTags(Object.assign(EMPTY_PROTAG(), src || {}));
+    absorbAliasKeys(p);
     p.穿着 = normalizeWear(p.穿着 || {});
     ['性癖', '标签', '物品', '特点', '疾病与伤病'].forEach((k) => {
       p[k] = Array.isArray(p[k]) ? p[k] : [];
@@ -5377,7 +5419,7 @@ let aiPickFail = '';
       '  · 每条都要给：名称／类型／归属／取得方式与时间／成本／当前估值／**到期日**（版权年限、合约期、商标 10 年；没有期限就留空）／收益方式（分账比例、授权费、分红）／状态（持有中／已授权他人／质押／诉讼中）／风险与纠纷／备注。',
       '- 「实体资产」的**收支**：能产生收益的（公司、店铺、出租房产、项目…）必须写「每年收入」「每年支出」「净利润」（都写纯数字，单位同估值；净利润＝收入−支出，算清楚）和「运营状态」（正常经营／出租中／停业／空置…）；不可变现的（首饰、收藏品）这几项留空，不要写 0。**自住住宅与日常用车本来就不该在实体资产里，它们在「居所」。**',
       '- 「实体资产」里的**场所类（公司、店铺、基地、厂房、学校、医院、会所、出租或投资的住宅／别墅／老洋房…）必须有「每一层的设施」**——写成多行 `楼层=设施`，一行一层，设施用顿号分隔（例：`一层=玄关、会客厅、餐厅、厨房`、`二层=主卧、客卧、书房`）。确实没有楼层的（车辆、首饰、收藏品、股票等）留空，不要硬编楼层。',
-      '- other：装不下的变量用 {"path":["…"],"value":新值} 整体替换（path 相对 state 根）。**路径必须用下面这些原名，不要自己造**：英文名只有 skills_items 这一处，别把别的字段也翻成英文。可用：skills_items.技能／skills_items.状态值／实体资产／虚拟资产／疾病与伤病／婚姻状况／配偶／子女／私人关系／隐患／收支／债务／凭证／事业／住所／交通。**写成不存在的路径（如 virtual_assets）会把内容丢进界面上看不见的孤儿键。**',
+      '- other：装不下的变量用 {"path":["…"],"value":新值} 整体替换（path 相对 state 根）。**路径必须用下面这些原名，不要自己造**：英文名**只有 skills_items 这一处**，别把别的字段也翻成英文 —— 实测模型写过 `current_state`／`current_thoughts`／`金钱名`，本应是 `当前状态`／`当前想法`／`货币名`。写错的结果是同一件事在存档里存成两份、内容还不一样，界面上两个都会显示出来。可用：skills_items.技能／skills_items.状态值／实体资产／虚拟资产／疾病与伤病／婚姻状况／配偶／子女／私人关系／隐患／收支／债务／凭证／事业／住所／交通。**写成不存在的路径（如 virtual_assets）会把内容丢进界面上看不见的孤儿键。**',
       '- **字段名一律用上面列出的那个，不要用界面上的显示名**：收支（不是「月收入」「月支出」）、债务（不是「债务与欠账」）、凭证（不是「凭证与资格」）、事业（不是「事业与投资」）、住所／交通（不是「居所」）。名字写错不会报错，但内容会落到界面上看不见的地方去。',
       '- **归属钉死，别写重**：技能与状态值一律写到 skills_items 下，**不要写进主角对象**；随身物品一律写 protagonist.物品（{名字,品质,获取时间,简介,属性提升}），**不要再写「背包」**；实体资产＝房/车/设备/地皮等身外之物，虚拟资产＝股权/版权/项目/合约/账号/商誉等无形权利。',
       '- 【当前日期时间】要随剧情推进，始终保持 `2018年8月21日 星期六 12:00:03 晴 端午节` 这一行格式：年月日 → 星期 → 时分秒 → 天气（1~2 字）→ 特殊日期（没有就省略）。时间没变化也要按实际写出当前时刻，不要留模糊描述。',
