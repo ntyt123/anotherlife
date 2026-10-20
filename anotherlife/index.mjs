@@ -3680,7 +3680,7 @@ function tickBodyState(s, dh) {
   return out;
 }
 
-function tickSockScent(s) {
+function tickSockScent(s, body) {
   const out = [];
   try {
     const now = parseStoryTime(s.world && s.world.当前日期时间);
@@ -3728,14 +3728,22 @@ function tickSockScent(s) {
     // 没有上一轮基准：补完值就结束，这一轮不累加
     if (!Number.isFinite(prev)) return out;
     const dh = (now - prev) / 60;
+    // 单轮最多按 24 小时算 —— 跳几天的时候，正常人都换过袜子了。
+    // 实测踩过：从 2010 跳回 2004 的回忆段，一次算出 75.9 小时，
+    // 直接把这 75 小时灌进同一双袜子，36 个角色里 26 个当场顶到 100。
+    const dhEff = Math.min(dh, 24);
     // 留给痕迹消退用：它在 tickSockScent 之后才算，那时 sockTick 已经是 now 了
     s._lastDh = dh;
     if (!(dh > 0) || dh > 240) return out;
     
+    // 正文原文：用来判断这一轮哪些角色在场
+    const bodyText = String(body || '');
+
     // ① 穿着中的
     npcs.forEach((n, i) => {
       const w = n && n.穿着 && n.穿着.袜子;
       if (!w || !String(w.物品 || '').trim()) return;
+      const nmNow = String(n.姓名 || '').trim();
       const curName = String(w.物品 || '').trim();
       const prevName = String(w._上一双 || '').trim();
       // 换了新袜子：先归零，别把上一双的浓度接着算下去
@@ -3756,17 +3764,21 @@ function tickSockScent(s) {
       }
       w._上一双 = curName;
       if (w.睡眠中 === true) return;
+      // 这一轮正文没提到她 → 她的袜子不跟着时间走。
+      // 不在场的人我们不知道换没换，默认她过着正常生活（换了），
+      // 比默认她连续穿三天爆表更合理。
+      if (bodyText && (nmNow.length < 2 || bodyText.indexOf(nmNow) < 0)) return;
       const mat = w.材质 || detectSockMaterial(w.物品);
       const rate = 100 / (SOCK_FULL_HOURS[mat] || SOCK_FULL_HOURS.混纺);
       const before = Number(w.气味强度) || 0;
-      const after = Math.min(100, Math.round((before + dh * rate) * 10) / 10);
+      const after = Math.min(100, Math.round((before + dhEff * rate) * 10) / 10);
       if (!w.材质) {
         out.push(engineDiff(['npcs', i, '穿着', '袜子', '材质'], undefined, mat));
         w.材质 = mat;
       }
       if (after === before) return;
       const beforeH = Number(w.穿着小时) || 0;
-      const afterH = Math.min(160, Math.round((beforeH + dh) * 10) / 10);
+      const afterH = Math.min(160, Math.round((beforeH + dhEff) * 10) / 10);
       out.push(engineDiff(['npcs', i, '穿着', '袜子', '穿着小时'], beforeH, afterH));
       w.穿着小时 = afterH;
       out.push(engineDiff(['npcs', i, '穿着', '袜子', '气味强度'], before, after));
@@ -6187,7 +6199,7 @@ function seasonText(s) {
           
           // 袜子气味强度：纯算术推进，不叫模型。
           // 返回的条目自带 from（applyDiffs 已跑过），重算/删轮才能一起退回去。
-          const sockDiffs = tickSockScent(s);
+          const sockDiffs = tickSockScent(s, sp.body);
           sockDiffs.forEach((d) => diffs.push(d));
 
           // 身体痕迹消退：复用 tickSockScent 刚算好的小时差
