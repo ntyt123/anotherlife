@@ -557,6 +557,37 @@ export function apply(ctx) {
     return null;
   }
 
+  /**
+   * 袜子「气味」的整句词库放外部文件，不内联在 index.mjs 里。
+   *
+   * 换文案只动这一个 json，代码一行不用改 —— 和「参考内容放世界书」同一个思路。
+   * 文件放在插件目录：plugins/anotherlife/scent-lines.json
+   * 结构：{ "0": ["句子", …], "1": […], … "5": […] }，六档。
+   *
+   * 读不到时返回 null，scentTextOf 会退回内置的三个池（SCENT_TEXT / SOCK_LOOK_TEXT / SOCK_WEAR_TEXT），
+   * 所以删掉这个 json 也不会坏，只是文案变回老的那套。
+   */
+  const SCENT_LINES_FILE = HERE_DIR ? HERE_DIR.replace(/[\\/]+$/, '') + '/scent-lines.json' : '';
+  let SCENT_LINES = null;
+  let SCENT_LINES_TRIED = false;
+  
+  /** 懒加载一次；之后 scentTextOf 直接读 SCENT_LINES（它是同步的，不能 await） */
+  async function loadScentLines() {
+    if (SCENT_LINES_TRIED) return SCENT_LINES;
+    SCENT_LINES_TRIED = true;
+    if (!SCENT_LINES_FILE) return (SCENT_LINES = null);
+    try {
+      const j = await readJson(SCENT_LINES_FILE);
+      SCENT_LINES = j && typeof j === 'object' && !Array.isArray(j) ? j : null;
+      const n = SCENT_LINES ? Object.keys(SCENT_LINES).filter(function (k) { return /^[0-5]$/.test(k); }).length : 0;
+      await turnLog('[scent] 词库已加载：' + n + ' 档');
+    } catch (e) {
+      SCENT_LINES = null;
+      await turnLog('[scent] 读不到 scent-lines.json，退回内置文案：' + String((e && e.message) || e));
+    }
+    return SCENT_LINES;
+  }
+
   async function writeJson(path, data) {
     // 不缩进：存档是给程序读的，缩进白占一成半的体积（实测 856KB → 722KB）
     const body = JSON.stringify(data);
@@ -3020,6 +3051,15 @@ function scentTextOf(level, material, sockName, extra) {
   // 反复看到就成了一句话。
   // 掺进角色名：只按「档位 + 袜子名长度」算，同档同长度的两个人会撞成同一句
   const seed = Math.abs(lv * 31 + String(sockName || '').length + Math.round(sockSeed(extra) * 997));
+  // 外部整句词库优先（scent-lines.json）。整句是一条流水句 ——
+  // 什么时候换的 + 此刻在脚上的样子 + 闻起来怎么样，写在一个句子里。
+  // 三个池分开拼就不行：各自完整，拼起来变三个主语三件事，读着像三条读数。
+  if (SCENT_LINES) {
+    const lines = SCENT_LINES[String(lv)];
+    if (Array.isArray(lines) && lines.length) {
+      return 收句号(lines[Math.abs(seed) % lines.length]);
+    }
+  }
   const p1 = SCENT_TEXT[lv] || SCENT_TEXT[2];
   const p2 = SOCK_LOOK_TEXT[lv];
   const p3 = SOCK_WEAR_TEXT[lv];
