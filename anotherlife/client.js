@@ -10883,7 +10883,9 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
                         sendTurn();
                       },
                     }),
-                    h(Btn, { primary: true, disabled: busy || !input.trim(), onClick: () => sendTurn() }, busy ? '生成中…' : '行动')
+                    busy
+                      ? h(Btn, { onClick: () => run(call('stopGenerate', {}, gameId)) }, '停止')
+                      : h(Btn, { primary: true, disabled: !input.trim(), onClick: () => sendTurn() }, '行动')
                   )
                   // 阶段进度条不放这里：它一出现就会改 inputBar 的高度 → 正文容器被浏览器
                   // 重算尺寸时把滚动位置清掉（跳顶的根因）。改到正文末尾显示。
@@ -11219,7 +11221,9 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
                         }
                       },
                     }),
-                    h(Btn, { primary: true, disabled: asBusy || !String(asIn).trim(), onClick: () => sendAssistant() }, asBusy ? '思考中…' : '发送')
+                    asBusy
+                      ? h(Btn, { onClick: () => run(call('stopGenerate', {}, gameId)) }, '停止')
+                      : h(Btn, { primary: true, disabled: !String(asIn).trim(), onClick: () => sendAssistant() }, '发送')
                   ),
                   // 右下角缩放手柄
                   h(

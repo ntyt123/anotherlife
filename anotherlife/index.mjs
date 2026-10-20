@@ -2677,6 +2677,12 @@ function pickToolCall(r) {
         await apiLog('[' + tag + '] ' + who + ' → 失败：' + why, t0);
         throw new Error(why);
       }
+      // 玩家按了停止：跳出循环，已经拿到的内容照常返回
+      // （和「被 maxTokens 截断」同样的处理 —— 半篇比一片空白好）
+      if (typeof opts.shouldStop === 'function' && opts.shouldStop()) {
+        finish = { kind: 'stopped' };
+        break;
+      }
       if (!step || step.done) break;
       const c = step.value;
       if (!c) continue;
@@ -2718,7 +2724,9 @@ function pickToolCall(r) {
     }
     const cut = isTruncated(finish);
     await apiLog('[' + tag + '] ' + who + ' → ' + text.length + ' 字' + (cut ? '（被 maxTokens 截断，只拿到了这些）' : ''), t0);
-    return { text, reasoning, finish, toolCalls: callList, truncated: isTruncated(finish) };
+    const stopped = !!(finish && String(finish.kind || '') === 'stopped');
+    if (stopped) await apiLog('[' + tag + '] 玩家按了停止，已保留 ' + text.length + ' 字', t0);
+    return { text, reasoning, finish, toolCalls: callList, truncated: isTruncated(finish), stopped: stopped };
     } finally {
       try {
         if (it && typeof it.return === 'function') await it.return();
@@ -4367,7 +4375,7 @@ function seasonText(s) {
       const sec = Math.round((Date.now() - t0) / 1000);
       setProg(gid, 'story', '生成正文中 · 已收到 ' + n + ' 字（' + sec + 's）');
     };
-    const storyOpts = { maxTokens: tokOf(s, 'story'), onChunk, firstChunkMs: 420000, idleMs: 600000, purpose: opts.all ? '开场' : '正文' };
+    const storyOpts = { maxTokens: tokOf(s, 'story'), onChunk, firstChunkMs: 420000, idleMs: 600000, purpose: opts.all ? '开场' : '正文', shouldStop: opts.shouldStop };
 
         const bodyEffort = await reasoningOf(s, 'body');
 
@@ -6009,10 +6017,22 @@ reg('parseRealPerson', async ({ gameId, name, fields }) => {
     const s = await loadState(gameId);
     const userText = String(input || '').trim();
     if (!userText) throw new Error('请输入你的行动');
-    await runTurn(s, userText, userText, { gameId });
+    const rn = beginRun(gameId);
+    try {
+      await runTurn(s, userText, userText, { gameId, shouldStop: () => rn.stop });
+    } finally {
+      endRun(gameId);
+    }
     await saveState(s);
     return withKeyStatus(s);
   });
+
+/** 停止正在跑的生成（正文或神谕）：软停，已生成的部分保留 */
+reg('stopGenerate', async ({ gameId }) => {
+  const hit = stopRun(gameId);
+  await turnLog('[停止] ' + (hit ? '已发出停止信号' : '当前没有在跑的任务'));
+  return { ok: true, hit: hit };
+});
 
   /**
    * 删除「这一轮及之后的所有轮」。
@@ -6630,7 +6650,7 @@ reg('parseRealPerson', async ({ gameId, name, fields }) => {
         s,
         'assistant',
         messages,
-        Object.assign({ tag: o.tag || '神谕' }, o.slotOpts || {}, {
+        Object.assign({ tag: o.tag || '神谕', shouldStop: o.shouldStop }, o.slotOpts || {}, {
           tools: ORACLE_TOOLS,
           wantTools: true,
         })
@@ -7168,10 +7188,11 @@ reg('exportStory', async ({ gameId }) => {
     // 关掉就是纯对话 —— 只凭当前上下文回答，和以前一样。
     // 默认开着，因为翻正文的能力是这个浮窗存在的理由；关掉是给「只想聊两句」的时候用。
     let out;
+    const rn = beginRun(gameId);
     const agentOn = !(s.config && s.config.oracleAgent === false);
     try {
       if (agentOn) {
-        out = await runOracleAgent(s, msgs, { gameId, tag: '神谕' });
+        out = await runOracleAgent(s, msgs, { gameId, tag: '神谕', shouldStop: () => rn.stop });
       } else {
         // 对话式：不带工具，一次问答就完
         const plain = await callSlot(s, 'assistant', msgs, {
@@ -7187,7 +7208,7 @@ reg('exportStory', async ({ gameId }) => {
       if (!/SSE|stream ended|without \[DONE\]|ECONNRESET|socket hang up/i.test(why)) throw e;
       await turnLog('[神谕] 连接被中途断开，重试一次：' + why.slice(0, 120));
       if (agentOn) {
-        out = await runOracleAgent(s, msgs, { gameId, tag: '神谕·重试' });
+        out = await runOracleAgent(s, msgs, { gameId, tag: '神谕·重试', shouldStop: () => rn.stop });
       } else {
         const plain2 = await callSlot(s, 'assistant', msgs, {
           maxTokens: tokOf(s, 'oracle'),
@@ -7209,6 +7230,8 @@ reg('exportStory', async ({ gameId }) => {
     th.updatedAt = Date.now();
     db.active = th.id;
     await writeThreads(gameId, db);
+
+    endRun(gameId);
 
     return {
       ok: true,
