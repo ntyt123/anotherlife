@@ -975,7 +975,15 @@ async function activeWritingSkill() {
       if (v[k] == null || typeof v[k] !== 'object') return;
       v = v[k];
     }
-    delete v[path[path.length - 1]];
+    const last = path[path.length - 1];
+    // 数组索引不能用 delete —— 那会留一个空洞，JSON.stringify 把它写成 null，
+    // 下次读回来就多一个 null 角色 / null 关系条目。用 splice 真正移除。
+    // 回退是倒序的（先回滚最后一轮），新增总是追加在末尾，所以索引不会错位。
+    if (Array.isArray(v) && typeof last === 'number' && last >= 0 && last < v.length) {
+      v.splice(last, 1);
+    } else {
+      delete v[last];
+    }
   }
 
   /**
@@ -3970,8 +3978,12 @@ let aiPickFail = '';
         diffs.push({ path: ['npcs', at, k], to: item[k] });
       });
     });
-    if (npcAppend.length) diffs.push({ path: ['npcs'], to: npcs.concat(npcAppend) });
-    const relAppend = [];
+    // 新增角色不要整数组替换 —— 一条 diff 就是两份完整 NPC 表快照（实测 75 KB/轮），
+    // 一千轮下来就是几十 MB 的重复拷贝。逐条追加，每条只有几十字节。
+    // applyDiffs 会自己补 _had:false / _prev:null（索引越界取不到原值），回退时按 delByPath 删掉。
+    npcAppend.forEach(function (x, k) {
+      diffs.push({ path: ['npcs', npcs.length + k], to: x });
+    });
     (Array.isArray(sj.relationships) ? sj.relationships : []).forEach((raw) => {
       if (!raw || typeof raw !== 'object') return;
       const nm = nameOf(raw, ['对象', '姓名', '名字']);
@@ -3989,9 +4001,8 @@ let aiPickFail = '';
         diffs.push({ path: ['relationships', at, k], to: v });
       });
     });
-    if (relAppend.length) diffs.push({ path: ['relationships'], to: rels.concat(relAppend) });
-    (Array.isArray(sj.other) ? sj.other : []).forEach((d) => {
-      if (d && Array.isArray(d.path) && d.path.length) diffs.push({ path: d.path, to: d.value });
+    relAppend.forEach(function (x, k) {
+      diffs.push({ path: ['relationships', rels.length + k], to: x });
     });
     return diffs;
   }
