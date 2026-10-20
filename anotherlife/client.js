@@ -6175,6 +6175,7 @@ function App({ gameId, close }) {
                   ...(isStar ? [['star', '星途模拟', '🌟']] : []),
                   ['world', '世界', '🌍'],
                   ['npcs', '角色', '👥'],
+                  ['relations', '关系', '🕸'],
                   ['skills', '资产', '🎒'],
                   ['settings', '设定', '⚙️'],
                 ]
@@ -8950,6 +8951,128 @@ function toggleFans(npc) {
           const npcCards = roster.active.map((x) => npcCard(x.n, x.r, x.i, x.kind));
           const npcArchived = roster.archived.map((x) => npcCard(x.n, x.r, x.i, x.kind));
 
+          /**
+           * 关系图：主角居中，有关系的连一条线，没记录关系的画在外圈当灰点。
+           *
+           * 关系从两个地方来，必须合并 —— 它们是同一件事的两种存法：
+           *   relationships[]: { 对象, 关系, 当前状况 }   只有真正有来往的人才在这里
+           *   npcs[].与主角关系                             父亲/母亲/妹妹这类
+           * 同名只留 relationships 那份（它有「好感/信任」这类补充）。
+           */
+          const relationsView = (function () {
+            const p = draft.protagonist || {};
+            const me = String(p.姓名 || '主角').trim();
+            const rels = Array.isArray(draft.relationships) ? draft.relationships : [];
+            const npcs = Array.isArray(draft.npcs) ? draft.npcs : [];
+          
+            const seen = new Set();
+            const linked = [];
+            rels.forEach(function (r) {
+              const nm = String((r && r.对象) || '').trim();
+              if (!nm || seen.has(nm)) return;
+              seen.add(nm);
+              linked.push({ name: nm, rel: String((r && r.关系) || '').trim(), note: String((r && r.当前状况) || '').trim() });
+            });
+            npcs.forEach(function (n) {
+              const nm = String((n && n.姓名) || '').trim();
+              const rel = String((n && n.与主角关系) || '').trim();
+              if (!nm || !rel || seen.has(nm)) return;
+              seen.add(nm);
+              linked.push({ name: nm, rel: rel, note: '' });
+            });
+              // 没记录关系的按「最近出场」倒序 —— 常露面的人该排在没有存在感的角色前面
+              const others = npcs.slice()
+                .sort(function (x, y) { return (Number(y && y.最近出场) || 0) - (Number(x && x.最近出场) || 0); })
+                .map(function (n) { return String((n && n.姓名) || '').trim(); })
+                .filter(function (nm) { return nm && !seen.has(nm); });
+          
+            // 按关系类型分色，图上一眼能分出「家人 / 感情 / 学业职场 / 对立」
+            function relColor(rel) {
+              if (/妻|夫|恋|情|爱|未婚|男友|女友/.test(rel)) return '#b8465f';
+              if (/父|母|爸|妈|哥|姐|弟|妹|儿|女|亲属|家/.test(rel)) return '#8a6d3b';
+              if (/师|导|徒|同学|室友|同事|同班|学/.test(rel)) return '#3f6a96';
+              if (/敌|仇|对手|竞争|前任|前妻/.test(rel)) return '#a33d3d';
+              return '#7a8a99';
+            }
+          
+              // 名字太长会跟邻居压在一起（「迪丽热巴·迪力木拉提」有 12 个字）
+              function shortName(v) {
+                const s = String(v || '');
+                return s.length > 6 ? s.slice(0, 5) + '…' : s;
+              }
+
+            const idxOf = {};
+            npcs.forEach(function (n, i) {
+              const nm = String((n && n.姓名) || '').trim();
+              if (nm) idxOf[nm] = i;
+            });
+          
+            const W = 780;
+            const H = 620;
+            const cx = W / 2;
+            const cy = H / 2;
+            const R1 = 166;
+            const R2 = 258;
+            function pos(i, total, r) {
+              const a = (Math.PI * 2 * i) / Math.max(1, total) - Math.PI / 2;
+              return { x: cx + Math.cos(a) * r, y: cy + Math.sin(a) * r };
+            }
+          
+            const g = [];
+            linked.forEach(function (x, i) {
+              const pt = pos(i, linked.length, R1);
+              const col = relColor(x.rel);
+              g.push(h('line', { key: 'l' + i, x1: cx, y1: cy, x2: pt.x, y2: pt.y, stroke: col, strokeWidth: 1.6, strokeOpacity: 0.5 }));
+              g.push(h('text', { key: 'lt' + i, x: cx + (pt.x - cx) * 0.56, y: cy + (pt.y - cy) * 0.56 - 4, fill: col, fontSize: 11, textAnchor: 'middle', opacity: 0.9 },
+                x.rel || ''));
+              g.push(h(
+                'g',
+                { key: 'n' + i, style: { cursor: 'pointer' }, onClick: function () {
+                  if (idxOf[x.name] == null) return;
+                  setNpcOpen({ kind: 'npc', i: idxOf[x.name], editing: false });
+                } },
+                h('circle', { cx: pt.x, cy: pt.y, r: 7, fill: col }),
+                h('text', { x: pt.x, y: pt.y + 21, fill: 'var(--sim-t1, #333)', fontSize: 12.5, textAnchor: 'middle', fontWeight: 600 }, shortName(x.name))
+              ));
+            });
+            others.forEach(function (nm, i) {
+              const pt = pos(i, others.length, R2);
+              g.push(h(
+                'g',
+                { key: 'o' + i, style: { cursor: 'pointer', opacity: 0.5 }, onClick: function () {
+                  if (idxOf[nm] == null) return;
+                  setNpcOpen({ kind: 'npc', i: idxOf[nm], editing: false });
+                } },
+                h('circle', { cx: pt.x, cy: pt.y, r: 4.5, fill: '#9aa5b1' }),
+                h('text', { x: pt.x, y: pt.y + 16, fill: 'var(--sim-t1, #333)', fontSize: 11, textAnchor: 'middle' }, shortName(nm))
+              ));
+            });
+          
+            const hasAny = linked.length > 0 || others.length > 0;
+            return h(
+              'div',
+              { className: 'sim-page' },
+              h(
+                'div',
+                { className: 'sim-panel' },
+                h('div', { className: 'sim-panel-h' }, '关系'),
+                h(
+                  'div',
+                  { className: 'sim-panel-b', style: { overflow: 'auto' } },
+                  hasAny
+                    ? h(
+                        'svg',
+                        { width: W, height: H, viewBox: '0 0 ' + W + ' ' + H, style: { display: 'block' } },
+                        g,
+                        h('circle', { cx: cx, cy: cy, r: 30, fill: '#5f83ab' }),
+                        h('text', { x: cx, y: cy + 5, fill: '#fff', fontSize: 13, textAnchor: 'middle', fontWeight: 700 }, me)
+                      )
+                    : h('div', { className: 'sim-hint' }, '还没有角色。')
+                )
+              )
+            );
+          })();
+
           const npcEditor = h(
             'div',
             null,
@@ -10836,6 +10959,7 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
             remove: (id) => call('notesRemove', { id }, gameId),
           });
           else if (tab === 'npcs') view = npcEditor;
+          else if (tab === 'relations') view = relationsView;
           else if (tab === 'skills') view = assetEditor;
           // 兜底：任何没匹配上的页签都不要留白屏（历史上踩过一次：正文阶段 tab='setup' → 全不匹配）
           if (!view) view = phase === 'play' ? playView : phase === 'character' ? charFormView() : worldForm;
