@@ -5023,6 +5023,15 @@ reg('dismissIssues', async ({ gameId, seq }) => {
   return withKeyStatus(s);
 });
 
+/** 神谕的助手模式开关：开着能调工具翻正文，关掉就是纯对话 */
+reg('saveOracleAgent', async ({ gameId, on }) => {
+  const s = await loadState(gameId);
+  if (!s.config || typeof s.config !== 'object') s.config = {};
+  s.config.oracleAgent = on !== false;
+  await saveState(s);
+  return withKeyStatus(s);
+});
+
   reg('reasoningOptions', async ({ provider, model }) => {
     const pid = String(provider || '').trim();
     const mid = String(model || '').trim();
@@ -7155,14 +7164,36 @@ reg('exportStory', async ({ gameId }) => {
 
     // 流被中途切断（SSE stream ended without [DONE] / ECONNRESET）不是配置问题，
     // 重试一次通常就好了。别的错误（401、维护中）照旧直接抛给玩家。
-    let out;
+    // 助手模式：开着走 Agent（能调工具去翻正文、查记忆、按时间线核对）；
+    // 关掉就是纯对话 —— 只凭当前上下文回答，和以前一样。
+    // 默认开着，因为翻正文的能力是这个浮窗存在的理由；关掉是给「只想聊两句」的时候用。
+    const agentOn = !(s.config && s.config.oracleAgent === false);
     try {
-      out = await runOracleAgent(s, msgs, { gameId, tag: '神谕' });
+      if (agentOn) {
+        out = await runOracleAgent(s, msgs, { gameId, tag: '神谕' });
+      } else {
+        // 对话式：不带工具，一次问答就完
+        const plain = await callSlot(s, 'assistant', msgs, {
+          maxTokens: tokOf(s, 'oracle'),
+          tag: '神谕·对话',
+        });
+        out = { text: String(plain || ''), think: '', trace: [] };
+      }
     } catch (e) {
       const why = String((e && e.message) || e);
+      // 流被中途切断（SSE stream ended without [DONE] / ECONNRESET）不是配置问题，
+      // 重试一次通常就好了。别的错误（401、维护中）照旧直接抛给玩家。
       if (!/SSE|stream ended|without \[DONE\]|ECONNRESET|socket hang up/i.test(why)) throw e;
       await turnLog('[神谕] 连接被中途断开，重试一次：' + why.slice(0, 120));
-      out = await runOracleAgent(s, msgs, { gameId, tag: '神谕·重试' });
+      if (agentOn) {
+        out = await runOracleAgent(s, msgs, { gameId, tag: '神谕·重试' });
+      } else {
+        const plain2 = await callSlot(s, 'assistant', msgs, {
+          maxTokens: tokOf(s, 'oracle'),
+          tag: '神谕·对话重试',
+        });
+        out = { text: String(plain2 || ''), think: '', trace: [] };
+      }
     }
 
     th.messages.push({ role: 'user', content: say, at: Date.now() });

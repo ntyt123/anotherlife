@@ -11091,6 +11091,22 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
   },
 },
                     h('span', { className: 'sim-as-title' }, '神谕'),
+                    // 助手模式开关：开着能调工具翻正文、查记忆；关掉就是纯对话（只凭当前上下文答）。
+                    // 状态存在 config.oracleAgent，默认开。
+                    h(
+                      'button',
+                      {
+                        className: 'sim-as-ib' + ((state.config && state.config.oracleAgent === false) ? '' : ' on'),
+                        title: (state.config && state.config.oracleAgent === false)
+                          ? '助手模式：关（纯对话）。点一下打开，能翻正文、查记忆。'
+                          : '助手模式：开（能翻正文、查记忆）。点一下关掉，变成纯对话。',
+                        onClick: () => {
+                          const next = !!(state.config && state.config.oracleAgent === false);
+                          run(call('saveOracleAgent', { on: next }, gameId));
+                        },
+                      },
+                      (state.config && state.config.oracleAgent === false) ? '💬' : '🧭'
+                    ),
                     // 新建对话 / 对话列表
                     h('button', { className: 'sim-as-ib', title: '新建对话', disabled: asBusy, onClick: newThread }, '＋'),
                     h('button', { className: 'sim-as-ib' + (asListOpen ? ' on' : ''), title: '对话列表（' + asThreads.length + '）', onClick: () => setAsListOpen((v) => !v) }, '☰'),
