@@ -806,6 +806,10 @@ async function activeWritingSkill() {
     s.gameId = gameId;
     // 一致性：正文一段都没有 = 这局还没真正开始，不该停在「正文中」
     if (!s.transcript.length && s.phase === 'play') s.phase = 'world';
+    // 读档时就把「穿着」补齐：开局那次盘点漏掉的角色（家人这种
+    // 一定会出现但开局没露脸的）界面上会整个缺一块，刷新页面也看不到。
+    // 只补空壳，不编内容 —— 真正的衣服还是等模型下一轮写到。
+    ensureWear(s);
     return s;
   }
 
@@ -1885,6 +1889,24 @@ function applyFanDeltas(s, changes, now) {
 }
 
 /**
+/**
+ * 给没有「穿着」的 NPC 补一个六部位空壳。
+ *
+ * 开局那次人物盘点里，模型只给「有戏的人」写穿着 —— 家人这种
+ * 「一定会出现、但开局没露脸」的角色就整块漏掉，界面上不是六个
+ * 空槽，而是整个穿着块都不出现，和「6 部位永远显示」的设计不符。
+ *
+ * 只补空壳，不编内容：有穿的照旧，没穿的等模型下一轮写到再说。
+ */
+function ensureWear(s) {
+  (Array.isArray(s && s.npcs) ? s.npcs : []).forEach(function (n) {
+    if (!n || typeof n !== 'object') return;
+    n.穿着 = normalizeWear(n.穿着 || {});
+  });
+  return s;
+}
+
+ /**
  * 给「追踪粉丝」为真的角色（以及主角）把 粉丝 字段建出来。
  *
  * 之前只在模型给出「粉丝动态」时才初始化 —— 于是玩家点了 👥，
@@ -4632,6 +4654,7 @@ function seasonText(s) {
           // 粉丝：长期没曝光的自然掉粉（每满 7 天清一次）
           // 先把 粉丝 字段补出来（开了标记但还没有的），不然界面上一直是空的
           ensureFanFields(s);
+          ensureWear(s);
 
           const fanIdle = tickFans(s, Number(s.story && s.story.sockTick));
           fanIdle.forEach((d) => diffs.push(d));
