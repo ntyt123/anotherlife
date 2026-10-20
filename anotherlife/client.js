@@ -9048,7 +9048,7 @@ function toggleFans(npc) {
             });
             npcs.forEach(function (n) {
               const nm = String((n && n.姓名) || '').trim();
-              const rel = String((n && n.与主角关系) || '').trim();
+              const rel = String((n && (n.与主角关系 || n.关系)) || '').trim();
               if (!nm || !rel || seen.has(nm)) return;
               seen.add(nm);
               linked.push({ name: nm, rel: rel, note: '' });
