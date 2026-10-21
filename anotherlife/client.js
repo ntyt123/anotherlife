@@ -256,6 +256,11 @@ window.__ModuleLoader__.load({
       '.sim-ph-msg .ts{display:block;margin-top:3px;font-size:var(--sim-fs-6);opacity:.6}',
       '.sim-ph-msg .ops{position:absolute;top:-8px;right:-6px;display:none;gap:3px}',
       '.sim-ph-msg .ops.left{right:auto;left:-6px}',
+      '.sim-ph-typing{align-self:flex-start;display:inline-flex;align-items:center;gap:7px;padding:7px 12px;border-radius:12px;background:var(--sim-bg);border:1px solid var(--sim-bd);color:var(--sim-t2);font-size:var(--sim-fs-6);line-height:1.5}',
+      '.sim-ph-typing span{display:inline-block;width:5px;height:5px;border-radius:50%;background:currentColor;opacity:.45;animation:sim-ph-dot 1.1s infinite ease-in-out}',
+      '.sim-ph-typing span:nth-child(2){animation-delay:.22s}',
+      '.sim-ph-typing span:nth-child(3){animation-delay:.44s}',
+      '@keyframes sim-ph-dot{0%,60%,100%{opacity:.25;transform:translateY(0)}30%{opacity:.9;transform:translateY(-2px)}}',
       '.sim-ph-msg:hover .ops{display:flex}',
       '.sim-ph-img{display:flex;align-items:center;gap:9px;padding:10px 12px;border-radius:11px;border:1px dashed var(--sim-bd);background:var(--sim-bg);min-width:150px;max-width:210px;cursor:default}',
       '.sim-ph-img .ic{flex:0 0 auto;font-size:19px;opacity:.55;line-height:1}',
@@ -5256,35 +5261,51 @@ function App({ gameId, close }) {
           }
 
           /** 发一条 */
+          /**
+           * 打一条消息要多久：按字数算，不是随机数。
+           * 40 字以上封顶 3.5 秒 —— 再久玩家就以为卡住了。
+           */
+          function phoneTypingMs(text) {
+            const n = String(text == null ? '' : text).length;
+            return Math.min(3500, 400 + n * 80);
+          }
+
           function phoneSendNow() {
             const t = String(phoneIn || '').trim();
             if (!t || phoneBusy || !phoneThreadId) return;
-            const before = (phoneMsgs || []).length;
+            const base = (phoneMsgs || []).slice();
+            // 先把自己这条摆上去 —— 不等后端。
+            // 不然模型快的时候，「我发的」和「她回的第一条」会同时冒出来，
+            // 中间那段等待看起来就像没反应。
+            base.push({ id: 'local-' + Date.now(), 方向: 'out', 内容: t, 类型: 'text', 时间: '', 状态: 'sending' });
+            setPhoneMsgs(base);
+            setPhoneIn('');
             setPhoneBusy(true);
             run(call('phoneSend', { threadId: phoneThreadId, text: t }, gameId))
               .then((r) => {
-                if (!r || !r.ok) { setPhoneBusy(false); return; }
+                if (!r || !r.ok) { setPhoneBusy(false); setPhoneMsgs(base.slice(0, -1)); return; }
                 const all = r.messages || [];
-                // 先只放自己那条出去（时间打「正在发送」），对方的逐条延迟出现
-                setPhoneMsgs(all.slice(0, before + 1));
-                setPhoneIn('');
-                const rest = all.slice(before + 1);
+                // 定位「我刚发的那条」在真实数组里的位置：最后一条 out
+                let lastOut = -1;
+                all.forEach((m, k) => { if (m && m.方向 === 'out') lastOut = k; });
+                if (lastOut < 0) { setPhoneBusy(false); return; }
+                setPhoneMsgs(all.slice(0, lastOut + 1));
+                const rest = all.slice(lastOut + 1);
+                if (!rest.length) { setPhoneBusy(false); return; }
                 let k = 0;
                 const step = () => {
                   if (k >= rest.length) { setPhoneBusy(false); return; }
-                  // 0.4–2.0 秒随机：模型再快，读起来也像在打字
-                  const wait = 400 + Math.floor(Math.random() * 1600);
+                  const cur = rest[k];
+                  const wait = cur && cur.类型 === 'image' ? 1200 : phoneTypingMs(cur && cur.内容);
                   window.setTimeout(() => {
                     k++;
-                    setPhoneMsgs(all.slice(0, before + 1 + k));
+                    setPhoneMsgs(all.slice(0, lastOut + 1 + k));
                     step();
                   }, wait);
                 };
-                if (!rest.length) { setPhoneBusy(false); return; }
-                // 第一条之前先停顿一下，让「对方正在输入…」露出来
-                window.setTimeout(step, 500 + Math.floor(Math.random() * 700));
+                step();
               })
-              .catch(() => setPhoneBusy(false));
+              .catch(() => { setPhoneBusy(false); setPhoneMsgs(base.slice(0, -1)); });
           }
 
           /** 手机里显示什么 */
@@ -5322,7 +5343,8 @@ function App({ gameId, close }) {
                       )
                     : String(m.内容 || ''),
                   h('span', { className: 'ts' }, phoneClock(m.时间)),
-                  h('span', { className: 'ops' + (m.方向 === 'out' ? ' left' : '') },
+                  m.状态 === 'sending' ? null :
+              h('span', { className: 'ops' + (m.方向 === 'out' ? ' left' : '') },
                     m.方向 === 'in'
                       ? h('button', {
                           onClick: () => run(call('phoneRegen', { threadId: phoneThreadId, msgId: m.id }, gameId))
@@ -5344,7 +5366,7 @@ function App({ gameId, close }) {
                 : null;
               return h('div', { className: 'sim-ph-thread' },
                 h('div', { className: 'sim-ph-chat' }, empty, list,
-                  phoneBusy ? h('div', { className: 'sim-ph-empty' }, '对方正在输入…') : null
+                  phoneBusy ? h('div', { className: 'sim-ph-typing' }, h('span', { key: 'd1' }), h('span', { key: 'd2' }), h('span', { key: 'd3' }), '对方正在输入') : null
                 ),
                 h('div', { className: 'sim-ph-in' },
                   h('textarea', {
