@@ -5172,6 +5172,33 @@ let aiPickFail = '';
    *    「共 N 条，只列了最近 M 条」—— 不写这句，模型会以为就这么多，
    *    输出时把没列出来的那些重建成新条目。
    */
+  /**
+   * 剔掉快照里的空值再发给模型。
+   *
+   * 为什么要：穿着这类对象每个部位固定六个键，没内容的就是空串 ——
+   * 几十个角色 × 8 个部位 × 6 个键，一半是 ""，全是白送的 token。
+   *
+   * 只删真正没信息的（空串 / null / undefined / 空数组 / 空对象）；
+   * 0 和 false 一律保留 —— 强度 0 表示「已经退干净了」，那是信息。
+   */
+  function pruneEmpty(v) {
+    if (Array.isArray(v)) {
+      const arr = v.map(pruneEmpty).filter((x) => x !== undefined);
+      return arr.length ? arr : undefined;
+    }
+    if (v && typeof v === 'object') {
+      const out = {};
+      Object.keys(v).forEach((k) => {
+        const kept = pruneEmpty(v[k]);
+        if (kept === undefined) return;
+        out[k] = kept;
+      });
+      return Object.keys(out).length ? out : undefined;
+    }
+    if (v === '' || v === null || v === undefined) return undefined;
+    return v;
+  }
+
   function settleSnapshot(s) {
     const p = Object.assign({}, s.protagonist || {});
     PANEL_ONLY.forEach((k) => {
@@ -5222,7 +5249,9 @@ let aiPickFail = '';
       box.__截断说明 =
         notes.join('；') + '。没列出来的那些除非正文明确提到，不要改动、也不要在输出里重建它们。';
     }
-    return JSON.stringify(box, null, 2);
+    // 去掉缩进：JSON 的换行和空格是给人读的，模型不需要 —— 光这一项就占了全文的一半。
+    // 空值也不传（"气味":"" 这种只占 token 什么也没说），但 0 和 false 是有意义的，保留。
+    return JSON.stringify(pruneEmpty(box));
   }
 
   // ────────────────────────────── 提示词 ──────────────────────────────
