@@ -6802,7 +6802,9 @@ onDoubleClick: () => {
                 );
               })(),
               h('div', { className: 'sim-sec' }, isMale ? '穿着（衣物 / 稀有度 / 状态）' : '穿着（衣物 / 稀有度 / 状态；袜子另有气味）'),
-              ['头部', '上衣', '下衣', '袜子', '鞋子', '饰品'].map((k) => {
+              (isMale
+                ? ['头部', '上衣', '下衣', '袜子', '鞋子', '饰品']
+                : ['头部', '上衣', '内衣', '内裤', '下衣', '袜子', '鞋子', '饰品']).map((k) => {
                 const slot = (draft.protagonist.穿着 || {})[k] || {};
                 return h(
                   'div',
@@ -7889,7 +7891,10 @@ onDoubleClick: () => {
               (function () {
                 const wear = draft.protagonist.穿着 || {};
                 // 6 个部位永远都显示：删掉衣物后那一格变成「未穿」的空槽位，而不是整行消失
-                const cards = ['头部', '上衣', '下衣', '袜子', '鞋子', '饰品'].map((k) => {
+                const isMaleP = /男/.test(String((draft.protagonist && draft.protagonist.性别) || ''));
+                const cards = (isMaleP
+                  ? ['头部', '上衣', '下衣', '袜子', '鞋子', '饰品']
+                  : ['头部', '上衣', '内衣', '内裤', '下衣', '袜子', '鞋子', '饰品']).map((k) => {
                   const slot = wear[k] || {};
                   const nm = String(slot.物品 || '').trim();
                   if (!nm) {
@@ -9584,7 +9589,9 @@ function toggleFans(npc) {
                       h(
                         'div',
                         { className: 'sim-chips' },
-                        ['头部', '上衣', '下衣', '袜子', '鞋子', '饰品'].map((k) => {
+                        (male2
+                          ? ['头部', '上衣', '下衣', '袜子', '鞋子', '饰品']
+                          : ['头部', '上衣', '内衣', '内裤', '下衣', '袜子', '鞋子', '饰品']).map((k) => {
                           const slot = typeof w[k] === 'string' ? { 物品: w[k] } : w[k] || {};
                           const wn = String(slot.物品 || '').trim();
                           if (!wn) {
