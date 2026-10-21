@@ -9467,7 +9467,19 @@ function toggleFans(npc) {
                           'div',
                           { className: 'sim-grid' },
                           (function () {
-                            const src = withAge(npc || obj);
+                            // withAge 在有生日时返回新对象、没生日时原样返回原对象；
+                            // 这里再拷一份，免得下面补字段时写回 npc 本体（视图不该改数据）。
+                            const src = Object.assign({}, withAge(npc || obj) || {});
+                            // 模型经常漏写「性别」「与主角关系」，界面上就空着：
+                            //   性别 —— 有罩杯／生理周期／月经状态／三围／初潮这些女性专属字段的，补「女」
+                            //   关系 —— npc 里空就从 relationships 那条取（关系图上也是这么兜的）
+                            if (!String(src.性别 || '').trim()) {
+                              if (src.罩杯 || src.生理周期 || src.月经状态 || src.三围 || src.初潮) src.性别 = '女';
+                            }
+                            if (!String(src.与主角关系 || '').trim()) {
+                              const r0 = relFor(String(src.姓名 || '').trim());
+                              if (r0 && String(r0.关系 || '').trim()) src.与主角关系 = String(r0.关系).trim();
+                            }
                             // 姓名／性别／年龄／身份／关系 也放进输入框（标题栏那几个胶囊只是速览，不能改）
                             // 查看态只列**有值**的字段：小学老师不该看到「艺人咖位／微博账号」这一堆空的。
                             // 编辑态列全，方便补填。
