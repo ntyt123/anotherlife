@@ -3830,6 +3830,7 @@ function App({ gameId, close }) {
         const [phoneApp2, setPhoneApp2] = React.useState('');  // '' | 'wechat' | 'qq' —— 当前在哪个 app 里
         const [phoneGroups, setPhoneGroups] = React.useState([]);
         const [phoneThreadList, setPhoneThreadList] = React.useState([]);  // 短信的会话列表
+        const [phonePerson, setPhonePerson] = React.useState(null);  // 正在看的联系人（详情页）
         const [phoneGroupPick, setPhoneGroupPick] = React.useState(null);  // 建群：{成员:[], 群名:""}
         const [phoneCmtText, setPhoneCmtText] = React.useState('');
           // 缩放手柄的尺寸与最小可用尺寸
@@ -5285,6 +5286,7 @@ function App({ gameId, close }) {
           function phoneHeadTitle() {
             if (phoneView === 'contacts') return '联系人';
             if (phoneView === 'thread') return phoneWho || '短信';
+            if (phoneView === 'person' && phonePerson) return String(phonePerson.姓名 || '联系人');
             if (phoneView === 'threads') return '短信';
             if (phoneView === 'groups') return '群聊';
             if (phoneView === 'newgroup') return '拉个群';
@@ -5766,6 +5768,62 @@ function App({ gameId, close }) {
               );
             }
 
+            // person：联系人详情。号码 / 微信 / QQ / 关系都在这儿，操作按钮也在。
+            if (phoneView === 'person' && phonePerson) {
+              const p = phonePerson;
+              const npc = (Array.isArray(state && state.npcs) ? state.npcs : [])
+                .find(function (x) { return String(x && x.姓名 || '').trim() === String(p.姓名 || '').trim(); }) || {};
+              const rel = (Array.isArray(state && state.relationships) ? state.relationships : [])
+                .find(function (x) { return String(x && x.对象 || '').trim() === String(p.姓名 || '').trim(); }) || {};
+              const 行 = [];
+              if (String(p.电话 || '').trim()) 行.push(['电话', String(p.电话).trim()]);
+              if (String(p.微信 || '').trim()) 行.push(['微信', String(p.微信).trim()]);
+              if (String(p.QQ || '').trim()) 行.push(['QQ', String(p.QQ).trim()]);
+              if (String(npc.身份 || p.身份 || '').trim()) 行.push(['身份', String(npc.身份 || p.身份).trim()]);
+              if (String(rel.关系 || '').trim()) 行.push(['关系', String(rel.关系).trim()]);
+              return h('div', { className: 'sim-ph-thread', style: { overflowY: 'auto' } },
+                h('div', { style: { textAlign: 'center', padding: '26px 16px 18px' } },
+                  h('div', {
+                    className: 'sim-ph-av',
+                    style: { width: '72px', height: '72px', borderRadius: '50%', fontSize: '30px', margin: '0 auto 10px' },
+                  }, String(p.姓名 || '?').slice(0, 1)),
+                  h('div', { style: { fontSize: 'var(--sim-fs-3)', fontWeight: 600 } }, String(p.姓名 || ''))
+                ),
+                h('div', { style: { display: 'flex', gap: '8px', padding: '0 16px 16px' } },
+                  h('button', {
+                    className: 'sim-btn primary',
+                    style: { flex: '1 1 0' },
+                    onClick: function () { phoneOpenThread(p.姓名, 'sms'); },
+                  }, '发短信'),
+                  h('button', {
+                    className: 'sim-btn',
+                    style: { flex: '1 1 0' },
+                    onClick: function () { setPhoneWho(p.姓名); setPhoneView('call'); },
+                  }, '打电话'),
+                  String(p.微信 || '').trim()
+                    ? h('button', {
+                        className: 'sim-btn',
+                        style: { flex: '1 1 0' },
+                        onClick: function () { phoneOpenThread(p.姓名, 'wechat'); },
+                      }, '微信')
+                    : null
+                ),
+                h('div', { style: { padding: '0 16px 18px' } }, 行.map(function (r, i) {
+                  return h('div', {
+                    key: r[0] + i,
+                    style: {
+                      display: 'flex', justifyContent: 'space-between', gap: '14px',
+                      padding: '11px 0', borderTop: i ? '1px solid var(--sim-bd)' : 'none',
+                      fontSize: 'var(--sim-fs-5)',
+                    },
+                  },
+                    h('span', { style: { color: 'var(--sim-t2)', flex: '0 0 auto' } }, r[0]),
+                    h('span', { style: { textAlign: 'right', wordBreak: 'break-all' } }, r[1])
+                  );
+                }))
+              );
+            }
+
             if (phoneView === 'contacts') {
               const cs = phoneContacts || [];
               if (!cs.length) {
@@ -5775,18 +5833,17 @@ function App({ gameId, close }) {
                 h('div', {
                   className: 'sim-ph-row',
                   key: c.姓名,
-                  // 点整条 → 弹「发短信 / 打电话」
                   onClick: () => {
-                    // 微信/QQ 里点人 = 跟他聊天，不该再问「短信还是电话」
+                    // 点联系人 = 看详情（微信/QQ 里仍然是直接聊天，那边有自己的一套）
                     if (phoneApp2) { phoneOpenThread(c.姓名); return; }
-                    // 手机通讯录里点人 = 选一种联系方式
-                    setPhoneAct({ 姓名: String(c.姓名 || ''), 号码: phoneNumberText(c) });
+                    setPhonePerson(c);
+                    setPhoneView('person');
                   },
                 },
                   h('div', { className: 'sim-ph-av' }, String(c.姓名 || '?').slice(0, 1)),
                   h('div', { className: 'sim-ph-rc' },
                     h('div', { className: 'n' }, c.姓名),
-                    h('div', { className: 'p' }, phoneNumberText(c))
+                    h('div', { className: 'p' }, String(c.身份 || ''))
                   )
                 )
               ));
