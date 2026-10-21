@@ -3458,6 +3458,97 @@ function tickFluid(s, dh) {
 }
 
 /**
+ * 内衣内裤上的「沾染」随时间干。
+ *
+ * 数据：穿着.内裤.沾染 = { 动情: {强度: 60, 描述: "一小片深色"}, 汗: {...} }
+ * 键是来源，值是 { 强度: 0~100, 描述 }。
+ *
+ * 为什么按来源分开而不是一个总数：同一个人可以同时有汗和经血，
+ * 混成一个数就分不出是什么；而且不同来源干得快慢差很多（尿最快、汗最慢）。
+ *
+ * 涨由结算模型给（正文里明确写了才写），这里只管退。跟「体内」是两回事 ——
+ * 「体内」记的是身体里面，「沾染」记的是布料上。
+ */
+const DIRT_FULL_HOURS = {
+  动情: 6,
+  汗: 12,
+  精液: 10,
+  经血: 8,
+  药: 7,
+  乳: 10,
+  尿: 4,
+  口水: 5,
+};
+
+/** 干透之后布上还留不留痕（留在「状态」里，跟「沾染」分开） */
+const DIRT_STAIN = {
+  动情: false,
+  汗: true,
+  精液: true,
+  经血: true,
+  药: true,
+  乳: true,
+  尿: false,
+  口水: false,
+};
+
+/** 干透后留在布上的那半句 —— 越短越好，它只补一个事实，不是描写 */
+const DIRT_STAIN_WORD = {
+  汗: '布上有圈盐渍',
+  精液: '有一小块发硬',
+  经血: '有一小片暗了',
+  药: '沾了一点油',
+  乳: '留了块白印',
+};
+
+function tickUnderDirt(s, dh) {
+  const out = [];
+  if (!(dh > 0)) return out;
+  const walk = (owner, basePath) => {
+    const w = owner && owner.穿着;
+    if (!w || typeof w !== 'object') return;
+    if (String(owner.性别 || '').indexOf('男') >= 0) return;
+    ['内衣', '内裤'].forEach((key) => {
+      const slot = w[key];
+      const d = slot && slot.沾染;
+      if (!d || typeof d !== 'object' || Array.isArray(d)) return;
+      Object.keys(d).forEach((kind) => {
+        const item = d[kind];
+        if (!item || typeof item !== 'object') return;
+        const v = Number(item.强度);
+        if (!Number.isFinite(v) || v <= 0) return;
+        const full = DIRT_FULL_HOURS[kind];
+        if (!full) return;
+        const rate = 100 / full;
+        const next = Math.max(0, Math.round((v - dh * rate) * 10) / 10);
+        if (next === v) return;
+        out.push(engineDiff(basePath.concat(['穿着', key, '沾染', kind, '强度']), v, next, 'dirt'));
+        item.强度 = next;
+        if (next > 0) return;
+        const desc = String(item.描述 || '');
+        if (desc) {
+          out.push(engineDiff(basePath.concat(['穿着', key, '沾染', kind, '描述']), desc, '', 'dirt'));
+          item.描述 = '';
+        }
+        if (DIRT_STAIN[kind] && slot) {
+          const st = String(slot.状态 || '');
+          const mark = DIRT_STAIN_WORD[kind] || '';
+          if (mark && st.indexOf(mark) < 0) {
+            const nextSt = (st ? st.replace(/[；;]\s*$/, '') + '；' : '') + mark;
+            out.push(engineDiff(basePath.concat(['穿着', key, '状态']), st, nextSt, 'dirt'));
+            slot.状态 = nextSt;
+          }
+        }
+      });
+    });
+  };
+  walk(s.protagonist, []);
+  (Array.isArray(s.npcs) ? s.npcs : []).forEach((n, i) => walk(n, ['npcs', i]));
+  return out;
+}
+
+
+/**
  * 敏感度随时间退。
  *
  * 数据：角色.敏感度 = { 足心: 30, 后颈: 0 }，键是部位名（与「敏感点」数组对应）。
@@ -6258,6 +6349,10 @@ function seasonText(s) {
           // 体液残留（只在面板显示，不参与任何判定）
           const fluidDiffs = tickFluid(s, Number(s._lastDh) || 0);
           fluidDiffs.forEach((d) => diffs.push(d));
+
+          // 内衣内裤上的沾染（汗／经血／精液／动情／药／乳／尿／口水），按来源各自衰减
+          const dirtDiffs = tickUnderDirt(s, Number(s._lastDh) || 0);
+          dirtDiffs.forEach((d) => diffs.push(d));
 
           // 身体状态自动过期：「腿还软着」「嗓子哑了」这种，不该挂过夜
           const bstateDiffs = tickBodyState(s, Number(s._lastDh) || 0);
