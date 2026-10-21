@@ -5476,6 +5476,7 @@ function App({ gameId, close }) {
               .then((r) => {
                 if (!r || !r.ok) { setPhoneBusy(false); setPhoneMsgs(base.slice(0, -1)); return; }
                 const all = r.messages || [];
+                setPhoneCanUndo(true);   // 后端刚 push 过历史，现在一定能回退
                 phoneReveal(all, phoneLastOut(all));
               })
               .catch(() => { setPhoneBusy(false); setPhoneMsgs(base.slice(0, -1)); });
@@ -5545,6 +5546,7 @@ function App({ gameId, close }) {
                               .then((r) => {
                                 if (!r || !r.ok) { setPhoneBusy(false); phoneReloadThread(); return; }
                                 const all = r.messages || [];
+                                setPhoneCanUndo(true);   // 后端刚 push 过历史，现在一定能回退
                                 phoneReveal(all, phoneLastOut(all));
                               })
                               .catch(() => { setPhoneBusy(false); phoneReloadThread(); });
@@ -5563,6 +5565,7 @@ function App({ gameId, close }) {
                               .then((r) => {
                                 if (!r || !r.ok) { setPhoneBusy(false); phoneReloadThread(); return; }
                                 const all = r.messages || [];
+                                setPhoneCanUndo(true);   // 后端刚 push 过历史，现在一定能回退
                                 phoneReveal(all, phoneLastOut(all));
                               })
                               .catch(() => { setPhoneBusy(false); phoneReloadThread(); });
@@ -5582,6 +5585,23 @@ function App({ gameId, close }) {
                 h('div', { className: 'sim-ph-chat' }, empty, list,
                   phoneBusy ? h('div', { className: 'sim-ph-typing' }, h('span', { key: 'd1' }), h('span', { key: 'd2' }), h('span', { key: 'd3' }), '对方正在输入') : null
                 ),
+                // 回退：把这一版撤掉，回到上一次操作之前（跟「删」不同 —— 删是丢掉一条消息，回退是整版回滚）
+                phoneCanUndo ? h('div', { className: 'sim-ph-bar', style: { borderTop: 'none', paddingTop: 0, paddingBottom: '6px' } },
+                  h('button', {
+                    className: 'sim-btn',
+                    style: { flex: '1 1 auto' },
+                    title: '撤销上一次发送／重发／重生成',
+                    onClick: function () {
+                      setPhoneBusy(true);
+                      run(call('phoneUndo', { threadId: phoneThreadId }, gameId))
+                        .then(function (r) {
+                          setPhoneBusy(false);
+                          if (r && r.ok) { setPhoneMsgs(r.messages || []); setPhoneCanUndo(!!r.canUndo); }
+                        })
+                        .catch(function () { setPhoneBusy(false); });
+                    },
+                  }, '↶ 回退一步')
+                ) : null,
                 h('div', { className: 'sim-ph-in' },
                   h('textarea', {
                     value: phoneIn,
