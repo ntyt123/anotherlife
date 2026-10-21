@@ -284,6 +284,12 @@ window.__ModuleLoader__.load({
       '.sim-ph-pick-g .it.on{border-color:var(--sim-say, #3d6bb3)}',
       '.sim-ph-pick-g img{width:100%;height:100%;object-fit:cover;display:block}',
       // iPhone 桌面：壁纸底 + 4 列 + 圆角 22.5% 的彩色图标
+      // 桌面顶部那两块：左边的日期/天气，右边的电量式圆环（暂缺，只留日期天气）
+      '.sim-ph-widget{margin:16px 12px 0;padding:14px 16px;border-radius:20px;background:rgba(255,255,255,.14);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);box-shadow:inset 0 1px 0 rgba(255,255,255,.18);display:flex;align-items:flex-end;justify-content:space-between;gap:12px}',
+      '.sim-ph-widget .d{font-size:12px;color:rgba(255,255,255,.72);letter-spacing:.4px}',
+      '.sim-ph-widget .t{font-size:30px;line-height:1.05;color:#fff;font-weight:300;letter-spacing:-.5px;margin-top:2px}',
+      '.sim-ph-widget .w{text-align:right;font-size:12.5px;color:rgba(255,255,255,.86);line-height:1.45}',
+      '.sim-ph-widget .w b{display:block;font-size:17px;font-weight:500;color:#fff}',
       '.sim-ph-desk{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;overflow-y:auto;background:linear-gradient(165deg,#16233d 0%,#26406e 40%,#5b4a78 72%,#8a5f7a 100%)}',
       '.sim-ph-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:20px 10px;padding:24px 12px 16px}',
       '.sim-ph-app{display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer}',
@@ -5319,6 +5325,40 @@ function App({ gameId, close }) {
             return { 年: y, 壳, 有微信: y >= 2011, 有QQ: y >= 2005, 有微博: y >= 2009, 有相机: y >= 2003 };
           }
 
+          /**
+           * 桌面上的日期 / 天气组件。
+           *
+           * 日期、星期、天气都从 world.当前日期时间 里取（格式如
+           * 「2026年5月20日 星期二 09:38:00 小雨」）。温度没有存，按月份
+           * 给一个基准、再按天气和日期做一点稳定偏移 —— 同一天刷新永远是同一个温度，
+           * 不会每开一次手机就变一次。
+           */
+          function phoneWeather() {
+            const t = String((state && state.world && state.world['当前日期时间']) || '');
+            if (!t) return null;
+            const md = t.match(/(\d{1,2})月(\d{1,2})日/);
+            const wd = t.match(/(星期[一二三四五六日天])/);
+            const hm = t.match(/(\d{1,2}:\d{2})/);
+            // 天气是时间后面那段（「09:38:00 小雨」→ 小雨）
+            const wt = (t.match(/\d{1,2}:\d{2}:\d{2}\s*(\S+)/) || [])[1] || '';
+            const 月 = md ? Number(md[1]) : 0;
+            const 日 = md ? Number(md[2]) : 1;
+            const 基准 = [3, 5, 11, 18, 24, 28, 31, 31, 27, 20, 13, 6];
+            let 温 = 基准[月 - 1] || 20;
+            if (/雨/.test(wt)) 温 -= 3;
+            if (/雪/.test(wt)) 温 -= 12;
+            if (/晴/.test(wt)) 温 += 3;
+            if (/阴|云/.test(wt)) 温 -= 1;
+            温 += ((日 * 7) % 5) - 2;   // 同一天恒定的小幅偏移
+            return {
+              日期: md ? md[1] + '月' + md[2] + '日' : '',
+              星期: wd ? wd[1] : '',
+              时间: hm ? hm[1] : '',
+              天气: wt || '—',
+              温度: Math.round(温),
+            };
+          }
+
           /** 九个格子里的一个 */
           /**
            * 桌面图标。
@@ -5950,6 +5990,21 @@ function App({ gameId, close }) {
             }
 
             return h('div', { className: 'sim-ph-desk' },
+              // 日期 / 天气组件
+              (function () {
+                const w = phoneWeather();
+                if (!w) return null;
+                return h('div', { className: 'sim-ph-widget' },
+                  h('div', null,
+                    h('div', { className: 'd' }, w.日期 + (w.星期 ? '  ' + w.星期 : '')),
+                    h('div', { className: 't' }, w.温度 + '°')
+                  ),
+                  h('div', { className: 'w' },
+                    h('b', null, w.天气),
+                    w.时间 ? h('div', null, w.时间) : null
+                  )
+                );
+              })(),
               h('div', { className: 'sim-ph-grid' },
               phoneApp('✉️', '短信', () => setPhoneView('contacts'), !!(phoneContacts && phoneContacts.length) === false),
               phoneApp('👥', '联系人', () => {
