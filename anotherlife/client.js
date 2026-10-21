@@ -3771,12 +3771,15 @@ function App({ gameId, close }) {
               ? (draft && draft.npcs)
               : ((dps && dps.npcs) || (draft && draft.npcs));
             const arr = Array.isArray(src) ? src : [];
+            // 主角名不参与高亮：正文里「罗伊」出现几十次，全染成可点绿字会让正文像链接堆。
+            // 而且模型有时会把主角也建进 npcs（这一局就是），所以这里直接按姓名排除。
+            const heroName = String((state && state.protagonist && state.protagonist.姓名) || (draft && draft.protagonist && draft.protagonist.姓名) || '').trim();
             arr.forEach(function (x, i) {
               const nm = String((x && (x.姓名 || x.名字)) || '').trim();
-              if (nm) m.set(nm, i);
+              if (nm && nm !== heroName) m.set(nm, i);
             });
             return m;
-          }, [state && state.phase, draft && draft.npcs, dps && dps.npcs]);
+          }, [state && state.phase, draft && draft.npcs, dps && dps.npcs, state && state.protagonist && state.protagonist.姓名, draft && draft.protagonist && draft.protagonist.姓名]);
 
           // 点名开卡：找不到就什么都不做（正文里可能提到还没建档的人）
           const openByName = React.useCallback(function (nm) {
