@@ -5148,6 +5148,7 @@ function App({ gameId, close }) {
             }
 
           /** 手机浮窗拖拽：跟神谕一样，只是位置存另一个 key */
+          }
           function phoneDragStart(e) {
             if (e.target.closest && e.target.closest('.sim-ph-hd-btn')) return;
             const panel = e.currentTarget.parentElement;
@@ -5339,9 +5340,7 @@ function App({ gameId, close }) {
               phoneApp('🅦', '微博', () => {}, !era.有微博),
             );
           }
-          }
           /** 浮窗实际用的定位样式：拖过就用 left/top，没拖过保持默认的右下角 */
-          /** 浮窗实际用的定位与尺寸：拖过/调过就用存的，否则保持默认的右下角 */
           function asBoxStyle() {
             if (!asPos && !asSize) return null;
             const m = 4;
