@@ -277,6 +277,8 @@ window.__ModuleLoader__.load({
       '.sim-scent-bar{position:relative;height:13px;border-radius:7px;background:var(--sim-bd);overflow:hidden;min-width:150px}',
       '.sim-scent-fill{height:100%;border-radius:7px;background:linear-gradient(90deg,#7fb87a 0%,#d9a441 55%,#c9563f 100%);background-size:260% 100%;background-position:0 0;transition:width .2s}',
       '.sim-scent-n{position:absolute;right:6px;top:0;line-height:13px;font-size:10px;color:var(--sim-t2);font-variant-numeric:tabular-nums}',
+  '.sim-dirt-wrap{display:flex;flex-direction:column;gap:2px;min-width:150px}',
+  '.sim-dirt-desc{font-size:11px;line-height:1.45;color:var(--sim-t2)}',
       // ── 正文底部：小总结 / 变量变化 ──
       '.sim-facts{margin-top:10px;padding-top:8px;border-top:1px dashed var(--sim-bd);display:flex;flex-direction:column;gap:6px}',
       '.sim-fact{background:var(--sim-bg);border:1px solid var(--sim-bd);border-radius:8px;padding:7px 9px}',
@@ -8337,10 +8339,11 @@ function fanBlock(obj) {
             if (String(slot.简介 || '').trim()) tip.push(['简介', String(slot.简介).trim()]);
             if (!isMundane(slot.状态)) tip.push(['状态', String(slot.状态).trim()]);
             if (String(slot.穿着时长 || '').trim()) tip.push(['穿着', String(slot.穿着时长).trim()]);
-            if (k === '袜子' && !male) {
+            // 袜子、内衣、内裤都有气味（只有女性）。浓度条 0~100：圆点只有四档，看不出 12 和 39 的差别
+            const SCENT_PARTS = ['袜子', '内衣', '内裤'];
+            if (SCENT_PARTS.indexOf(k) >= 0 && !male) {
               const sc = String(slot.气味 || '').trim();
               tip.push(['气味', sc || '（未记录）']);
-              // 0~100 的浓度条：圆点只有四档，看不出 12 和 39 的差别
               const lv = Number(slot && slot.气味强度);
               if (Number.isFinite(lv)) {
                 tip.push(['浓度', h(
@@ -8349,6 +8352,32 @@ function fanBlock(obj) {
                   h('div', { className: 'sim-scent-fill', style: { width: Math.max(0, Math.min(100, lv)) + '%' } }),
                   h('span', { className: 'sim-scent-n' }, Math.round(lv) + '/100')
                 )]);
+              }
+            }
+            // 内衣内裤的「沾染」：按来源各占一行，强度为 0 的不显示
+            if ((k === '内衣' || k === '内裤') && !male) {
+              const dirt = slot.沾染;
+              if (dirt && typeof dirt === 'object' && !Array.isArray(dirt)) {
+                Object.keys(dirt).forEach((kind) => {
+                  const it = dirt[kind];
+                  const v = Number(it && it.强度);
+                  if (!Number.isFinite(v) || v <= 0) return;
+                  const txt = String(it.描述 || '').trim();
+                  tip.push([
+                    kind,
+                    h(
+                      'div',
+                      { className: 'sim-dirt-wrap' },
+                      h(
+                        'div',
+                        { className: 'sim-scent-bar' },
+                        h('div', { className: 'sim-scent-fill', style: { width: Math.max(0, Math.min(100, v)) + '%' } }),
+                        h('span', { className: 'sim-scent-n' }, Math.round(v) + '/100')
+                      ),
+                      txt ? h('span', { className: 'sim-dirt-desc' }, txt) : null
+                    ),
+                  ]);
+                });
               }
             }
             // 鞋袜是「身体」里同一个部位的外壳：这里顺手给一个入口，不用再翻到身体区
