@@ -8628,6 +8628,28 @@ reg('stopGenerate', async ({ gameId }) => {
   });
 
   /** 回退这个线程到上一版 */
+  /**
+   * 重发：把自己发的这条之后的全部砍掉，再用它重新发一次。
+   * 跟「重新生成」不同 —— 那个是重生成对方的话，这个是重发自己的、
+   * 连带把它之后的一切作废（相当于「这句我说错了，撤回重说」）。
+   */
+  reg('phoneResend', async ({ gameId, threadId, msgId }) => {
+    const s = await loadState(gameId);
+    const tid = String(threadId || '').trim();
+    const arr = Array.isArray(s.手机.线程[tid]) ? s.手机.线程[tid] : [];
+    const i = arr.findIndex((m) => String(m.id) === String(msgId));
+    if (i < 0) throw new Error('没找到那条消息');
+    if (arr[i].方向 !== 'out') throw new Error('只能重发自己发的消息');
+    if (arr[i].类型 === 'image') throw new Error('图片没法重发');
+    const 内容 = String(arr[i].内容 || '').trim();
+    if (!内容) throw new Error('这条是空的');
+    // 截到它之前（不含它本身），后面的一起作废
+    s.手机.线程[tid] = arr.slice(0, i);
+    const r = await doPhoneSend(s, tid, 内容);
+    await saveState(s);
+    return { ok: true, messages: r.messages, facts: r.facts, 时间: r.时间 };
+  });
+
   reg('phoneUndo', async ({ gameId, threadId }) => {
     const s = await loadState(gameId);
     const tid = String(threadId || '').trim();

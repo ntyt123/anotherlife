@@ -255,6 +255,7 @@ window.__ModuleLoader__.load({
       '.sim-ph-msg.in{align-self:flex-start;background:var(--sim-bg);border:1px solid var(--sim-bd);color:var(--sim-t)}',
       '.sim-ph-msg .ts{display:block;margin-top:3px;font-size:var(--sim-fs-6);opacity:.6}',
       '.sim-ph-msg .ops{position:absolute;top:-8px;right:-6px;display:none;gap:3px}',
+      '.sim-ph-msg .ops.left{right:auto;left:-6px}',
       '.sim-ph-msg:hover .ops{display:flex}',
       '.sim-ph-img{display:flex;align-items:center;gap:9px;padding:10px 12px;border-radius:11px;border:1px dashed var(--sim-bd);background:var(--sim-bg);min-width:150px;max-width:210px;cursor:default}',
       '.sim-ph-img .ic{flex:0 0 auto;font-size:19px;opacity:.55;line-height:1}',
@@ -5318,18 +5319,21 @@ function App({ gameId, close }) {
                       )
                     : String(m.内容 || ''),
                   h('span', { className: 'ts' }, phoneClock(m.时间)),
-                  m.方向 === 'in'
-                    ? h('span', { className: 'ops' },
-                        h('button', {
+                  h('span', { className: 'ops' + (m.方向 === 'out' ? ' left' : '') },
+                    m.方向 === 'in'
+                      ? h('button', {
                           onClick: () => run(call('phoneRegen', { threadId: phoneThreadId, msgId: m.id }, gameId))
                             .then((r) => { if (r && r.ok) setPhoneMsgs(r.messages || []); }),
-                        }, '重生成'),
-                        h('button', {
-                          onClick: () => run(call('phoneDelete', { threadId: phoneThreadId, msgId: m.id }, gameId))
+                        }, '重生成')
+                      : m.类型 === 'image' ? null : h('button', {
+                          onClick: () => run(call('phoneResend', { threadId: phoneThreadId, msgId: m.id }, gameId))
                             .then((r) => { if (r && r.ok) setPhoneMsgs(r.messages || []); }),
-                        }, '删'),
-                      )
-                    : null,
+                        }, '重发'),
+                    h('button', {
+                      onClick: () => run(call('phoneDelete', { threadId: phoneThreadId, msgId: m.id }, gameId))
+                        .then((r) => { if (r && r.ok) setPhoneMsgs(r.messages || []); }),
+                    }, '删'),
+                  ),
                 )
               );
               const empty = !list.length
