@@ -3691,15 +3691,27 @@ function App({ gameId, close }) {
 
           // 正文里的人名做成可点的：Map<名字, npcs 索引>。
           // 只认 npcs（角色表）—— relationships 是关系条目，不是人，点进去会串。
+          // 正文里的人名做成可点的：Map<名字, npcs 索引>。
+          // 只认 npcs（角色表）—— relationships 是关系条目，不是人，点进去会串。
+          //
+          // 数据源要和 npcModalView 的 pickSrc 保持一致：创角读草稿、游玩读 dps。
+          // 以前固定用 draft.npcs —— 而 run() 里 draft 是浅合并、只覆盖
+          // config/skin/starting/phase 四个字段，npcs 的引用从来没变过，
+          // 于是这个 useMemo 永不重算：新角色刚建档时，正文里点不了（刷新才好）。
+          // dps 每次都是深拷贝，引用必变，所以游玩阶段靠它触发重算。
           const bodyNames = React.useMemo(function () {
             const m = new Map();
-            const arr = (draft && Array.isArray(draft.npcs)) ? draft.npcs : [];
+            const inChar = (state && state.phase) === 'character';
+            const src = inChar
+              ? (draft && draft.npcs)
+              : ((dps && dps.npcs) || (draft && draft.npcs));
+            const arr = Array.isArray(src) ? src : [];
             arr.forEach(function (x, i) {
               const nm = String((x && (x.姓名 || x.名字)) || '').trim();
               if (nm) m.set(nm, i);
             });
             return m;
-          }, [draft && draft.npcs]);
+          }, [state && state.phase, draft && draft.npcs, dps && dps.npcs]);
 
           // 点名开卡：找不到就什么都不做（正文里可能提到还没建档的人）
           const openByName = React.useCallback(function (nm) {
