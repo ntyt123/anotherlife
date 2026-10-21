@@ -5406,14 +5406,9 @@ function App({ gameId, close }) {
 
           /** 动态里的头像字（没有真头像，用姓名的第一个字） */
           /** 联系人副标题：优先电话，退到微信/QQ。带个前缀，一眼看出是哪种号 */
+          /** 联系人副标题：只有电话。微信/QQ 不进这个列表 */
           function phoneNumberText(c) {
-            const t = String((c && c.电话) || '').trim();
-            const w = String((c && c.微信) || '').trim();
-            const q = String((c && c.QQ) || '').trim();
-            if (t) return t;
-            if (w) return '微信 ' + w;
-            if (q) return 'QQ ' + q;
-            return '没有号码';
+            return String((c && c.电话) || '').trim();
           }
 
           function feedAv(name) {
@@ -5491,7 +5486,7 @@ function App({ gameId, close }) {
             if (phoneView === 'contacts') {
               const cs = phoneContacts || [];
               if (!cs.length) {
-                return h('div', { className: 'sim-ph-empty' }, '还没有人给过你号码。');
+                return h('div', { className: 'sim-ph-empty' }, '还没有人把电话给你。');
               }
               return h('div', { className: 'sim-ph-list' }, cs.map((c) =>
                 h('div', {
