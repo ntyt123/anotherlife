@@ -232,10 +232,17 @@ window.__ModuleLoader__.load({
       // 手机外壳四档。共用的是布局与投影，只有边框、圆角、底色按年代分。
       '.sim-ph{position:fixed;z-index:9001;display:flex;flex-direction:column;background:var(--sim-bg2);border:1px solid var(--sim-bd);border-radius:20px;box-shadow:0 16px 44px rgba(0,0,0,.28);overflow:hidden;box-sizing:border-box}',
       // 2008 前：厚边框、小圆角、深灰机身，像一块塑料壳包着一块小屏
-      '.sim-ph[data-era="feature"]{border:11px solid #3a3a3c;border-radius:14px;box-shadow:0 14px 38px rgba(0,0,0,.45),inset 0 0 0 1px #555}',
-      '.sim-ph[data-era="feature"] .sim-ph-hd{border-radius:2px 2px 0 0;background:linear-gradient(#5a5a5e,#3a3a3c);color:#f0f0f0;border-bottom:none}',
-      '.sim-ph[data-era="feature"] .sim-ph-hd .t, .sim-ph[data-era="feature"] .sim-ph-hd .tm{color:#f0f0f0}',
-      // 2008~2013：宽边框 + 圆角大一些，黑白机身
+      // 2008 前：功能机 —— 厚塑料机身、小圆角、顶部听筒、底部品牌标
+      '.sim-ph[data-era="feature"]{border:12px solid #46464a;border-radius:12px;box-shadow:0 14px 38px rgba(0,0,0,.5),inset 0 0 0 1px rgba(255,255,255,.14),inset 0 -22px 34px rgba(0,0,0,.16)}',
+      // 听筒：边框顶部中间一段凹槽
+      '.sim-ph[data-era="feature"]::before{content:"";position:absolute;top:-10px;left:50%;transform:translateX(-50%);width:56px;height:8px;border-radius:4px;background:#2b2b2f;box-shadow:inset 0 1px 2px rgba(0,0,0,.75)}',
+      // 品牌标：边框底部中间一小段
+      '.sim-ph[data-era="feature"]::after{content:"";position:absolute;bottom:-9px;left:50%;transform:translateX(-50%);width:34px;height:5px;border-radius:3px;background:#5a5a5e;box-shadow:inset 0 1px 0 rgba(255,255,255,.25)}',
+      // 顶栏深灰梯度，像功能机那种单色屏
+      '.sim-ph[data-era="feature"] .sim-ph-hd{border-radius:0;background:linear-gradient(#6a6a6e,#46464a);color:#f2f2f2;border-bottom:2px solid #2b2b2f}',
+      '.sim-ph[data-era="feature"] .sim-ph-hd .t, .sim-ph[data-era="feature"] .sim-ph-hd .tm{color:#f2f2f2;letter-spacing:.3px}',
+      '.sim-ph[data-era="feature"] .sim-ph-hd-btn{color:#e8e8e8;border-color:rgba(255,255,255,.25)}',
+      '.sim-ph[data-era="feature"] .sim-ph-body{padding-bottom:8px}',
       '.sim-ph[data-era="early"]{border:9px solid #101012;border-radius:26px;box-shadow:0 16px 44px rgba(0,0,0,.42),inset 0 0 0 1px #2a2a2e}',
       '.sim-ph[data-era="early"] .sim-ph-hd{background:#f2f2f5;border-bottom:1px solid #d8d8de}',
       // 2014~2019：扁平化，窄边框、圆角更大
