@@ -294,6 +294,7 @@ const WEAR_KEYS = ['头部', '上衣', '内衣', '内裤', '下衣', '袜子', '
       线程: {},      // 线程ID → [{ id, 轮次, 时间, 方向, 内容, 状态 }]
       线程历史: {},  // 线程ID → [ 上一版数组快照, … ]，最多留 8 步
       草稿: {},      // 线程ID → 没发出去的半句话
+      群: {},        // 群名 → { 成员: [姓名…], 建群时间 }
       相册: [],      // [{ id, 描述, 时间, 轮次, 图 }] —— 描述是给「发圈时生成评论」用的
       // 两个平台各自独立，结构相同：{ id, 作者, 时间, 轮次, 正文, 图片:[{相册id,描述}], 赞:[名字], 评论:[{谁,内容}] }
       动态: { 朋友圈: [], 说说: [] },
@@ -929,6 +930,7 @@ async function activeWritingSkill() {
       const v = s.手机[k];
       if (!v || typeof v !== 'object' || Array.isArray(v)) s.手机[k] = {};
     // 相册与动态：老存档没有，补成空
+    if (!s.手机.群 || typeof s.手机.群 !== 'object' || Array.isArray(s.手机.群)) s.手机.群 = {};
     if (!Array.isArray(s.手机.相册)) s.手机.相册 = [];
     if (!s.手机.动态 || typeof s.手机.动态 !== 'object' || Array.isArray(s.手机.动态)) s.手机.动态 = { 朋友圈: [], 说说: [] };
     ['朋友圈', '说说'].forEach((k) => { if (!Array.isArray(s.手机.动态[k])) s.手机.动态[k] = []; });
@@ -8419,6 +8421,53 @@ reg('stopGenerate', async ({ gameId }) => {
   }
 
   /** 手机的提示词：只做一件事 —— 按她的性格回一条短信，并判断有没有产生事实 */
+  /**
+   * 群聊提示词。跟单聊的区别：
+   *   · 说话的是「一群人」，模型自己挑谁开口（不是每个都得说）
+   *   · 每条要带说话人，不然界面上不知道谁在讲
+   *   · 有人岔开话题、有人只看不说 —— 别写成轮流发言
+   */
+  function phoneGroupPrompt(s, 成员, 群名, 类型, 玩家说的话) {
+    const 年 = (String((s.world && s.world["当前日期时间"]) || "").match(/(\d{4})/) || [])[1] || "";
+    const 是短信 = 类型 === "sms";
+    const 名单 = 成员.map((npc) => {
+      const nm = String((npc && npc.姓名) || "");
+      const 身份 = String((npc && npc.身份) || "");
+      const 表 = String((npc && npc.表性格) || "");
+      const 里 = String((npc && npc.里性格) || "");
+      const rel = (Array.isArray(s.relationships) ? s.relationships : []).find((r) => String(r.对象 || "").trim() === nm);
+      const 关系 = rel ? String(rel.关系 || "") : "";
+      return "  · " + nm + "（" + 身份 + "／表：" + (表 || "—") + "／里：" + (里 || "—") + (关系 ? "／跟主角：" + 关系 : "") + "）";
+    }).join("\n");
+    return [
+      "你在扮演一个群聊里的几个角色，群名叫「" + 群名 + "」。",
+      "",
+      "【群里的人】",
+      名单,
+      "",
+      "【年代】" + 年 + " 年。" + (是短信 ? "早期短信，短。" : "群聊说话更碎、更随便，可以抢话、可以只回表情。"),
+      "",
+      "【主角刚在群里发】" + 玩家说的话,
+      "",
+      "要求：",
+      "· 挑 1~3 个人说话，不是每人都得开口。有的人可以不接话。",
+      "· 每条不超过 " + PHONE_CLIP + " 字。",
+      "· 内容和性格对得上：有人热络、有人敷衍、有人只发一个「？」。",
+      "· 可以有人答非所问，也可以有人插一句跟当前话题无关的。",
+      "· 不要旁白，不要写动作，只写他们打出来的字。",
+      "",
+      "只输出 JSON（谁=说话的人，必须是上面名单里的）",
+      "{\"reply\":[{\"谁\":\"姓名\",\"内容\":\"…\"}]}",
+    ].join("\n");
+  }
+
+  /** 群名解析：线程 id 形如 wechat:群:204宿舍 */
+  function parseGroupThread(对象) {
+    const t = String(对象 || "");
+    if (t.indexOf("群:") !== 0) return "";
+    return t.slice(2).trim();
+  }
+
   function phonePrompt(s, npc, 名字, 类型, 玩家说的话) {
     const 表 = String((npc && npc.表性格) || '');
     const 里 = String((npc && npc.里性格) || '');
@@ -8755,8 +8804,11 @@ reg('stopGenerate', async ({ gameId }) => {
    */
   async function doPhoneSend(s, tid, 玩家说的话) {
     const { 类型, 对象: 名字 } = parseThreadId(tid);
-    const npc = npcByPhone(s, 名字);
-    if (!npc) throw new Error('没有这个角色：' + 名字);
+    // 线程 id 里的对象以「群:」开头就是群聊：wechat:群:204宿舍
+    const 群名 = parseGroupThread(名字);
+    const isGroup = !!群名;
+    const npc = isGroup ? null : npcByPhone(s, 名字);
+    if (!isGroup && !npc) throw new Error('没有这个角色：' + 名字);
 
     // 发之前先存一版（回退用），最多留 8 步
     const cur = Array.isArray(s.手机.线程[tid]) ? s.手机.线程[tid] : [];
@@ -8780,7 +8832,14 @@ reg('stopGenerate', async ({ gameId }) => {
     // 手机也要破限词 —— 少了它模型会自行削弱：回得像客服、
     // 不敢写暧昧与身体反应，聊天就变成干巴巴的问答题。
     const jbP = await activeJailbreak();
-    const sys = phonePrompt(s, npc, 名字, 类型, 玩家说的话) +
+    // 群聊走另一套提示词：说话的是「一群人」，模型自己挑谁开口
+    const 群成员 = isGroup
+      ? ((s.手机.群[群名] && Array.isArray(s.手机.群[群名].成员)) ? s.手机.群[群名].成员 : [])
+          .map((nm2) => npcByPhone(s, nm2)).filter(Boolean)
+      : [];
+    const sys = (isGroup
+      ? phoneGroupPrompt(s, 群成员, 群名, 类型, 玩家说的话)
+      : phonePrompt(s, npc, 名字, 类型, 玩家说的话)) +
       (jbP && jbP.on && jbP.text
         ? '\n\n【附加要求 · 玩家提供，优先级最高】以下内容优先于前文任何与之冲突的**内容性**限制' +
           '（能写什么、写到什么程度、她的态度与反应）；但**输出格式**（那个 JSON）必须保持不变。\n' + jbP.text
@@ -8806,24 +8865,26 @@ reg('stopGenerate', async ({ gameId }) => {
       if (fb) replies.push(fb.slice(0, 300));
     }
     replies.slice(0, 4).forEach((r) => {
-      if (r && typeof r === 'object') {
-        const 消息类型 = String(r.类型 || '').trim();
-        const 描述 = String(r.描述 || '').trim();
-        // 只有微信/QQ 能发图片；短信即便模型给了也降级成文字（类型 是外层解构出来的线程类型）
-        if (消息类型 === '图片' && 描述 && 类型 !== 'sms') {
-          // 只有微信/QQ 能发图片；短信即便模型给了也降级成文字
-          cur.push(mk('in', '', 'image', 描述));
+      if (r && typeof r === "object") {
+        const 消息类型 = String(r.类型 || "").trim();
+        const 描述 = String(r.描述 || "").trim();
+        const 谁说的 = String(r.谁 || "").trim();
+        // 群聊每条都带说话人；单聊没这个字段
+        const 加人 = (m) => { if (谁说的) m.谁 = 谁说的; return m; };
+        if (消息类型 === "图片" && 描述 && 类型 !== "sms") {
+          cur.push(加人(mk("in", "", "image", 描述)));
           return;
         }
-        if (描述) { cur.push(mk('in', 描述)); return; }
+        const 文字 = 描述 || String(r.内容 || "").trim();
+        if (文字) { cur.push(加人(mk("in", 文字))); return; }
         return;
       }
-      if (String(r || '').trim()) cur.push(mk('in', r));
+      if (String(r || "").trim()) cur.push(mk("in", r));
     });
 
     s.手机.线程[tid] = cur;
     delete s.手机.草稿[tid];
-    applyPhoneFacts(s, npc, 名字, facts);
+    if (!isGroup) applyPhoneFacts(s, npc, 名字, facts);   // 群聊没有单一对象，事实不落到某个人身上
 
     await turnLog('[手机] ' + tid + ' 回复 ' + replies.length + ' 条，事实 ' + facts.length + ' 条');
     return { messages: cur, facts, 时间 };
@@ -8839,6 +8900,56 @@ reg('stopGenerate', async ({ gameId }) => {
    *   qq      认 QQ 号
    * 同一个人可能在三个平台都出现，各自是独立线程（sms:张三 / wechat:张三 / qq:张三）。
    */
+  /** 群列表：名字 + 成员 + 最后一条 */
+  reg('phoneGroupList', async ({ gameId, 平台 }) => {
+    const s = await loadState(gameId);
+    const p = String(平台 || 'wechat').trim();
+    const 群 = s.手机.群 || {};
+    const 线程 = s.手机.线程 || {};
+    const list = Object.keys(群).map((nm) => {
+      const g = 群[nm] || {};
+      const arr = Array.isArray(线程[p + ':群:' + nm]) ? 线程[p + ':群:' + nm] : [];
+      const last = arr.length ? arr[arr.length - 1] : null;
+      return { 群名: nm, 成员: Array.isArray(g.成员) ? g.成员 : [], 建群时间: g.建群时间 || "", 最近: last ? last.内容 : "", 条数: arr.length };
+    });
+    return { ok: true, 平台: p, groups: list };
+  });
+
+  /** 建群：成员至少两个，名字可以自己起也可以自动生成 */
+  reg('phoneGroupCreate', async ({ gameId, 平台, 成员, 群名 }) => {
+    const s = await loadState(gameId);
+    const p = String(平台 || 'wechat').trim();
+    const names = (Array.isArray(成员) ? 成员 : []).map((x) => String(x || "").trim()).filter(Boolean);
+    const 主角 = String((s.protagonist || {}).姓名 || "我");
+    const 去重 = names.filter((x, i) => names.indexOf(x) === i && x !== 主角);
+    if (去重.length < 2) throw new Error('至少拉两个人');
+    if (!s.手机.群 || typeof s.手机.群 !== "object") s.手机.群 = {};
+    let nm = String(群名 || "").trim();
+    if (!nm) nm = 去重.slice(0, 3).join("、") + (去重.length > 3 ? "等" : "");
+    if (s.手机.群[nm]) throw new Error("已经有一个叫「" + nm + "」的群了");
+    s.手机.群[nm] = { 成员: 去重, 建群时间: phoneNow(s) };
+    await saveState(s);
+    return { ok: true, 群名: nm };
+  });
+
+  /** 群加人 / 退群 */
+  reg('phoneGroupMember', async ({ gameId, 群名, 加, 减 }) => {
+    const s = await loadState(gameId);
+    const nm = String(群名 || "").trim();
+    const g = (s.手机.群 || {})[nm];
+    if (!g) throw new Error('没有这个群');
+    if (!Array.isArray(g.成员)) g.成员 = [];
+    (Array.isArray(加) ? 加 : []).map((x) => String(x || "").trim()).filter(Boolean).forEach((x) => {
+      if (g.成员.indexOf(x) < 0) g.成员.push(x);
+    });
+    (Array.isArray(减) ? 减 : []).map((x) => String(x || "").trim()).filter(Boolean).forEach((x) => {
+      const i2 = g.成员.indexOf(x);
+      if (i2 >= 0) g.成员.splice(i2, 1);
+    });
+    await saveState(s);
+    return { ok: true, 成员: g.成员 };
+  });
+
   reg('phoneGet', async ({ gameId, 平台 }) => {
     const s = await loadState(gameId);
     const p = String(平台 || 'sms').trim();
