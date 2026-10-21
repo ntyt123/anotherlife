@@ -9043,24 +9043,32 @@ function toggleFans(npc) {
             // relationships 里可能只写了「对象 + 当前状况」没写「关系」——
             // 那样这一条就会把 npcs 里同名那条挡住（seen 已经加过了），
             // 图上表现为「有连线、没标签、默认灰」。先建一张 npcs 的关系表兜底。
+            // 「无（沈清越的父亲）」这种不是与主角的关系，是「这人是谁」的说明。
+            // 模型被「字段尽量给齐」逼出来的写法，画到图上就是一根假线。
+            const isFakeRel = function (v) {
+              const t = String(v || '').trim();
+              return !t || t === '无' || t === '没有' || t === '沒有' || /^无[（(]/.test(t);
+            };
+
             const npcRel = {};
             npcs.forEach(function (n) {
               const nm = String((n && n.姓名) || '').trim();
               if (!nm) return;
               const r2 = String((n && (n.与主角关系 || n.关系)) || '').trim();
-              if (r2) npcRel[nm] = r2;
+              if (r2 && !isFakeRel(r2)) npcRel[nm] = r2;
             });
             rels.forEach(function (r) {
               const nm = String((r && r.对象) || '').trim();
               if (!nm || seen.has(nm)) return;
-              seen.add(nm);
               const rel = String((r && r.关系) || '').trim() || npcRel[nm] || '';
+              if (isFakeRel(rel)) return; // 「无」不是关系，别画线，让他落到外圈灰点
+              seen.add(nm);
               linked.push({ name: nm, rel: rel, note: String((r && r.当前状况) || '').trim() });
             });
             npcs.forEach(function (n) {
               const nm = String((n && n.姓名) || '').trim();
               const rel = String((n && (n.与主角关系 || n.关系)) || '').trim();
-              if (!nm || !rel || seen.has(nm)) return;
+              if (!nm || isFakeRel(rel) || seen.has(nm)) return;
               seen.add(nm);
               linked.push({ name: nm, rel: rel, note: '' });
             });
