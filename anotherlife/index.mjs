@@ -8425,13 +8425,14 @@ reg('stopGenerate', async ({ gameId }) => {
       '· 每条不超过 ' + PHONE_CLIP + ' 字，正常就一两句，不要写成一段话。',
       '· 可以用「事情我知道但不想说」的方式回避——不要把所有话都说透。',
       '· 不要复述剧情，不要旁白，只写她会打出来的字。',
+      (是短信 ? '· 短信只能发文字，不能发图片。' : '· 可以发图片：需要时写成 {"类型":"图片","描述":"…"}，描述一句就够（拍的是什么、什么角度、画面里有什么），不要写成小说。'),
       '',
       '同时判断这次对话有没有产生「事实」——只挑真的发生的：',
       '· 约定（约好时间地点）/ 态度（好感或戒心变了）/ 交换信息（给了号码、说了某件事）',
       '没有就给空数组，不要硬凑。',
       '',
       '只输出 JSON：',
-      '{"reply":["第一条","第二条"],"事实":[{"类型":"约定","内容":"明天下午三点琴房"}]}',
+      '{"reply":["第一条",{"类型":"图片","描述":"一张腿照，膝盖以下"},"第三条"],"事实":[{"类型":"约定","内容":"明天下午三点琴房"}]}',
     ].filter(Boolean).join('\n');
   }
 
@@ -8483,8 +8484,12 @@ reg('stopGenerate', async ({ gameId }) => {
     const 时间 = phoneNow(s);
     const 轮次 = Number((s.story || {}).current_message_index) || 0;
     let seq = cur.length;
-    const mk = (方向, 内容) => ({
-      id: tid + '#' + (++seq), 轮次, 时间, 方向, 内容: phoneClip(内容), 状态: 'ok',
+    const mk = (方向, 内容, 类型, 描述) => ({
+      id: tid + '#' + (++seq), 轮次, 时间, 方向,
+      类型: 类型 || 'text',
+      内容: 类型 === 'image' ? '' : phoneClip(内容),
+      描述: 类型 === 'image' ? String(描述 || '').slice(0, 60) : undefined,
+      状态: 'ok',
     });
     cur.push(mk('out', 玩家说的话));
 
@@ -8516,7 +8521,21 @@ reg('stopGenerate', async ({ gameId }) => {
       const fb = String(raw2 || '').replace(/```[\s\S]*?```/g, '').trim();
       if (fb) replies.push(fb.slice(0, 300));
     }
-    replies.slice(0, 4).forEach((r) => { if (String(r || '').trim()) cur.push(mk('in', r)); });
+    replies.slice(0, 4).forEach((r) => {
+      if (r && typeof r === 'object') {
+        const 消息类型 = String(r.类型 || '').trim();
+        const 描述 = String(r.描述 || '').trim();
+        // 只有微信/QQ 能发图片；短信即便模型给了也降级成文字（类型 是外层解构出来的线程类型）
+        if (消息类型 === '图片' && 描述 && 类型 !== 'sms') {
+          // 只有微信/QQ 能发图片；短信即便模型给了也降级成文字
+          cur.push(mk('in', '', 'image', 描述));
+          return;
+        }
+        if (描述) { cur.push(mk('in', 描述)); return; }
+        return;
+      }
+      if (String(r || '').trim()) cur.push(mk('in', r));
+    });
 
     s.手机.线程[tid] = cur;
     delete s.手机.草稿[tid];

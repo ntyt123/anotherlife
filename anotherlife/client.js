@@ -256,6 +256,9 @@ window.__ModuleLoader__.load({
       '.sim-ph-msg .ts{display:block;margin-top:3px;font-size:var(--sim-fs-6);opacity:.6}',
       '.sim-ph-msg .ops{position:absolute;top:-8px;right:-6px;display:none;gap:3px}',
       '.sim-ph-msg:hover .ops{display:flex}',
+      '.sim-ph-img{display:flex;align-items:center;gap:9px;padding:10px 12px;border-radius:11px;border:1px dashed var(--sim-bd);background:var(--sim-bg);min-width:150px;max-width:210px;cursor:default}',
+      '.sim-ph-img .ic{flex:0 0 auto;font-size:19px;opacity:.55;line-height:1}',
+      '.sim-ph-img .dsc{flex:1 1 auto;font-size:var(--sim-fs-6);color:var(--sim-t2);line-height:1.45;word-break:break-word}',
       '.sim-ph-msg .ops button{border:1px solid var(--sim-bd);background:var(--sim-bg2);color:var(--sim-t2);border-radius:6px;font-size:10px;padding:1px 5px;cursor:pointer}',
       '.sim-ph-in{flex:0 0 auto;display:flex;gap:7px;padding:9px 11px;background:var(--sim-bg);border-top:1px solid var(--sim-bd)}',
       '.sim-ph-in textarea{flex:1 1 auto;min-height:34px;max-height:96px;resize:none;border-radius:9px;border:1px solid var(--sim-bd);background:var(--sim-bg2);color:var(--sim-t);padding:7px 9px;font-size:var(--sim-fs-5);font-family:inherit}',
@@ -5308,7 +5311,12 @@ function App({ gameId, close }) {
                   className: 'sim-ph-msg ' + (m.方向 === 'out' ? 'out' : 'in'),
                   key: m.id,
                 },
-                  String(m.内容 || ''),
+                  m.类型 === 'image'
+                    ? h('div', { className: 'sim-ph-img' },
+                        h('span', { className: 'ic' }, '🖼'),
+                        h('span', { className: 'dsc' }, String(m.描述 || '一张图片'))
+                      )
+                    : String(m.内容 || ''),
                   h('span', { className: 'ts' }, phoneClock(m.时间)),
                   m.方向 === 'in'
                     ? h('span', { className: 'ops' },
