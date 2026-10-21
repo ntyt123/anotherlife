@@ -8417,6 +8417,22 @@ const HUMAN_MSG = [
     return String((s.world && s.world['当前日期时间']) || '').trim();
   }
 
+  /**
+   * 在「2026年5月20日 星期三 09:38:00 晴」这种时间串上加几分钟，其余部分原样保留。
+   *
+   * 用途：手机里一段对话不可能所有消息都停在同一分钟。
+   * 她回一句、你隔两分钟再回 —— 时间得跟着走，不然整段聊天像同一秒发完的。
+   */
+  function phoneAddMinutes(t, minutes) {
+    const raw = String(t || '');
+    const m = raw.match(/(\d{4})年(\d{1,2})月(\d{1,2})日[^\d]*(\d{1,2}):(\d{2}):(\d{2})/);
+    if (!m) return raw;
+    const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5]) + Number(minutes || 0), Number(m[6]));
+    const pad = (x) => String(x).padStart(2, '0');
+    const hhmmss = pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+    return raw.replace(/(\d{1,2}):(\d{2}):(\d{2})/, hhmmss);
+  }
+
   /** 线程 ID → { 类型, 对象 }。sms:沈清越 / wechat:沈清越 / wechat:群:204宿舍 */
   function parseThreadId(tid) {
     const t = String(tid || '');
@@ -8881,16 +8897,25 @@ const HUMAN_MSG = [
     while (hist.length > 8) hist.shift();
     s.手机.线程历史[tid] = hist;
 
-    const 时间 = phoneNow(s);
+    let 时间 = phoneNow(s);   // 会随着消息往后推，见 mk 里
     const 轮次 = Number((s.story || {}).current_message_index) || 0;
     let seq = cur.length;
-    const mk = (方向, 内容, 类型, 描述) => ({
-      id: tid + '#' + (++seq), 轮次, 时间, 方向,
-      类型: 类型 || 'text',
-      内容: 类型 === 'image' ? '' : phoneClip(内容),
-      描述: 类型 === 'image' ? String(描述 || '').slice(0, 60) : undefined,
-      状态: 'ok',
-    });
+    // 每条消息的时间在前一条基础上往后走：
+    // 自己发的是接着上一条（间隔 0~1 分钟），她回的是隔一段时间（1~3 分钟）。
+    // 全停在同一分钟的话，一段十分钟的聊天看起来像同一秒发完的。
+    const mk = (方向, 内容, 类型, 描述) => {
+      const 上一条 = cur.length ? cur[cur.length - 1] : null;
+      const 基准 = 上一条 && 上一条.时间 ? 上一条.时间 : 时间;
+      const 间隔 = 方向 === 'out' ? Math.floor(Math.random() * 2) : (1 + Math.floor(Math.random() * 3));
+      时间 = phoneAddMinutes(基准, 间隔);
+      return {
+        id: tid + '#' + (++seq), 轮次, 时间, 方向,
+        类型: 类型 || 'text',
+        内容: 类型 === 'image' ? '' : phoneClip(内容),
+        描述: 类型 === 'image' ? String(描述 || '').slice(0, 60) : undefined,
+        状态: 'ok',
+      };
+    };
     cur.push(mk('out', 玩家说的话));
 
     // 手机也要破限词 —— 少了它模型会自行削弱：回得像客服、
