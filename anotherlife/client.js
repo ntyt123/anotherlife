@@ -10231,6 +10231,25 @@ function toggleFans(npc) {
                         onChange: (v) => setObj(Object.assign({}, npc || obj || {}, { [k]: v })),
                       })
                     ),
+                  // 联系方式：只列有值的。没有就不出现 —— 通讯录只认电话，
+                  // 但这里微信/QQ 也要显示，因为玩家是在看「这个人怎么联系」。
+                  (function () {
+                    const c = (npc || obj || {}).联系方式 || {};
+                    const rows = [
+                      ['电话', String(c.电话 || '').trim()],
+                      ['微信号', String(c.微信 || '').trim()],
+                      ['QQ号', String(c.QQ || '').trim()],
+                    ].filter(function (x) { return x[1]; });
+                    if (!rows.length) return null;
+                    return h('div', { className: 'sim-know-list', style: { marginTop: 12 } },
+                      rows.map(function (x) {
+                        return h('div', { className: 'sim-know', key: 'ct-' + x[0] },
+                          h('span', { className: 'k' }, x[0]),
+                          h('span', { className: 'vals' }, h('span', { className: 'tag' }, x[1]))
+                        );
+                      })
+                    );
+                  })(),
                   ),
                   // 演艺资料单独成块：那些值都很长，塞进两列网格会被裁掉（截图里就是这样）
                   editing ? null : starPanel(npc),
