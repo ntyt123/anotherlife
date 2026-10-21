@@ -5415,6 +5415,17 @@ function App({ gameId, close }) {
            * 之前只有「正常发送」内联了它，另外两条直接 setPhoneMsgs 一次铺开，
            * 所以看起来只有正常发送才有「正在输入」。
            */
+          /**
+           * 失败兜底：重发/重生成会先把界面截断，后端要是挂了，
+           * 被切掉的那些在界面上就没了。重新拉一次线程，回到存档里的真实状态。
+           */
+          function phoneReloadThread() {
+            if (!phoneThreadId) return;
+            run(call('phoneThread', { threadId: phoneThreadId }, gameId)).then(function (r) {
+              if (r && r.ok) setPhoneMsgs(r.messages || []);
+            });
+          }
+
           function phoneReveal(all, lastOut) {
             const arr = Array.isArray(all) ? all : [];
             if (lastOut < 0) { setPhoneBusy(false); return; }
@@ -5514,26 +5525,36 @@ function App({ gameId, close }) {
                     m.方向 === 'in'
                       ? h('button', {
                           onClick: () => {
+                            // 先把这条从界面上拿掉（它要被重新生成），不等后端
+                            const arr = phoneMsgs || [];
+                            const at = arr.findIndex((x) => String(x.id) === String(m.id));
+                            if (at >= 0) setPhoneMsgs(arr.slice(0, at));
                             setPhoneBusy(true);
                             run(call('phoneRegen', { threadId: phoneThreadId, msgId: m.id }, gameId))
                               .then((r) => {
-                                if (!r || !r.ok) { setPhoneBusy(false); return; }
+                                if (!r || !r.ok) { setPhoneBusy(false); phoneReloadThread(); return; }
                                 const all = r.messages || [];
                                 phoneReveal(all, phoneLastOut(all));
                               })
-                              .catch(() => setPhoneBusy(false));
+                              .catch(() => { setPhoneBusy(false); phoneReloadThread(); });
                           },
                         }, '重生成')
                       : m.类型 === 'image' ? null : h('button', {
                           onClick: () => {
+                            // 先把这条之后的全部从界面上切掉 —— 不等后端。
+                            // 它自己留着（马上要重发同一句，内容一样），只删掉后面那些。
+                            const arr = phoneMsgs || [];
+                            const at = arr.findIndex((x) => String(x.id) === String(m.id));
+                            if (at < 0) return;
+                            setPhoneMsgs(arr.slice(0, at + 1));
                             setPhoneBusy(true);
                             run(call('phoneResend', { threadId: phoneThreadId, msgId: m.id }, gameId))
                               .then((r) => {
-                                if (!r || !r.ok) { setPhoneBusy(false); return; }
+                                if (!r || !r.ok) { setPhoneBusy(false); phoneReloadThread(); return; }
                                 const all = r.messages || [];
                                 phoneReveal(all, phoneLastOut(all));
                               })
-                              .catch(() => setPhoneBusy(false));
+                              .catch(() => { setPhoneBusy(false); phoneReloadThread(); });
                           },
                         }, '重发'),
                     h('button', {
