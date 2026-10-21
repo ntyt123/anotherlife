@@ -12472,14 +12472,30 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
                       onPointerUp: phoneDragEnd,
                       onPointerCancel: phoneDragEnd,
                     },
+                    // 返回 + 主屏幕两个按钮，包成数组才能塞进三元
                     phoneView !== 'home'
-                      ? h('button', {
-                          className: 'sim-ph-hd-btn',
-                          title: '返回',
-                          onClick: () => { // 三层：compose→feed，app 里的 feed/contacts→apphome，其余→home
-                const inApp = !!phoneApp2 && (phoneView === 'feed' || phoneView === 'contacts' || phoneView === 'groups' || phoneView === 'newgroup');
-                const back = phoneView === 'compose' ? 'feed' : (inApp ? 'apphome' : 'home'); if (back === 'home') { setPhoneThreadId(''); setPhoneMsgs([]); setPhoneIn(''); setPhoneFeedWho(''); } setPhoneView(back); },
-                        }, '‹')
+                      ? [
+                          h('button', {
+                            className: 'sim-ph-hd-btn',
+                            title: '返回',
+                            onClick: () => {
+                              const inApp = !!phoneApp2 && (phoneView === 'feed' || phoneView === 'contacts' || phoneView === 'groups' || phoneView === 'newgroup');
+                              const back = phoneView === 'compose' ? 'feed' : (inApp ? 'apphome' : 'home');
+                              if (back === 'home') { setPhoneThreadId(''); setPhoneWho(''); setPhoneApp2(''); }
+                              setPhoneView(back);
+                            },
+                          }, '‹'),
+                          h('button', {
+                            className: 'sim-ph-hd-btn',
+                            title: '主屏幕',
+                            onClick: () => {
+                              setPhoneView('home');
+                              setPhoneApp2('');
+                              setPhoneThreadId('');
+                              setPhoneWho('');
+                            },
+                          }, '⌂'),
+                        ]
                       : null,
                     h('span', { className: 't' }, phoneHeadTitle()),
                     h('span', { className: 'tm' }, phoneTimeText()),
