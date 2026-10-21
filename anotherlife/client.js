@@ -234,7 +234,8 @@ window.__ModuleLoader__.load({
       '.sim-ph-hd .t{flex:1 1 auto;font-weight:700;font-size:var(--sim-fs-3);letter-spacing:.4px}',
       '.sim-ph-hd .tm{font-size:var(--sim-fs-6);color:var(--sim-t2)}',
       '.sim-ph-hd-btn{flex:0 0 auto;width:24px;height:24px;border-radius:8px;border:1px solid var(--sim-bd);background:transparent;color:var(--sim-t2);cursor:pointer;font-size:12px;line-height:1}',
-      '.sim-ph-body{flex:1 1 auto;overflow:hidden auto;background:var(--sim-bg2)}',
+      '.sim-ph-body{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;overflow:hidden;background:var(--sim-bg2)}',
+      '.sim-ph-list{flex:1 1 auto;min-height:0;overflow-y:auto}',
       '.sim-ph-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;padding:22px 16px}',
       '.sim-ph-app{display:flex;flex-direction:column;align-items:center;gap:7px;cursor:pointer}',
       '.sim-ph-app .ic{width:52px;height:52px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:22px;background:var(--sim-bg);border:1px solid var(--sim-bd)}',
@@ -246,6 +247,8 @@ window.__ModuleLoader__.load({
       '.sim-ph-rc{flex:1 1 auto;min-width:0}',
       '.sim-ph-rc .n{font-size:var(--sim-fs-5);color:var(--sim-t)}',
       '.sim-ph-rc .p{font-size:var(--sim-fs-6);color:var(--sim-t2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+      '.sim-ph-thread{flex:1 1 auto;min-height:0;display:flex;flex-direction:column}',
+      '.sim-ph-thread .sim-ph-chat{flex:1 1 auto;min-height:0;overflow-y:auto;justify-content:flex-end;display:flex;flex-direction:column;gap:8px;padding:12px}',
       '.sim-ph-chat{display:flex;flex-direction:column;gap:8px;padding:12px}',
       '.sim-ph-msg{max-width:78%;padding:7px 11px;border-radius:12px;font-size:var(--sim-fs-5);line-height:1.55;word-break:break-word;position:relative}',
       '.sim-ph-msg.out{align-self:flex-end;background:var(--sim-say, #3d6bb3);color:#fff}',
@@ -5203,6 +5206,12 @@ function App({ gameId, close }) {
             return [(m ? m[1] : ''), (h ? h[1] : '')].filter(Boolean).join(' ');
           }
 
+          /** 单条消息上的时间：从「8月21日 13:22:00 晴」里只取 13:22 */
+          function phoneClock(t) {
+            const m = String(t || '').match(/(\d{1,2}:\d{2})/);
+            return m ? m[1] : '';
+          }
+
           /** 有没有微信 / 微博（按年代判定，2005 年一概没有） */
           function phoneEra() {
             const w = (state && state.world) || {};
@@ -5243,15 +5252,32 @@ function App({ gameId, close }) {
           function phoneSendNow() {
             const t = String(phoneIn || '').trim();
             if (!t || phoneBusy || !phoneThreadId) return;
+            const before = (phoneMsgs || []).length;
             setPhoneBusy(true);
             run(call('phoneSend', { threadId: phoneThreadId, text: t }, gameId))
               .then((r) => {
-                if (r && r.ok) {
-                  setPhoneMsgs(r.messages || []);
-                  setPhoneIn('');
-                }
+                if (!r || !r.ok) { setPhoneBusy(false); return; }
+                const all = r.messages || [];
+                // 先只放自己那条出去（时间打「正在发送」），对方的逐条延迟出现
+                setPhoneMsgs(all.slice(0, before + 1));
+                setPhoneIn('');
+                const rest = all.slice(before + 1);
+                let k = 0;
+                const step = () => {
+                  if (k >= rest.length) { setPhoneBusy(false); return; }
+                  // 0.4–2.0 秒随机：模型再快，读起来也像在打字
+                  const wait = 400 + Math.floor(Math.random() * 1600);
+                  window.setTimeout(() => {
+                    k++;
+                    setPhoneMsgs(all.slice(0, before + 1 + k));
+                    step();
+                  }, wait);
+                };
+                if (!rest.length) { setPhoneBusy(false); return; }
+                // 第一条之前先停顿一下，让「对方正在输入…」露出来
+                window.setTimeout(step, 500 + Math.floor(Math.random() * 700));
               })
-              .finally(() => setPhoneBusy(false));
+              .catch(() => setPhoneBusy(false));
           }
 
           /** 手机里显示什么 */
@@ -5261,7 +5287,7 @@ function App({ gameId, close }) {
               if (!cs.length) {
                 return h('div', { className: 'sim-ph-empty' }, '还没有人给过你号码。');
               }
-              return h('div', null, cs.map((c) =>
+              return h('div', { className: 'sim-ph-list' }, cs.map((c) =>
                 h('div', {
                   className: 'sim-ph-row',
                   key: c.姓名,
@@ -5283,7 +5309,7 @@ function App({ gameId, close }) {
                   key: m.id,
                 },
                   String(m.内容 || ''),
-                  h('span', { className: 'ts' }, String(m.时间 || '').slice(-5)),
+                  h('span', { className: 'ts' }, phoneClock(m.时间)),
                   m.方向 === 'in'
                     ? h('span', { className: 'ops' },
                         h('button', {
@@ -5301,7 +5327,7 @@ function App({ gameId, close }) {
               const empty = !list.length
                 ? h('div', { className: 'sim-ph-empty' }, '还没聊过。')
                 : null;
-              return h('div', null,
+              return h('div', { className: 'sim-ph-thread' },
                 h('div', { className: 'sim-ph-chat' }, empty, list,
                   phoneBusy ? h('div', { className: 'sim-ph-empty' }, '对方正在输入…') : null
                 ),
