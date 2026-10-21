@@ -8534,7 +8534,12 @@ const HUMAN_MSG = [
       const 里 = String((npc && npc.里性格) || "");
       const rel = (Array.isArray(s.relationships) ? s.relationships : []).find((r) => String(r.对象 || "").trim() === nm);
       const 关系 = rel ? String(rel.关系 || "") : "";
-      return "  · " + nm + "（" + 身份 + "／表：" + (表 || "—") + "／里：" + (里 || "—") + (关系 ? "／跟主角：" + 关系 : "") + "）";
+      const 健 = String((npc && npc.健康状况) || "").trim();
+      const 病 = Array.isArray(npc && npc.疾病与伤病)
+        ? npc.疾病与伤病.map(function (x) { return String(x || "").trim(); }).filter(Boolean).join("、")
+        : String((npc && npc.疾病与伤病) || "").trim();
+      const 身体 = [健, 病].filter(Boolean).join("；");
+      return "  · " + nm + "（" + 身份 + "／表：" + (表 || "—") + "／里：" + (里 || "—") + (关系 ? "／跟主角：" + 关系 : "") + (身体 ? "／身体：" + 身体 : "") + "）";
     }).join("\n");
     return [
       "你在扮演一个群聊里的几个角色，群名叫「" + 群名 + "」。",
@@ -8578,6 +8583,35 @@ const HUMAN_MSG = [
       '【角色】' + 名字 + '，' + String((npc && npc.年龄) || '') + ' 岁，' + String((npc && npc.身份) || ''),
       '【性格】表：' + (表 || '—'),
       '        里：' + (里 || '—'),
+      String((npc && npc.外貌) || '').trim() ? '【外貌】' + String(npc.外貌) : '',
+      // 健康和疾病：都空就整行不出现（年轻健康的人本来就没有）
+      (function () {
+        const 健 = String((npc && npc.健康状况) || '').trim();
+        const 病 = Array.isArray(npc && npc.疾病与伤病)
+          ? npc.疾病与伤病.map(function (x) { return String(x || '').trim(); }).filter(Boolean).join('、')
+          : String((npc && npc.疾病与伤病) || '').trim();
+        const bits = [健, 病].filter(Boolean);
+        return bits.length ? '【身体状况】' + bits.join('；') : '';
+      })(),
+      // 关系数值：有 0~100 的数字就用数字（「好感 78」比「好感 强」细得多），
+      // 没有就什么都不加 —— phoneMemory 里已经带了 relationships 的文字档。
+      (function () {
+        const r = (Array.isArray(s.relationships) ? s.relationships : [])
+          .find(function (x) { return String(x.对象 || '').trim() === String(名字 || '').trim(); });
+        const src = Object.assign({}, npc || {}, r || {});
+        const 取 = function (k) {
+          const v = src[k];
+          const n2 = Number(v);
+          return Number.isFinite(n2) && String(v) !== '' ? n2 : null;
+        };
+        const 好 = 取('好感度'), 信 = 取('信任度'), 欲 = 取('欲望');
+        if (好 === null && 信 === null && 欲 === null) return '';
+        const 段 = [];
+        if (好 !== null) 段.push('好感 ' + 好);
+        if (信 !== null) 段.push('信任 ' + 信);
+        if (欲 !== null) 段.push('欲望 ' + 欲);
+        return '【关系数值·0~100】' + 段.join(' · ');
+      })(),
       phoneMemory(s, npc, 名字),
       '',
       '【年代】' + 年 + ' 年。' + (是短信 ? '短信短、一条一句，常用「嗯」「哦」「知道了」；不用 emoji（用 :) 或 ^_^）；不用网络流行语。' : '微信可以发短句、可以连发几条。'),
