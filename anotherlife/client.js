@@ -278,11 +278,18 @@ window.__ModuleLoader__.load({
       '.sim-ph-pick-g .it{aspect-ratio:1;border-radius:6px;overflow:hidden;border:2px solid transparent;cursor:pointer}',
       '.sim-ph-pick-g .it.on{border-color:var(--sim-say, #3d6bb3)}',
       '.sim-ph-pick-g img{width:100%;height:100%;object-fit:cover;display:block}',
-      '.sim-ph-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;padding:22px 16px}',
-      '.sim-ph-app{display:flex;flex-direction:column;align-items:center;gap:7px;cursor:pointer}',
-      '.sim-ph-app .ic{width:52px;height:52px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:22px;background:var(--sim-bg);border:1px solid var(--sim-bd)}',
-      '.sim-ph-app .lbl{font-size:var(--sim-fs-6);color:var(--sim-t2)}',
-      '.sim-ph-app.off{opacity:.35;cursor:default}',
+      // iPhone 桌面：壁纸底 + 4 列 + 圆角 22.5% 的彩色图标
+      '.sim-ph-desk{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;overflow-y:auto;background:linear-gradient(165deg,#16233d 0%,#26406e 40%,#5b4a78 72%,#8a5f7a 100%)}',
+      '.sim-ph-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:20px 10px;padding:24px 12px 16px}',
+      '.sim-ph-app{display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer}',
+      '.sim-ph-app .ic{width:56px;height:56px;border-radius:13px;display:flex;align-items:center;justify-content:center;font-size:25px;color:#fff;box-shadow:0 3px 9px rgba(0,0,0,.3);background:linear-gradient(#8e8e93,#636366)}',
+      '.sim-ph-app .lbl{font-size:10.5px;line-height:1.2;color:rgba(255,255,255,.93);text-shadow:0 1px 2px rgba(0,0,0,.4);max-width:70px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center}',
+      '.sim-ph-app:active .ic{transform:scale(.92);transition:transform .08s}',
+      '.sim-ph-app.off{opacity:.3;cursor:default}',
+      '.sim-ph-app.off:active .ic{transform:none}',
+      // Dock：底部毛玻璃条
+      '.sim-ph-dock{margin:0 10px 14px;padding:11px 8px 9px;border-radius:26px;background:rgba(255,255,255,.15);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);display:grid;grid-template-columns:repeat(4,1fr);gap:8px;box-shadow:inset 0 1px 0 rgba(255,255,255,.16)}',
+      '.sim-ph-dock .lbl{display:none}',
       '.sim-ph-row{display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:1px solid var(--sim-bd);cursor:pointer}',
       '.sim-ph-row:hover{background:var(--sim-bg)}',
       '.sim-ph-av{flex:0 0 auto;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--sim-bg);border:1px solid var(--sim-bd);font-size:var(--sim-fs-5)}',
@@ -5308,13 +5315,27 @@ function App({ gameId, close }) {
           }
 
           /** 九个格子里的一个 */
+          /**
+           * 桌面图标。
+           * 底色按 App 名查表 —— 不放到调用处，是因为调用处有单行也有多行，
+           * 逐个加参数容易改漏。加新 App 时只在这里补一行配色。
+           */
+          const APP_COLOR = {
+            短信: 'linear-gradient(#4CD964,#2BB44A)',
+            联系人: 'linear-gradient(#9A9AA0,#636366)',
+            相机: 'linear-gradient(#A0A0A6,#5C5C61)',
+            相册: 'linear-gradient(#FFCC00,#FF9500)',
+            电话: 'linear-gradient(#4CD964,#2BB44A)',
+            微信: 'linear-gradient(#07C160,#06AD56)',
+            QQ: 'linear-gradient(#12B7F5,#0E9BD1)',
+          };
           function phoneApp(ic, lbl, onTap, off) {
             return h('div', {
               className: 'sim-ph-app' + (off ? ' off' : ''),
               key: lbl,
               onClick: off ? undefined : onTap,
             },
-              h('div', { className: 'ic' }, ic),
+              h('div', { className: 'ic', style: { background: APP_COLOR[lbl] || 'linear-gradient(#8e8e93,#636366)' } }, ic),
               h('span', { className: 'lbl' }, lbl)
             );
           }
@@ -5923,7 +5944,8 @@ function App({ gameId, close }) {
               );
             }
 
-            return h('div', { className: 'sim-ph-grid' },
+            return h('div', { className: 'sim-ph-desk' },
+              h('div', { className: 'sim-ph-grid' },
               phoneApp('✉️', '短信', () => setPhoneView('contacts'), !!(phoneContacts && phoneContacts.length) === false),
               phoneApp('👥', '联系人', () => {
                 setPhoneView('contacts');
@@ -5936,6 +5958,14 @@ function App({ gameId, close }) {
               phoneApp('📞', '电话', () => {}, true),
               phoneApp('💬', '微信', () => { setPhoneApp2('wechat'); setPhoneView('apphome'); }, !era.有微信),
               phoneApp('🐧', 'QQ', () => { setPhoneApp2('qq'); setPhoneView('apphome'); }, !era.有QQ),
+              ),
+              // Dock：最常用的四个，毛玻璃条
+              h('div', { className: 'sim-ph-dock' },
+                phoneApp('📞', '电话', () => {}, true),
+                phoneApp('✉️', '短信', () => setPhoneView('contacts'), !!(phoneContacts && phoneContacts.length) === false),
+                phoneApp('💬', '微信', () => { setPhoneApp2('wechat'); setPhoneView('apphome'); }, !era.有微信),
+                phoneApp('📷', '相机', () => {}, !era.有相机),
+              )
             );
           }
           /** 浮窗实际用的定位样式：拖过就用 left/top，没拖过保持默认的右下角 */
