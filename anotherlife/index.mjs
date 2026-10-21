@@ -9151,6 +9151,35 @@ const HUMAN_MSG = [
   });
 
   /** 某个线程的全部消息 */
+  /**
+   * 会话列表：所有「跟某个人聊过」的线程，按最后一条消息的时间倒序。
+   *
+   * 短信 App 打开第一屏就是这个 —— 不是联系人列表。
+   * 只列真有消息的线程；群聊不走这里（它们有自己的列表）。
+   */
+  reg('phoneThreads', async ({ gameId, 平台 }) => {
+    const s = await loadState(gameId);
+    const p = String(平台 || 'sms').trim();
+    const 线程 = s.手机.线程 || {};
+    const list = [];
+    Object.keys(线程).forEach(function (tid) {
+      if (tid.indexOf(p + ':') !== 0) return;
+      if (tid.indexOf('群:') >= 0) return;
+      const arr = 线程[tid];
+      if (!Array.isArray(arr) || !arr.length) return;
+      const last = arr[arr.length - 1];
+      list.push({
+        姓名: tid.slice(p.length + 1),
+        最后: String(last.内容 || (last.类型 === 'image' ? '[图片]' : '')),
+        时间: String(last.时间 || ''),
+        方向: String(last.方向 || ''),
+        条数: arr.length,
+      });
+    });
+    list.sort(function (a, b) { return String(b.时间).localeCompare(String(a.时间)); });
+    return { ok: true, 平台: p, threads: list, 时间: phoneNow(s) };
+  });
+
   reg('phoneThread', async ({ gameId, threadId }) => {
     const s = await loadState(gameId);
     const tid = String(threadId || '').trim();
