@@ -291,9 +291,14 @@ window.__ModuleLoader__.load({
       '.sim-ph-typing span:nth-child(3){animation-delay:.44s}',
       '@keyframes sim-ph-dot{0%,60%,100%{opacity:.25;transform:translateY(0)}30%{opacity:.9;transform:translateY(-2px)}}',
       '.sim-ph-msg:hover .ops{display:flex}',
-      '.sim-ph-img{display:flex;align-items:center;gap:9px;padding:10px 12px;border-radius:11px;border:1px dashed var(--sim-bd);background:var(--sim-bg);min-width:150px;max-width:210px;cursor:default}',
-      '.sim-ph-img .ic{flex:0 0 auto;font-size:19px;opacity:.55;line-height:1}',
-      '.sim-ph-img .dsc{flex:1 1 auto;font-size:var(--sim-fs-6);color:var(--sim-t2);line-height:1.45;word-break:break-word}',
+      // 图片消息：虚线框 + 一行描述。宽度跟着气泡走，图标顶在第一行，不居中。
+      '.sim-ph-img{display:flex;align-items:flex-start;gap:8px;padding:11px 12px;border-radius:11px;border:1px dashed var(--sim-bd);background:var(--sim-bg);width:100%;box-sizing:border-box;cursor:default}',
+      '.sim-ph-img .ic{flex:0 0 auto;font-size:17px;opacity:.5;line-height:1.4}',
+      '.sim-ph-img .dsc{flex:1 1 auto;min-width:0;font-size:var(--sim-fs-6);color:var(--sim-t2);line-height:1.55;word-break:break-word}',
+      // 纯图片的消息不该再套一层气泡：它自己有 padding 和边框，再套一层就是两重边距，
+      // 内容宽度被挤掉一大半（踩过：描述每行只放得下五六个字）。
+      '.sim-ph-msg.is-img{padding:0;background:transparent;border:none;max-width:88%;width:88%}',
+      '.sim-ph-msg.is-img .ts{margin-top:4px;opacity:.5}',
       '.sim-ph-msg .ops button{border:1px solid var(--sim-bd);background:var(--sim-bg2);color:var(--sim-t2);border-radius:6px;font-size:10px;padding:1px 5px;cursor:pointer}',
       '.sim-ph-in{flex:0 0 auto;display:flex;gap:7px;padding:9px 11px;background:var(--sim-bg);border-top:1px solid var(--sim-bd)}',
       '.sim-ph-in textarea{flex:1 1 auto;min-height:34px;max-height:96px;resize:none;border-radius:9px;border:1px solid var(--sim-bd);background:var(--sim-bg2);color:var(--sim-t);padding:7px 9px;font-size:var(--sim-fs-5);font-family:inherit}',
@@ -5652,7 +5657,7 @@ function App({ gameId, close }) {
             if (phoneView === 'thread') {
               const list = (phoneMsgs || []).map((m) =>
                 h('div', {
-                  className: 'sim-ph-msg ' + (m.方向 === 'out' ? 'out' : 'in'),
+                  className: 'sim-ph-msg ' + (m.方向 === 'out' ? 'out' : 'in') + (m.类型 === 'image' ? ' is-img' : ''),
                   key: m.id,
                 },
                   // 群聊每条带说话人；单聊没有这个字段就不显示
