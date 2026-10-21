@@ -5368,11 +5368,11 @@ function App({ gameId, close }) {
           const APP_COLOR = {
             短信: 'linear-gradient(#4CD964,#2BB44A)',
             联系人: 'linear-gradient(#9A9AA0,#636366)',
-            相机: 'linear-gradient(#A0A0A6,#5C5C61)',
+            相机: 'linear-gradient(#7C7C82,#3C3C40)',
             相册: 'linear-gradient(#FFCC00,#FF9500)',
             电话: 'linear-gradient(#4CD964,#2BB44A)',
             微信: 'linear-gradient(#07C160,#06AD56)',
-            QQ: 'linear-gradient(#12B7F5,#0E9BD1)',
+            QQ: 'linear-gradient(#1C9FE0,#0A6E96)',
           };
           function phoneApp(ic, lbl, onTap, off) {
             return h('div', {
@@ -6013,7 +6013,7 @@ function App({ gameId, close }) {
                   phoneLoadContacts();
                 }
               }),
-              phoneApp('📷', '相机', () => {}, !era.有相机),
+              phoneApp('📸', '相机', () => {}, !era.有相机),
               phoneApp('🖼️', '相册', () => { setPhoneView('album'); if (!phoneAlbumLoaded) phoneLoadAlbum(); }),
               phoneApp('📞', '电话', () => {}, true),
               phoneApp('💬', '微信', () => { setPhoneApp2('wechat'); setPhoneView('apphome'); }, !era.有微信),
@@ -6024,7 +6024,7 @@ function App({ gameId, close }) {
                 phoneApp('📞', '电话', () => {}, true),
                 phoneApp('✉️', '短信', () => setPhoneView('contacts'), !!(phoneContacts && phoneContacts.length) === false),
                 phoneApp('💬', '微信', () => { setPhoneApp2('wechat'); setPhoneView('apphome'); }, !era.有微信),
-                phoneApp('📷', '相机', () => {}, !era.有相机),
+                phoneApp('📸', '相机', () => {}, !era.有相机),
               )
             );
           }
