@@ -12434,6 +12434,7 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
                       onClick: () => setPhoneOpen(false),
                     }, '✕'),
                   ),
+                  h('div', { className: 'sim-ph-body' }, phoneBody()),
                 )
               : null,
             asOpen
