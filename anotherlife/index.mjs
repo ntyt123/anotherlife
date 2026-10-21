@@ -4515,6 +4515,25 @@ const SETTLE_TOOL = {
     additionalProperties: true,
   },
 };
+
+/**
+ * 解析存档用的工具。跟 SETTLE_TOOL 的区别是「没有必填项、没有固定字段」——
+ * 解析的目标是「这一个人 / 这一批人的完整档案」，字段由系统提示决定，
+ * 不该被结算那套 {world, protagonist, chars, summary} 的骨架牵着走。
+ *
+ * 踩过的坑：一开始直接复用 SETTLE_TOOL，结果模型照着它的 schema 只填了
+ * required 里的 summary 就交卷，pickToolCall 拿回 {"summary":"…"}，
+ * 前端等到的是一个没有姓名、没有角色数组的空壳。
+ */
+const PARSE_TOOL = {
+  name: 'emit_parsed_json',
+  description: '提交解析结果：一个完整的 JSON 对象，字段按系统提示的要求给全。',
+  parameters: {
+    type: 'object',
+    properties: {},
+    additionalProperties: true,
+  },
+};
 /** 从一次调用结果里取出工具参数；没有、或参数不是合法 JSON，返回 null */
 /**
  * 从工具调用里取参数对象。
@@ -8141,6 +8160,22 @@ reg('saveOracleAgent', async ({ gameId, on }) => {
       bits.push('【玩家对主角的原始描述】\n' + String(text || ''));
       userContent = bits.join('\n\n');
     }
+    /**
+     * 工具调用的结果是不是「真的解析结果」。
+     *
+     * 曾经踩过：解析复用结算的 SETTLE_TOOL，模型照它的 schema 只填 required 的
+     * summary 就交卷，返回 {"summary":"…"} —— 前端等到一个没有姓名、没有角色数组
+     * 的空壳。所以这里挡一道：只有 summary（或干脆空对象）一律当没取到，
+     * 继续走文本兜底。
+     */
+    function parseToolOk(obj) {
+      if (!obj || typeof obj !== "object" || Array.isArray(obj)) return false;
+      const ks = Object.keys(obj).filter(function (k) { return !k.startsWith("_"); });
+      if (!ks.length) return false;
+      if (ks.length === 1 && ks[0] === "summary") return false;
+      return true;
+    }
+
     const msgs = [{ role: 'system', content: sys }, { role: 'user', content: userContent }];
     /**
      * 优先用设定页里配置的「变量解析」那个模型（通常又便宜又快，专门干抽取 JSON 这件事），
@@ -8159,12 +8194,12 @@ reg('saveOracleAgent', async ({ gameId, on }) => {
         maxTokens: tokOf(s, 'parse'),
         timeoutMs: 180000,
         tag: '变量解析',
-        tools: [SETTLE_TOOL],
+        tools: [PARSE_TOOL],
         wantTools: true,
       });
       // 首选工具调用：参数本来就是 JSON，不用防围栏和半截输出
       const viaTool = pickToolCall(r);
-      if (viaTool) return viaTool;
+      if (viaTool && parseToolOk(viaTool)) return viaTool;
       const out = String(r && r.text != null ? r.text : r == null ? '' : r).trim();
       if (!out) throw new Error('「变量解析」模型没有返回内容');
       const parsedBySlot = parseJsonLoose(out);
@@ -8173,13 +8208,13 @@ reg('saveOracleAgent', async ({ gameId, on }) => {
     }
     let r = null;
     try {
-      r = await callMainModel(msgs, { temperature: 0.2, maxTokens: tokOf(s, 'parse'), stallMs: 120000, purpose: '变量解析', tools: [SETTLE_TOOL] });
+      r = await callMainModel(msgs, { temperature: 0.2, maxTokens: tokOf(s, 'parse'), stallMs: 120000, purpose: '变量解析', tools: [PARSE_TOOL] });
     } catch (e) {
       // 不支持 tools 就退回纯文本 —— 不能因为增强功能把结算搞挂
       r = await callMainModel(msgs, { temperature: 0.2, maxTokens: tokOf(s, 'parse'), stallMs: 120000, purpose: '变量解析' });
     }
     const viaTool2 = pickToolCall(r);
-    if (viaTool2) return viaTool2;
+    if (viaTool2 && parseToolOk(viaTool2)) return viaTool2;
     const out = r.text && r.text.trim() ? r.text : r.reasoning;
     if (!out || !String(out).trim()) throw new Error('主模型没有返回内容');
     const parsed = parseJsonLoose(out);
