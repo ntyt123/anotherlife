@@ -231,35 +231,19 @@ window.__ModuleLoader__.load({
       '.sim-ph-btn:hover{background:var(--sim-bg)}',
       // 手机外壳四档。共用的是布局与投影，只有边框、圆角、底色按年代分。
       '.sim-ph{position:fixed;z-index:9001;display:flex;flex-direction:column;background:var(--sim-bg2);border:1px solid var(--sim-bd);border-radius:20px;box-shadow:0 16px 44px rgba(0,0,0,.28);overflow:hidden;box-sizing:border-box}',
-      // 2008 前：厚边框、小圆角、深灰机身，像一块塑料壳包着一块小屏
-      // 2008 前：功能机 —— 厚塑料机身、小圆角、顶部听筒、底部品牌标
-      '.sim-ph[data-era="feature"]{border:12px solid #46464a;border-radius:12px;box-shadow:0 14px 38px rgba(0,0,0,.5),inset 0 0 0 1px rgba(255,255,255,.14),inset 0 -22px 34px rgba(0,0,0,.16)}',
-      // 听筒：边框顶部中间一段凹槽
-      '.sim-ph[data-era="feature"]::before{content:"";position:absolute;top:-10px;left:50%;transform:translateX(-50%);width:56px;height:8px;border-radius:4px;background:#2b2b2f;box-shadow:inset 0 1px 2px rgba(0,0,0,.75)}',
-      // 品牌标：边框底部中间一小段
-      '.sim-ph[data-era="feature"]::after{content:"";position:absolute;bottom:-9px;left:50%;transform:translateX(-50%);width:34px;height:5px;border-radius:3px;background:#5a5a5e;box-shadow:inset 0 1px 0 rgba(255,255,255,.25)}',
-      // 顶栏深灰梯度，像功能机那种单色屏
-      '.sim-ph[data-era="feature"] .sim-ph-hd{border-radius:0;background:linear-gradient(#6a6a6e,#46464a);color:#f2f2f2;border-bottom:2px solid #2b2b2f}',
-      '.sim-ph[data-era="feature"] .sim-ph-hd .t, .sim-ph[data-era="feature"] .sim-ph-hd .tm{color:#f2f2f2;letter-spacing:.3px}',
-      '.sim-ph[data-era="feature"] .sim-ph-hd-btn{color:#e8e8e8;border-color:rgba(255,255,255,.25)}',
-      '.sim-ph[data-era="feature"] .sim-ph-body{padding-bottom:8px}',
-      '.sim-ph[data-era="early"]{border:9px solid #101012;border-radius:26px;box-shadow:0 16px 44px rgba(0,0,0,.42),inset 0 0 0 1px #2a2a2e}',
-      '.sim-ph[data-era="early"] .sim-ph-hd{background:#f2f2f5;border-bottom:1px solid #d8d8de}',
-      // 2014~2019：扁平化，窄边框、圆角更大
-      '.sim-ph[data-era="flat"]{border:3px solid #d4d4d8;border-radius:30px}',
       // 2020 后：全面屏，极窄黑边、最大圆角
       // 2020 后：iPhone 15 Pro 风格 —— 钛金属描边 + 大圆角 + 灵动岛 + Home 指示条 + 侧键
-      '.sim-ph[data-era="modern"]{border:3px solid #1a1a1c;border-radius:46px;box-shadow:0 24px 64px rgba(0,0,0,.4),inset 0 0 0 1px rgba(255,255,255,.09)}',
+      '.sim-ph{border:3px solid #1a1a1c;border-radius:46px;box-shadow:0 24px 64px rgba(0,0,0,.4),inset 0 0 0 1px rgba(255,255,255,.09)}',
       // 侧键：左静音+音量、右电源。用伪元素做，不占 DOM
-      '.sim-ph[data-era="modern"]::before{content:"";position:absolute;left:-6px;top:104px;width:3px;height:58px;border-radius:2px;background:linear-gradient(#3a3a3c,#26262a);box-shadow:-1px 0 0 rgba(255,255,255,.06)}',
-      '.sim-ph[data-era="modern"]::after{content:"";position:absolute;right:-6px;top:120px;width:3px;height:76px;border-radius:2px;background:linear-gradient(#3a3a3c,#26262a);box-shadow:1px 0 0 rgba(255,255,255,.06)}',
+      '.sim-ph::before{content:"";position:absolute;left:-6px;top:104px;width:3px;height:58px;border-radius:2px;background:linear-gradient(#3a3a3c,#26262a);box-shadow:-1px 0 0 rgba(255,255,255,.06)}',
+      '.sim-ph::after{content:"";position:absolute;right:-6px;top:120px;width:3px;height:76px;border-radius:2px;background:linear-gradient(#3a3a3c,#26262a);box-shadow:1px 0 0 rgba(255,255,255,.06)}',
       // 灵动岛：顶部居中的黑胶囊
       '.sim-ph-island{position:absolute;top:9px;left:50%;transform:translateX(-50%);width:112px;height:31px;border-radius:17px;background:#000;z-index:30;pointer-events:none;box-shadow:inset 0 0 0 1px rgba(255,255,255,.07),0 1px 3px rgba(0,0,0,.5)}',
       '.sim-ph-island::after{content:"";position:absolute;right:9px;top:50%;transform:translateY(-50%);width:7px;height:7px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#2c3e50,#08080c 70%);box-shadow:0 0 0 1px rgba(80,120,160,.35)}',
       // Home 指示条：底部居中的横线
       '.sim-ph-homebar{position:absolute;bottom:7px;left:50%;transform:translateX(-50%);width:132px;height:5px;border-radius:3px;background:rgba(0,0,0,.34);z-index:30;pointer-events:none}',
-      '.sim-ph[data-era="modern"] .sim-ph-hd{padding-top:14px;background:transparent;border-bottom:1px solid var(--sim-bd)}',
-      '.sim-ph[data-era="modern"] .sim-ph-body{padding-bottom:16px}',
+      '.sim-ph .sim-ph-hd{padding-top:14px;background:transparent;border-bottom:1px solid var(--sim-bd)}',
+      '.sim-ph .sim-ph-body{padding-bottom:16px}',
       '.sim-ph-hd{flex:0 0 auto;display:flex;align-items:center;gap:8px;padding:9px 12px;background:var(--sim-bg);border-bottom:1px solid var(--sim-bd);cursor:move;user-select:none}',
       '.sim-ph-hd .t{flex:1 1 auto;font-weight:700;font-size:var(--sim-fs-3);letter-spacing:.4px}',
       '.sim-ph-hd .tm{font-size:var(--sim-fs-6);color:var(--sim-t2)}',
@@ -5317,7 +5301,9 @@ function App({ gameId, close }) {
             // 外壳按年代走四档，玩家不用选：
             //   feature 功能机（2008 前）／early 早期智能机（08~13）
             //   flat 扁平化（14~19）／modern 全面屏（20 后）
-            const 壳 = y < 2008 ? 'feature' : y < 2014 ? 'early' : y < 2020 ? 'flat' : 'modern';
+            // 外壳统一按 iPhone 15 Pro 做 —— 分年代做过四档，但早期机型用 CSS 画不像，
+            // 反而不如一套做干净。年代仍然管「有哪些 App」（有微信/QQ/相机），不再管外壳。
+            const 壳 = 'modern';
             return { 年: y, 壳, 有微信: y >= 2011, 有QQ: y >= 2005, 有微博: y >= 2009, 有相机: y >= 2003 };
           }
 
@@ -12474,8 +12460,9 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
               ? h(
                   'div',
                   { className: 'sim-ph', 'data-era': phoneEra().壳, style: phoneBoxStyle() },
-                  // iPhone 15 Pro 的灵动岛：只有 modern 档才画
-                  phoneEra().壳 === 'modern' ? h('div', { className: 'sim-ph-island' }) : null,
+                // 灵动岛
+                // 外壳统一按 iPhone 15 Pro，所以这个常显
+                  h('div', { className: 'sim-ph-island' }),
                   h(
                     'div',
                     {
@@ -12531,7 +12518,7 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
                         )
                       )
                     : null),
-                  phoneEra().壳 === 'modern' ? h('div', { className: 'sim-ph-homebar' }) : null,
+                  h('div', { className: 'sim-ph-homebar' }),
                 )
               : null,
             asOpen
