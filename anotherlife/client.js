@@ -226,6 +226,37 @@ window.__ModuleLoader__.load({
       // 内容长的（角色弹窗那种）用单列，两列会被长标签撑错位
       '.sim-know-list{display:flex;flex-direction:column;gap:9px}',
       '.sim-know .k{flex:0 0 auto;font-size:var(--sim-fs-4);color:var(--sim-t2);min-width:74px}',
+      // ── 手机浮窗 ──
+      '.sim-ph-btn{position:fixed;right:26px;bottom:26px;z-index:9000;width:52px;height:52px;border-radius:16px;border:1px solid var(--sim-bd);background:var(--sim-bg2);color:var(--sim-t);font-size:22px;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.18)}',
+      '.sim-ph-btn:hover{background:var(--sim-bg)}',
+      '.sim-ph{position:fixed;z-index:9001;display:flex;flex-direction:column;background:var(--sim-bg2);border:1px solid var(--sim-bd);border-radius:20px;box-shadow:0 16px 44px rgba(0,0,0,.22);overflow:hidden}',
+      '.sim-ph-hd{flex:0 0 auto;display:flex;align-items:center;gap:8px;padding:9px 12px;background:var(--sim-bg);border-bottom:1px solid var(--sim-bd);cursor:move;user-select:none}',
+      '.sim-ph-hd .t{flex:1 1 auto;font-weight:700;font-size:var(--sim-fs-3);letter-spacing:.4px}',
+      '.sim-ph-hd .tm{font-size:var(--sim-fs-6);color:var(--sim-t2)}',
+      '.sim-ph-hd-btn{flex:0 0 auto;width:24px;height:24px;border-radius:8px;border:1px solid var(--sim-bd);background:transparent;color:var(--sim-t2);cursor:pointer;font-size:12px;line-height:1}',
+      '.sim-ph-body{flex:1 1 auto;overflow:hidden auto;background:var(--sim-bg2)}',
+      '.sim-ph-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;padding:22px 16px}',
+      '.sim-ph-app{display:flex;flex-direction:column;align-items:center;gap:7px;cursor:pointer}',
+      '.sim-ph-app .ic{width:52px;height:52px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:22px;background:var(--sim-bg);border:1px solid var(--sim-bd)}',
+      '.sim-ph-app .lbl{font-size:var(--sim-fs-6);color:var(--sim-t2)}',
+      '.sim-ph-app.off{opacity:.35;cursor:default}',
+      '.sim-ph-row{display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:1px solid var(--sim-bd);cursor:pointer}',
+      '.sim-ph-row:hover{background:var(--sim-bg)}',
+      '.sim-ph-av{flex:0 0 auto;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--sim-bg);border:1px solid var(--sim-bd);font-size:var(--sim-fs-5)}',
+      '.sim-ph-rc{flex:1 1 auto;min-width:0}',
+      '.sim-ph-rc .n{font-size:var(--sim-fs-5);color:var(--sim-t)}',
+      '.sim-ph-rc .p{font-size:var(--sim-fs-6);color:var(--sim-t2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+      '.sim-ph-chat{display:flex;flex-direction:column;gap:8px;padding:12px}',
+      '.sim-ph-msg{max-width:78%;padding:7px 11px;border-radius:12px;font-size:var(--sim-fs-5);line-height:1.55;word-break:break-word;position:relative}',
+      '.sim-ph-msg.out{align-self:flex-end;background:var(--sim-say, #3d6bb3);color:#fff}',
+      '.sim-ph-msg.in{align-self:flex-start;background:var(--sim-bg);border:1px solid var(--sim-bd);color:var(--sim-t)}',
+      '.sim-ph-msg .ts{display:block;margin-top:3px;font-size:var(--sim-fs-6);opacity:.6}',
+      '.sim-ph-msg .ops{position:absolute;top:-8px;right:-6px;display:none;gap:3px}',
+      '.sim-ph-msg:hover .ops{display:flex}',
+      '.sim-ph-msg .ops button{border:1px solid var(--sim-bd);background:var(--sim-bg2);color:var(--sim-t2);border-radius:6px;font-size:10px;padding:1px 5px;cursor:pointer}',
+      '.sim-ph-in{flex:0 0 auto;display:flex;gap:7px;padding:9px 11px;background:var(--sim-bg);border-top:1px solid var(--sim-bd)}',
+      '.sim-ph-in textarea{flex:1 1 auto;min-height:34px;max-height:96px;resize:none;border-radius:9px;border:1px solid var(--sim-bd);background:var(--sim-bg2);color:var(--sim-t);padding:7px 9px;font-size:var(--sim-fs-5);font-family:inherit}',
+      '.sim-ph-empty{padding:28px 16px;text-align:center;color:var(--sim-t2);font-size:var(--sim-fs-5)}',
       '.sim-know.unk .v{font-size:var(--sim-fs-5);color:var(--sim-t2);opacity:.55}',
       '.sim-body-list{display:flex;flex-direction:column;gap:2px;margin-top:8px}',
       '.sim-body-list .sim-know .v{font-size:var(--sim-fs-5);color:var(--sim-t);word-break:break-word}',
@@ -3683,6 +3714,31 @@ function App({ gameId, close }) {
             return null;
           });
           const asResizeRef = React.useRef(null);
+
+        // ── 手机浮窗 ──
+        // 跟神谕同一套做法：按住标题栏拖、位置存 localStorage、夹在视口内。
+        // 位置 key 用 sim-phone-pos，别跟神谕的 sim-as-pos 撞。
+        const [phoneOpen, setPhoneOpen] = React.useState(false);
+        const [phonePos, setPhonePos] = React.useState(() => {
+          try {
+            const v = JSON.parse(window.localStorage.getItem('sim-phone-pos') || 'null');
+            if (v && Number.isFinite(v.x) && Number.isFinite(v.y)) return v;
+          } catch (e) { /* 读不到就用默认 */ }
+          // 默认右下角，避开神谕的默认位置
+          const w = Math.min(340, window.innerWidth * 0.34);
+          const h = Math.min(620, window.innerHeight * 0.8);
+          return { x: Math.max(12, window.innerWidth - w - 24), y: Math.max(12, window.innerHeight - h - 90) };
+        });
+        const phoneDragRef = React.useRef(null);
+        // 手机内部当前在哪一屏：home（九宫格）/ contacts / thread
+        const [phoneView, setPhoneView] = React.useState('home');
+        const [phoneContacts, setPhoneContacts] = React.useState(null);
+        const [phoneThreadId, setPhoneThreadId] = React.useState('');
+        const [phoneMsgs, setPhoneMsgs] = React.useState([]);
+        const [phoneIn, setPhoneIn] = React.useState('');
+        const [phoneBusy, setPhoneBusy] = React.useState(false);
+        const [phoneCanUndo, setPhoneCanUndo] = React.useState(false);
+        const [phoneWho, setPhoneWho] = React.useState('');
           // 缩放手柄的尺寸与最小可用尺寸
           const AS_MIN_W = 300;
           const AS_MIN_H = 260;
@@ -5090,6 +5146,199 @@ function App({ gameId, close }) {
             } catch (e) {
               /* 存不了就算了，这一轮照样能拖 */
             }
+
+          /** 手机浮窗拖拽：跟神谕一样，只是位置存另一个 key */
+          function phoneDragStart(e) {
+            if (e.target.closest && e.target.closest('.sim-ph-hd-btn')) return;
+            const panel = e.currentTarget.parentElement;
+            if (!panel) return;
+            const box = panel.getBoundingClientRect();
+            phoneDragRef.current = { dx: e.clientX - box.left, dy: e.clientY - box.top, w: box.width, h: box.height, last: null };
+            try { e.currentTarget.setPointerCapture(e.pointerId); } catch (e2) { /* 不支持就算了 */ }
+            e.preventDefault();
+          }
+          function phoneDragMove(e) {
+            const d = phoneDragRef.current;
+            if (!d) return;
+            const m = 4;
+            const x = Math.max(m, Math.min(window.innerWidth - d.w - m, e.clientX - d.dx));
+            const y = Math.max(m, Math.min(window.innerHeight - d.h - m, e.clientY - d.dy));
+            d.last = { x: Math.round(x), y: Math.round(y) };
+            setPhonePos(d.last);
+          }
+          function phoneDragEnd() {
+            const d = phoneDragRef.current;
+            phoneDragRef.current = null;
+            if (!d || !d.last) return;
+            try { window.localStorage.setItem('sim-phone-pos', JSON.stringify(d.last)); } catch (e) { /* 存不了不影响这一轮 */ }
+          }
+
+          /** 手机浮窗的位置尺寸：跟 asBoxStyle 一个路子，只是更窄 */
+          function phoneBoxStyle() {
+            const m = 4;
+            const w = Math.round(Math.min(window.innerWidth - m * 2, Math.max(300, window.innerWidth * 0.34)));
+            const h = Math.round(Math.min(window.innerHeight - m * 2, Math.max(440, window.innerHeight * 0.8)));
+            const ok = phonePos && Number.isFinite(phonePos.x) && Number.isFinite(phonePos.y);
+            const x = ok ? Math.max(m, Math.min(window.innerWidth - w - m, phonePos.x)) : Math.max(m, window.innerWidth - w - 24);
+            const y = ok ? Math.max(m, Math.min(window.innerHeight - h - m, phonePos.y)) : Math.max(m, window.innerHeight - h - 90);
+            return { position: 'fixed', left: x + 'px', top: y + 'px', width: w + 'px', height: h + 'px' };
+          }
+
+          /** 标题栏上写什么 */
+          function phoneHeadTitle() {
+            if (phoneView === 'contacts') return '联系人';
+            if (phoneView === 'thread') return phoneWho || '短信';
+            return '手机';
+          }
+
+          /** 手机上显示的游戏内时间（取 world，不推进） */
+          function phoneTimeText() {
+            const w = (state && state.world) || {};
+            const t = String(w['当前日期时间'] || '').trim();
+            if (!t) return '';
+            // 「2005年3月19日 星期六 15:02:00 晴」→「3月19日 15:02」
+            const m = t.match(/(\d{1,2}月\d{1,2}日)/);
+            const h = t.match(/(\d{1,2}:\d{2})/);
+            return [(m ? m[1] : ''), (h ? h[1] : '')].filter(Boolean).join(' ');
+          }
+
+          /** 有没有微信 / 微博（按年代判定，2005 年一概没有） */
+          function phoneEra() {
+            const w = (state && state.world) || {};
+            const t = String(w['当前日期时间'] || '');
+            const y = Number((t.match(/(\d{4})/) || [])[1] || 0);
+            return { 年: y, 有微信: y >= 2011, 有微博: y >= 2009, 有相机: y >= 2003 };
+          }
+
+          /** 九个格子里的一个 */
+          function phoneApp(ic, lbl, onTap, off) {
+            return h('div', {
+              className: 'sim-ph-app' + (off ? ' off' : ''),
+              key: lbl,
+              onClick: off ? undefined : onTap,
+            },
+              h('div', { className: 'ic' }, ic),
+              h('span', { className: 'lbl' }, lbl)
+            );
+          }
+
+          /** 打开某个联系人的短信线程 */
+          function phoneOpenThread(name) {
+            const nm = String(name || '').trim();
+            const tid = 'sms:' + nm;
+            setPhoneWho(nm);
+            setPhoneThreadId(tid);
+            setPhoneView('thread');
+            setPhoneMsgs([]);
+            setPhoneIn('');
+            run(call('phoneThread', { threadId: tid }, gameId)).then((r) => {
+              if (!r || !r.ok) return;
+              setPhoneMsgs(r.messages || []);
+              setPhoneCanUndo(!!r.canUndo);
+            });
+          }
+
+          /** 发一条 */
+          function phoneSendNow() {
+            const t = String(phoneIn || '').trim();
+            if (!t || phoneBusy || !phoneThreadId) return;
+            setPhoneBusy(true);
+            run(call('phoneSend', { threadId: phoneThreadId, text: t }, gameId))
+              .then((r) => {
+                if (r && r.ok) {
+                  setPhoneMsgs(r.messages || []);
+                  setPhoneIn('');
+                }
+              })
+              .finally(() => setPhoneBusy(false));
+          }
+
+          /** 手机里显示什么 */
+          function phoneBody() {
+            if (phoneView === 'contacts') {
+              const cs = phoneContacts || [];
+              if (!cs.length) {
+                return h('div', { className: 'sim-ph-empty' }, '还没有人给过你号码。');
+              }
+              return h('div', null, cs.map((c) =>
+                h('div', {
+                  className: 'sim-ph-row',
+                  key: c.姓名,
+                  onClick: () => phoneOpenThread(c.姓名),
+                },
+                  h('div', { className: 'sim-ph-av' }, String(c.姓名 || '?').slice(0, 1)),
+                  h('div', { className: 'sim-ph-rc' },
+                    h('div', { className: 'n' }, c.姓名),
+                    h('div', { className: 'p' }, c.最近 || c.电话 || c.微信 || '')
+                  )
+                )
+              ));
+            }
+
+            if (phoneView === 'thread') {
+              const list = (phoneMsgs || []).map((m) =>
+                h('div', {
+                  className: 'sim-ph-msg ' + (m.方向 === 'out' ? 'out' : 'in'),
+                  key: m.id,
+                },
+                  String(m.内容 || ''),
+                  h('span', { className: 'ts' }, String(m.时间 || '').slice(-5)),
+                  m.方向 === 'in'
+                    ? h('span', { className: 'ops' },
+                        h('button', {
+                          onClick: () => run(call('phoneRegen', { threadId: phoneThreadId, msgId: m.id }, gameId))
+                            .then((r) => { if (r && r.ok) setPhoneMsgs(r.messages || []); }),
+                        }, '重生成'),
+                        h('button', {
+                          onClick: () => run(call('phoneDelete', { threadId: phoneThreadId, msgId: m.id }, gameId))
+                            .then((r) => { if (r && r.ok) setPhoneMsgs(r.messages || []); }),
+                        }, '删'),
+                      )
+                    : null,
+                )
+              );
+              const empty = !list.length
+                ? h('div', { className: 'sim-ph-empty' }, '还没聊过。')
+                : null;
+              return h('div', null,
+                h('div', { className: 'sim-ph-chat' }, empty, list,
+                  phoneBusy ? h('div', { className: 'sim-ph-empty' }, '对方正在输入…') : null
+                ),
+                h('div', { className: 'sim-ph-in' },
+                  h('textarea', {
+                    value: phoneIn,
+                    placeholder: '发条短信…',
+                    onChange: (e) => setPhoneIn(e.target.value.slice(0, 200)),
+                    onKeyDown: (e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); phoneSendNow(); }
+                    },
+                  }),
+                  h('button', {
+                    className: 'sim-btn' + (phoneBusy ? '' : ' primary'),
+                    disabled: phoneBusy,
+                    onClick: phoneSendNow,
+                  }, phoneBusy ? '…' : '发'),
+                )
+              );
+            }
+
+            // home：九宫格
+            const era = phoneEra();
+            return h('div', { className: 'sim-ph-grid' },
+              phoneApp('✉️', '短信', () => setPhoneView('contacts'), !!(phoneContacts && phoneContacts.length) === false),
+              phoneApp('👥', '联系人', () => {
+                setPhoneView('contacts');
+                if (!phoneContacts) {
+                  run(call('phoneGet', {}, gameId)).then((r) => { if (r && r.ok) setPhoneContacts(r.contacts || []); });
+                }
+              }),
+              phoneApp('📷', '相机', () => {}, !era.有相机),
+              phoneApp('🖼️', '相册', () => {}, true),
+              phoneApp('📞', '电话', () => {}, true),
+              phoneApp('💬', '微信', () => {}, !era.有微信),
+              phoneApp('🅦', '微博', () => {}, !era.有微博),
+            );
+          }
           }
           /** 浮窗实际用的定位样式：拖过就用 left/top，没拖过保持默认的右下角 */
           /** 浮窗实际用的定位与尺寸：拖过/调过就用存的，否则保持默认的右下角 */
@@ -10853,6 +11102,7 @@ function toggleFans(npc) {
                 ModelCfg({ slot: 'settle', title: '结算', sub: '每轮的变量变化与小总结。留空则跳过结算。', row: true }),
                 ModelCfg({ slot: 'summary', title: '总结', sub: '每 N 轮把正文压成前情总结。留空则关掉总结。', row: true }),
                 ModelCfg({ slot: 'assistant', title: '神谕', sub: '神谕浮窗用的模型。', row: true }),
+                ModelCfg({ slot: 'phone', title: '手机', sub: '短信、微信、微博的文字生成。留空则用主模型。', row: true }),
                 // 输出 token 上限：每个用途给模型多少输出预算（思考也算在里面）
                 h(
                   'div',
@@ -10868,6 +11118,7 @@ function toggleFans(npc) {
                     ['parse', '创角解析', '从描述里拆字段与名册', 8000],
                     ['realInfo', '真人资料', '补全真实人物的公开信息', 4000],
                     ['oracle', '神谕', '助手浮窗追问', 2000],
+                    ['phone', '手机', '短信/微信回复', 2000],
                     ['misc', '其他', '零散调用', 1200],
                   ].map(([key, label, hint, def]) =>
                     h(
@@ -11577,6 +11828,50 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
              * 挂在这里（.sim-root 的子树里）是为了能取到皮肤变量；用 position:fixed 定位，
              * 这样不会被外层的滚动/裁剪容器切掉（挂 body 试过，皮肤变量会丢）。
              */
+            // ── 手机：悬浮按钮 + 浮窗 ──
+            // 手机是正文之外的平行世界：消息有自己的版本线，正文一概不知道。
+            h('div', {
+              className: 'sim-ph-btn',
+              title: phoneOpen ? '收起手机' : '手机',
+              onClick: () => {
+                const next = !phoneOpen;
+                setPhoneOpen(next);
+                if (next && !phoneContacts) {
+                  run(call('phoneGet', {}, gameId)).then((r) => { if (r && r.ok) setPhoneContacts(r.contacts || []); });
+                }
+              },
+            }, '📱'),
+            phoneOpen
+              ? h(
+                  'div',
+                  { className: 'sim-ph', style: phoneBoxStyle() },
+                  h(
+                    'div',
+                    {
+                      className: 'sim-ph-hd',
+                      onPointerDown: phoneDragStart,
+                      onPointerMove: phoneDragMove,
+                      onPointerUp: phoneDragEnd,
+                      onPointerCancel: phoneDragEnd,
+                    },
+                    phoneView !== 'home'
+                      ? h('button', {
+                          className: 'sim-ph-hd-btn',
+                          title: '返回',
+                          onClick: () => { setPhoneView('home'); setPhoneThreadId(''); setPhoneMsgs([]); setPhoneIn(''); },
+                        }, '‹')
+                      : null,
+                    h('span', { className: 't' }, phoneHeadTitle()),
+                    h('span', { className: 'tm' }, phoneTimeText()),
+                    h('button', {
+                      className: 'sim-ph-hd-btn',
+                      title: '关掉',
+                      onClick: () => setPhoneOpen(false),
+                    }, '✕'),
+                  ),
+                  h('div', { className: 'sim-ph-body' }, phoneBody()),
+                )
+              : null,
             asOpen
               ? h(
                   'div',

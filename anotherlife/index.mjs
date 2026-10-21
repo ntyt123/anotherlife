@@ -19,7 +19,9 @@ import { existsSync, cpSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 
 const P = 'dsh-tavern-simulator/';
-const KEY_SLOTS = ['retrieve', 'settle', 'summary', 'assistant'];
+  // phone：手机里的短信／微信／微博文字生成。单独一档 —— 它便宜、量大，
+  // 不该跟结算抢同一个模型。留空则退回主模型。
+  const KEY_SLOTS = ['retrieve', 'settle', 'summary', 'assistant', 'phone'];
 
 /** 每次改动宿主侧都改一下这个版本号：ping 会回报它，用来确认 Tavern 到底加载的是哪一版 */
 const REV = 'host-v70-notes-20261018r';
@@ -281,6 +283,20 @@ const WEAR_KEYS = ['头部', '上衣', '内衣', '内裤', '下衣', '袜子', '
     BIO_KW_MAP[p[0]] = p[1];
   });
 
+  /**
+   * 手机：一个跟正文完全平行的世界。
+   *
+   * 时间取 world.当前日期时间，但不推进 —— 相当于「正文之外的一小段插曲」。
+   * 消息自带版本线（线程历史栈）：回退／删除／重新生成只影响手机，正文一概不知道。
+   */
+  function emptyPhone() {
+    return {
+      线程: {},      // 线程ID → [{ id, 轮次, 时间, 方向, 内容, 状态 }]
+      线程历史: {},  // 线程ID → [ 上一版数组快照, … ]，最多留 8 步
+      草稿: {},      // 线程ID → 没发出去的半句话
+    };
+  }
+
   function defaultState() {
     return {
       version: 1,
@@ -313,6 +329,7 @@ const WEAR_KEYS = ['头部', '上衣', '内衣', '内裤', '下衣', '袜子', '
       虚拟资产: [],
       story: { current_message_index: 0, summarised_through: -1 },
       transcript: [],
+      手机: emptyPhone(),
       summaries: [],
       starting: null,
     };
@@ -901,6 +918,14 @@ async function activeWritingSkill() {
     s.虚拟资产 = Array.isArray(src.虚拟资产) ? src.虚拟资产 : [];
     s.relationships = Array.isArray(src.relationships) ? src.relationships : [];
     s.npcs = Array.isArray(src.npcs) ? src.npcs : [];
+
+    // 手机：老存档没有这个字段。子对象分别补 —— 只补一层的话，
+    // 存档里可能只留了「线程」而没有「线程历史」，回退功能会静默失效。
+    s.手机 = s.手机 && typeof s.手机 === 'object' && !Array.isArray(s.手机) ? s.手机 : emptyPhone();
+    ['线程', '线程历史', '草稿'].forEach((k) => {
+      const v = s.手机[k];
+      if (!v || typeof v !== 'object' || Array.isArray(v)) s.手机[k] = {};
+    });
     s.transcript = Array.isArray(src.transcript) ? src.transcript : [];
     s.summaries = Array.isArray(src.summaries) ? src.summaries : [];
     s.starting = src.starting && typeof src.starting === 'object' ? src.starting : null;
@@ -5686,6 +5711,10 @@ let aiPickFail = '';
       '   **在场的女性角色顺一下生理周期**（不在场的不必管）：按世界观当前日期推算，日期走过几天就该往前走（别长期停在「周期第 8 天」不动）；「月经状态」进经期才写、出来就清空。',
       '③ 待更新清单：这一轮要改的每个变量（时间／主角金钱·穿着·健康·当前状态·是否处女／性癖·敏感点·经验·身体状态／配偶·子女·私人关系（结识新人或关系变化时才写）／女性角色的生理周期·月经状态·妊娠状态／开了「星途模拟」时的 艺人咖位·定位·资源级别·作品履历·团队·行程·**舆论**（粉丝/路人/业内/媒体 四层，开了「追踪粉丝」的角色每轮都要过一遍；咖位最慢，多数轮次不动）／收支·债务·凭证·事业·住所·交通（只在真有变化时写：发薪交租、借还、得失资格、搬家换车）／虚拟资产与实体资产（路径必须用中文原名，不许写 virtual_assets）／各个 NPC 档案（**新建条目时必须给齐这几项，漏了界面上就是空的**：外貌、表性格、里性格、女性角色的三围·罩杯）／关系（好感度·信任度·欲望一律 0~100 的数字）／技能物品…）；',
       '   **隐患与私人关系不在待更新清单里** —— 它们只在玩家自己引导时才动，平时一个字都不改。',
+      '   **「联系方式」只在真的交换过时写**（`联系方式` 是个对象：{电话, 微信, QQ}，各一个字符串）：',
+      '     正文里出现了「加了微信」「留个电话」「QQ 多少」这类，才把它写进对应角色的 `联系方式`。',
+      '     没交换过就一条都不写 —— 手机通讯录只显示有号码的人，凭空写等于剧透。',
+      '     年代不对的字段不要写：2011 年之前没有微信，2009 年之前没有微博。',
       '   **【只从第 1 轮起生效】私密物品与自察不是每轮都要写** —— 写它们要有由头：',
       '     私密物品：正文里出现了她翻抽屉／收拾包／东西被看见／她自己拿出来用，才增删改；平时一条都不动。',
       '     自察：正文里出现了她私下确认自己的身体（洗澡时摸到、换衣服时注意到、早上起来觉得不对），才加一条；平时不加。',
@@ -5881,7 +5910,7 @@ let aiPickFail = '';
       '- **归属钉死，别写重**：技能与状态值一律写到 skills_items 下，**不要写进主角对象**；随身物品一律写 protagonist.物品（{名字,品质,获取时间,简介,属性提升}），**不要再写「背包」**；实体资产＝房/车/设备/地皮等身外之物，虚拟资产＝股权/版权/项目/合约/账号/商誉等无形权利。',
       '- 【当前日期时间】要随剧情推进，始终保持 `2018年8月21日 星期六 12:00:03 晴 端午节` 这一行格式：年月日 → 星期 → 时分秒 → 天气（1~2 字）→ 特殊日期（没有就省略）。时间没变化也要按实际写出当前时刻，不要留模糊描述。',
       '- 主角的「标签」「表性格」「里性格」「当前想法」由玩家自己维护，不要写；**NPC 的这几个字段都要写**（NPC 没有玩家编辑面板，全靠你维护）。',
-      '- 新角色的字段尽量给齐（之后每轮只补有变化的部分）：姓名／性别／**生日**／年龄（有生日就不用写）／**出生地**／种族／身份／外貌／身高／体重（女性还要三围、罩杯）／**健康状况**／**疾病与伤病**／**表性格**／**里性格**／**标签**／**特点**／当前想法／当前状态／**私密物品**（数组，可空：{名称, 藏处, 来历}，如「用完一半的润唇膏／笔袋夹层／去年生日同学送的」；**只写她藏起来、不想让人看见的东西**，不超过 3 件）／**自察**（数组，可空：{时刻, 部位, 感觉}，如「昨晚睡前／小腹／摸到一小块硬的」；**只写她自己私下留意到的身体变化**，不超过 2 条）／**与主角关系**（她是谁：父亲／母亲／妹妹／室友…，不是「父子」这种关系性质）。**和主角真的没关系就留空** —— 只是同学的父母、只见过一面的路人，这个字段留空就行；「是谁的谁」这种说明写进「特点」，**不要写「无（沈清越的父亲）」**，那会让他在关系图上长出一条假线／好感度／信任度／穿着。标签与特点用短词（三五个字，数组或顿号分隔都行，如 ["勤快","嘴碎"]）。**「出生地」写籍贯或老家**（如「北京东城」「江南苏州」），不是现在住的地方；按他的年龄、身份、口音合理给一个，别留空。',
+      '- 新角色的字段尽量给齐（之后每轮只补有变化的部分）：姓名／性别／**生日**／年龄（有生日就不用写）／**出生地**／种族／身份／外貌／身高／体重（女性还要三围、罩杯）／**健康状况**／**疾病与伤病**／**表性格**／**里性格**／**标签**／**特点**／当前想法／当前状态／**联系方式**（对象，可空：{电话, 微信, QQ}，**只在剧情里真的交换过时才写**；没交换过就留空，手机通讯录只显示有号码的人）／**私密物品**（数组，可空：{名称, 藏处, 来历}，如「用完一半的润唇膏／笔袋夹层／去年生日同学送的」；**只写她藏起来、不想让人看见的东西**，不超过 3 件）／**自察**（数组，可空：{时刻, 部位, 感觉}，如「昨晚睡前／小腹／摸到一小块硬的」；**只写她自己私下留意到的身体变化**，不超过 2 条）／**与主角关系**（她是谁：父亲／母亲／妹妹／室友…，不是「父子」这种关系性质）。**和主角真的没关系就留空** —— 只是同学的父母、只见过一面的路人，这个字段留空就行；「是谁的谁」这种说明写进「特点」，**不要写「无（沈清越的父亲）」**，那会让他在关系图上长出一条假线／好感度／信任度／穿着。标签与特点用短词（三五个字，数组或顿号分隔都行，如 ["勤快","嘴碎"]）。**「出生地」写籍贯或老家**（如「北京东城」「江南苏州」），不是现在住的地方；按他的年龄、身份、口音合理给一个，别留空。',
       '- **表性格／里性格／性格写成一句话**（顿号连起来也算一句，如「娇憨灵动、软糯甜美、依恋顺从」），**不要写成数组** —— 只有「标签」「特点」「疾病与伤病」这类才是短词数组。',
       '- **疾病与伤病是数组**（主角和角色都要写）：按角色的年龄／职业／生活方式给常见的那些小毛病，每条只写「程度 + 病名」，6~10 字（如 ["轻度腰肌劳损","中度脂肪肝"]）；不要写成因、来历、症状（不要写「因常年伏案签署文件偶有轻微颈椎劳损」）。年轻健康的角色留空数组，不要写「无」「健康」。已有角色身体出问题时也按同样格式补进去。',
       '- 身高／体重／三围／罩杯／外貌是既定身体特征，一般不变，只在剧情明确改变时（长高、增重、受伤留疤）才更新。',
@@ -8294,6 +8323,305 @@ reg('stopGenerate', async ({ gameId }) => {
     }
     await saveState(s);
     return withKeyStatus(s);
+  });
+
+  // ────────────────────────────── 手机 ──────────────────────────────
+  //
+  // 一个跟正文完全平行的世界：时间取 world.当前日期时间但不推进，
+  // 消息有自己的版本线（线程历史栈），回退/删除/重新生成只影响手机。
+  // 正文一律不知道手机的存在；唯一出去的是「事实」里的好感/信任变化。
+
+  /** 单条消息的上限：正常聊天不会超过 100 字，超了就是模型在写小说 */
+  const PHONE_CLIP = 100;
+
+  function phoneClip(s) {
+    const t = String(s == null ? '' : s).trim();
+    return t.length <= PHONE_CLIP ? t : t.slice(0, PHONE_CLIP - 1) + '…';
+  }
+
+  /** 时间：取当前游戏时间，不推进 —— 手机里的聊天是正文之外的一小段插曲 */
+  function phoneNow(s) {
+    return String((s.world && s.world['当前日期时间']) || '').trim();
+  }
+
+  /** 线程 ID → { 类型, 对象 }。sms:沈清越 / wechat:沈清越 / wechat:群:204宿舍 */
+  function parseThreadId(tid) {
+    const t = String(tid || '');
+    const i = t.indexOf(':');
+    if (i < 0) return { 类型: 'sms', 对象: t };
+    return { 类型: t.slice(0, i), 对象: t.slice(i + 1) };
+  }
+
+  /** 姓氏拼音用的 key —— 用 localeCompare 排，这里只做兜底 */
+  function npcByPhone(s, name) {
+    const nm = String(name || '').trim();
+    return (Array.isArray(s.npcs) ? s.npcs : []).find((n) => String(n.姓名 || n.名字 || '').trim() === nm) || null;
+  }
+
+  /** 这个角色有没有联系方式（有 = 出现在通讯录里） */
+  function phoneOf(npc) {
+    const c = (npc && npc.联系方式) || {};
+    return {
+      电话: String(c.电话 || '').trim(),
+      微信: String(c.微信 || '').trim(),
+      QQ: String(c.QQ || '').trim(),
+    };
+  }
+
+  /**
+   * 三段式记忆：关系备注 + 当下心境 + 正文实测片段。
+   *
+   * 第三段是唯一花钱的地方，也是最不能省的 —— 只给前两段，模型会自己编细节，
+   * 玩家一对正文就露馅。片段必须是原文，不能是摘要。
+   */
+  function phoneMemory(s, npc, 名字) {
+    const rel = (Array.isArray(s.relationships) ? s.relationships : [])
+      .find((r) => String(r.对象 || '').trim() === 名字) || null;
+    const out = [];
+    if (rel) {
+      if (rel.关系) out.push('【关系】' + String(rel.关系));
+      if (rel.备注) out.push('【具体经历】' + String(rel.备注));
+      if (rel.当前状况) out.push('【当前状况】' + String(rel.当前状况));
+    }
+    if (npc) {
+      if (npc.当前状态) out.push('【她此刻的状态】' + String(npc.当前状态));
+      if (npc.当前想法) out.push('【她心里在想】' + String(npc.当前想法));
+    }
+    // 正文里跟她有关的最近两三处原文
+    const list = Array.isArray(s.transcript) ? s.transcript : [];
+    const hits = [];
+    for (let k = list.length - 1; k >= 0 && hits.length < 3; k--) {
+      const t = list[k];
+      if (!t || t.role !== 'assistant') continue;
+      const body = String(t.body || '');
+      const pos = body.indexOf(名字);
+      if (pos < 0) continue;
+      const seg = body.slice(Math.max(0, pos - 180), Math.min(body.length, pos + 220)).replace(/\s+/g, ' ');
+      hits.unshift('（第 ' + t.seq + ' 轮）' + seg);
+    }
+    if (hits.length) out.push('【正文里的原文片段·别编，只许引用这些】\n' + hits.join('\n'));
+    return out.join('\n');
+  }
+
+  /** 手机的提示词：只做一件事 —— 按她的性格回一条短信，并判断有没有产生事实 */
+  function phonePrompt(s, npc, 名字, 类型, 玩家说的话) {
+    const 表 = String((npc && npc.表性格) || '');
+    const 里 = String((npc && npc.里性格) || '');
+    const 年 = (String((s.world && s.world['当前日期时间']) || '').match(/(\d{4})/) || [])[1] || '';
+    const 是短信 = 类型 === 'sms';
+    return [
+      '你在扮演一个小说里的角色，正在用' + (是短信 ? '手机短信' : '微信') + '跟主角聊天。',
+      '',
+      '【角色】' + 名字 + '，' + String((npc && npc.年龄) || '') + ' 岁，' + String((npc && npc.身份) || ''),
+      '【性格】表：' + (表 || '—'),
+      '        里：' + (里 || '—'),
+      phoneMemory(s, npc, 名字),
+      '',
+      '【年代】' + 年 + ' 年。' + (是短信 ? '短信短、一条一句，常用「嗯」「哦」「知道了」；不用 emoji（用 :) 或 ^_^）；不用网络流行语。' : '微信可以发短句、可以连发几条。'),
+      '',
+      '【主角刚发来】' + 玩家说的话,
+      '',
+      '按她的性格回。要求：',
+      '· 每条不超过 ' + PHONE_CLIP + ' 字，正常就一两句，不要写成一段话。',
+      '· 可以用「事情我知道但不想说」的方式回避——不要把所有话都说透。',
+      '· 不要复述剧情，不要旁白，只写她会打出来的字。',
+      '',
+      '同时判断这次对话有没有产生「事实」——只挑真的发生的：',
+      '· 约定（约好时间地点）/ 态度（好感或戒心变了）/ 交换信息（给了号码、说了某件事）',
+      '没有就给空数组，不要硬凑。',
+      '',
+      '只输出 JSON：',
+      '{"reply":["第一条","第二条"],"事实":[{"类型":"约定","内容":"明天下午三点琴房"}]}',
+    ].filter(Boolean).join('\n');
+  }
+
+  /** 把「事实」落到状态上：只动数值和已有字段，不写任何文本进正文 */
+  function applyPhoneFacts(s, npc, 名字, facts) {
+    const out = [];
+    if (!Array.isArray(facts)) return out;
+    facts.slice(0, 3).forEach((f) => {
+      const 类型 = String((f && f.类型) || '').trim();
+      const 内容 = String((f && f.内容) || '').trim();
+      if (!内容) return;
+      if (类型 === '态度' && npc) {
+        // 只动数值，不改描述 —— 描述是正文的领域
+        const before = Number(npc.好感度);
+        if (Number.isFinite(before)) {
+          const next = Math.max(0, Math.min(100, before + 2));
+          if (next !== before) { out.push(engineDiff(['npcs', (s.npcs || []).indexOf(npc), '好感度'], before, next, 'phone')); npc.好感度 = next; }
+        }
+      }
+      if (类型 === '约定' && npc) {
+        const prev = String(npc.约定 || '');
+        const next = (prev ? prev + '；' : '') + 内容;
+        out.push(engineDiff(['npcs', (s.npcs || []).indexOf(npc), '约定'], prev, next, 'phone'));
+        npc.约定 = next;
+      }
+    });
+    return out;
+  }
+
+  // ── 手机的接口 ──
+
+  /**
+   * 发一条并让模型回。抽成独立函数的原因：reg() 只把函数挂到 ctx.tavern.handle，
+   * 不保留引用 —— 别的 handle 调不到它，而「重新生成」要用同一套逻辑。
+   * 传进来的是已 loadState 的 s，改完由调用方 saveState。
+   */
+  async function doPhoneSend(s, tid, 玩家说的话) {
+    const { 类型, 对象: 名字 } = parseThreadId(tid);
+    const npc = npcByPhone(s, 名字);
+    if (!npc) throw new Error('没有这个角色：' + 名字);
+
+    // 发之前先存一版（回退用），最多留 8 步
+    const cur = Array.isArray(s.手机.线程[tid]) ? s.手机.线程[tid] : [];
+    const hist = Array.isArray(s.手机.线程历史[tid]) ? s.手机.线程历史[tid] : [];
+    hist.push(JSON.parse(JSON.stringify(cur)));
+    while (hist.length > 8) hist.shift();
+    s.手机.线程历史[tid] = hist;
+
+    const 时间 = phoneNow(s);
+    const 轮次 = Number((s.story || {}).current_message_index) || 0;
+    let seq = cur.length;
+    const mk = (方向, 内容) => ({
+      id: tid + '#' + (++seq), 轮次, 时间, 方向, 内容: phoneClip(内容), 状态: 'ok',
+    });
+    cur.push(mk('out', 玩家说的话));
+
+    const sys = phonePrompt(s, npc, 名字, 类型, 玩家说的话);
+    let raw2 = '';
+    try {
+      raw2 = await callSlot(s, 'phone', [
+        { role: 'system', content: sys },
+        { role: 'user', content: 玩家说的话 },
+      ], { maxTokens: 800, tag: '手机' });
+    } catch (err) {
+      await turnLog('[手机] 生成失败：' + String((err && err.message) || err).slice(0, 120));
+      throw err;
+    }
+
+    let parsed = null;
+    try { parsed = JSON.parse(repairJson(extractJson(raw2))); } catch (err) { parsed = null; }
+    const replies = parsed && Array.isArray(parsed.reply) ? parsed.reply : [];
+    const facts = parsed && Array.isArray(parsed.事实) ? parsed.事实 : [];
+    if (!replies.length) {
+      // 模型没按 JSON 回：整段当一条，别把玩家的话吞掉
+      const fb = String(raw2 || '').replace(/```[\s\S]*?```/g, '').trim();
+      if (fb) replies.push(fb.slice(0, 300));
+    }
+    replies.slice(0, 4).forEach((r) => { if (String(r || '').trim()) cur.push(mk('in', r)); });
+
+    s.手机.线程[tid] = cur;
+    delete s.手机.草稿[tid];
+    applyPhoneFacts(s, npc, 名字, facts);
+
+    await turnLog('[手机] ' + tid + ' 回复 ' + replies.length + ' 条，事实 ' + facts.length + ' 条');
+    return { messages: cur, facts, 时间 };
+  }
+
+  /** 通讯录：有联系方式的人，按姓名拼音排。附每个线程最后一条。 */
+  reg('phoneGet', async ({ gameId }) => {
+    const s = await loadState(gameId);
+    const 线程 = s.手机.线程 || {};
+    const list = (Array.isArray(s.npcs) ? s.npcs : [])
+      .filter((n) => {
+        const c = phoneOf(n);
+        return !!(c.电话 || c.微信 || c.QQ);
+      })
+      .map((n) => {
+        const nm = String(n.姓名 || n.名字 || '').trim();
+        const c = phoneOf(n);
+        const arr = Array.isArray(线程['sms:' + nm]) ? 线程['sms:' + nm] : [];
+        const last = arr.length ? arr[arr.length - 1] : null;
+        return { 姓名: nm, 电话: c.电话, 微信: c.微信, QQ: c.QQ, 最近: last ? last.内容 : '', 条数: arr.length };
+      })
+      .sort((a, b) => String(a.姓名).localeCompare(String(b.姓名), 'zh-Hans-CN', { sensitivity: 'base' }));
+    return { ok: true, contacts: list, 时间: phoneNow(s) };
+  });
+
+  /** 某个线程的全部消息 */
+  reg('phoneThread', async ({ gameId, threadId }) => {
+    const s = await loadState(gameId);
+    const tid = String(threadId || '').trim();
+    if (!tid) throw new Error('没指明线程');
+    const arr = Array.isArray(s.手机.线程[tid]) ? s.手机.线程[tid] : [];
+    const hist = Array.isArray(s.手机.线程历史[tid]) ? s.手机.线程历史[tid] : [];
+    return { ok: true, threadId: tid, messages: arr, canUndo: hist.length > 0, 时间: phoneNow(s) };
+  });
+
+  /** 单个联系人的详情（含年代能力：有没有微信/微博） */
+  reg('phoneContact', async ({ gameId, name }) => {
+    const s = await loadState(gameId);
+    const 名字 = String(name || '').trim();
+    const npc = npcByPhone(s, 名字);
+    if (!npc) throw new Error('没有这个角色');
+    const c = phoneOf(npc);
+    const 年 = Number((String((s.world && s.world['当前日期时间']) || '').match(/(\d{4})/) || [])[1] || 0);
+    return { ok: true, 姓名: 名字, 电话: c.电话, 微信: c.微信, QQ: c.QQ, 有微信: 年 >= 2011, 有微博: 年 >= 2009, 年 };
+  });
+
+  reg('phoneSend', async ({ gameId, threadId, text }) => {
+    const s = await loadState(gameId);
+    const tid = String(threadId || '').trim();
+    if (!tid) throw new Error('没指明线程');
+    const 说了 = String(text || '').trim();
+    if (!说了) throw new Error('内容是空的');
+    const r = await doPhoneSend(s, tid, 说了);
+    await saveState(s);
+    return { ok: true, messages: r.messages, facts: r.facts, 时间: r.时间 };
+  });
+
+  /** 删一条（只影响手机） */
+  reg('phoneDelete', async ({ gameId, threadId, msgId }) => {
+    const s = await loadState(gameId);
+    const tid = String(threadId || '').trim();
+    const arr = Array.isArray(s.手机.线程[tid]) ? s.手机.线程[tid] : [];
+    const next = arr.filter((m) => String(m.id) !== String(msgId));
+    if (next.length === arr.length) throw new Error('没找到那条消息');
+    s.手机.线程[tid] = next;
+    await saveState(s);
+    return { ok: true, messages: next };
+  });
+
+  /** 重新生成：把她发来的那条删掉，用你之前那句话重问一次 */
+  reg('phoneRegen', async ({ gameId, threadId, msgId }) => {
+    const s = await loadState(gameId);
+    const tid = String(threadId || '').trim();
+    const arr = Array.isArray(s.手机.线程[tid]) ? s.手机.线程[tid] : [];
+    const i = arr.findIndex((m) => String(m.id) === String(msgId));
+    if (i < 0) throw new Error('没找到那条消息');
+    if (arr[i].方向 !== 'in') throw new Error('只能重新生成对方发来的消息');
+    let k = i - 1;
+    while (k >= 0 && arr[k].方向 !== 'out') k--;
+    if (k < 0) throw new Error('前面没有你发的消息');
+    const 那句 = arr[k].内容;
+    s.手机.线程[tid] = arr.slice(0, k + 1);
+    const r = await doPhoneSend(s, tid, 那句);
+    await saveState(s);
+    return { ok: true, messages: r.messages, facts: r.facts, 时间: r.时间 };
+  });
+
+  /** 回退这个线程到上一版 */
+  reg('phoneUndo', async ({ gameId, threadId }) => {
+    const s = await loadState(gameId);
+    const tid = String(threadId || '').trim();
+    const hist = Array.isArray(s.手机.线程历史[tid]) ? s.手机.线程历史[tid] : [];
+    if (!hist.length) throw new Error('没有可回退的');
+    s.手机.线程[tid] = hist.pop();
+    await saveState(s);
+    return { ok: true, messages: s.手机.线程[tid], canUndo: hist.length > 0 };
+  });
+
+  /** 草稿 */
+  reg('phoneDraft', async ({ gameId, threadId, text }) => {
+    const s = await loadState(gameId);
+    const tid = String(threadId || '').trim();
+    if (!tid) throw new Error('没指明线程');
+    const t = String(text == null ? '' : text);
+    if (t.trim()) s.手机.草稿[tid] = t.slice(0, 500);
+    else delete s.手机.草稿[tid];
+    await saveState(s);
+    return { ok: true, draft: s.手机.草稿[tid] || '' };
   });
 
   // ── 图库：跨局共用的一份图片，存 workspace/simulator-gallery.json ──
