@@ -229,7 +229,19 @@ window.__ModuleLoader__.load({
       // ── 手机浮窗 ──
       '.sim-ph-btn{position:fixed;right:26px;bottom:26px;z-index:9000;width:52px;height:52px;border-radius:16px;border:1px solid var(--sim-bd);background:var(--sim-bg2);color:var(--sim-t);font-size:22px;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.18)}',
       '.sim-ph-btn:hover{background:var(--sim-bg)}',
-      '.sim-ph{position:fixed;z-index:9001;display:flex;flex-direction:column;background:var(--sim-bg2);border:1px solid var(--sim-bd);border-radius:20px;box-shadow:0 16px 44px rgba(0,0,0,.22);overflow:hidden}',
+      // 手机外壳四档。共用的是布局与投影，只有边框、圆角、底色按年代分。
+      '.sim-ph{position:fixed;z-index:9001;display:flex;flex-direction:column;background:var(--sim-bg2);border:1px solid var(--sim-bd);border-radius:20px;box-shadow:0 16px 44px rgba(0,0,0,.28);overflow:hidden;box-sizing:border-box}',
+      // 2008 前：厚边框、小圆角、深灰机身，像一块塑料壳包着一块小屏
+      '.sim-ph[data-era="feature"]{border:11px solid #3a3a3c;border-radius:14px;box-shadow:0 14px 38px rgba(0,0,0,.45),inset 0 0 0 1px #555}',
+      '.sim-ph[data-era="feature"] .sim-ph-hd{border-radius:2px 2px 0 0;background:linear-gradient(#5a5a5e,#3a3a3c);color:#f0f0f0;border-bottom:none}',
+      '.sim-ph[data-era="feature"] .sim-ph-hd .t, .sim-ph[data-era="feature"] .sim-ph-hd .tm{color:#f0f0f0}',
+      // 2008~2013：宽边框 + 圆角大一些，黑白机身
+      '.sim-ph[data-era="early"]{border:9px solid #101012;border-radius:26px;box-shadow:0 16px 44px rgba(0,0,0,.42),inset 0 0 0 1px #2a2a2e}',
+      '.sim-ph[data-era="early"] .sim-ph-hd{background:#f2f2f5;border-bottom:1px solid #d8d8de}',
+      // 2014~2019：扁平化，窄边框、圆角更大
+      '.sim-ph[data-era="flat"]{border:3px solid #d4d4d8;border-radius:30px}',
+      // 2020 后：全面屏，极窄黑边、最大圆角
+      '.sim-ph[data-era="modern"]{border:2px solid #1a1a1c;border-radius:40px;box-shadow:0 22px 60px rgba(0,0,0,.34)}',
       '.sim-ph-hd{flex:0 0 auto;display:flex;align-items:center;gap:8px;padding:9px 12px;background:var(--sim-bg);border-bottom:1px solid var(--sim-bd);cursor:move;user-select:none}',
       '.sim-ph-hd .t{flex:1 1 auto;font-weight:700;font-size:var(--sim-fs-3);letter-spacing:.4px}',
       '.sim-ph-hd .tm{font-size:var(--sim-fs-6);color:var(--sim-t2)}',
@@ -5284,7 +5296,11 @@ function App({ gameId, close }) {
             const w = (state && state.world) || {};
             const t = String(w['当前日期时间'] || '');
             const y = Number((t.match(/(\d{4})/) || [])[1] || 0);
-            return { 年: y, 有微信: y >= 2011, 有QQ: y >= 2005, 有微博: y >= 2009, 有相机: y >= 2003 };
+            // 外壳按年代走四档，玩家不用选：
+            //   feature 功能机（2008 前）／early 早期智能机（08~13）
+            //   flat 扁平化（14~19）／modern 全面屏（20 后）
+            const 壳 = y < 2008 ? 'feature' : y < 2014 ? 'early' : y < 2020 ? 'flat' : 'modern';
+            return { 年: y, 壳, 有微信: y >= 2011, 有QQ: y >= 2005, 有微博: y >= 2009, 有相机: y >= 2003 };
           }
 
           /** 九个格子里的一个 */
@@ -12439,7 +12455,7 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
             phoneOpen
               ? h(
                   'div',
-                  { className: 'sim-ph', style: phoneBoxStyle() },
+                  { className: 'sim-ph', 'data-era': phoneEra().壳, style: phoneBoxStyle() },
                   h(
                     'div',
                     {
