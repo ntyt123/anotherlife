@@ -241,7 +241,18 @@ window.__ModuleLoader__.load({
       // 2014~2019：扁平化，窄边框、圆角更大
       '.sim-ph[data-era="flat"]{border:3px solid #d4d4d8;border-radius:30px}',
       // 2020 后：全面屏，极窄黑边、最大圆角
-      '.sim-ph[data-era="modern"]{border:2px solid #1a1a1c;border-radius:40px;box-shadow:0 22px 60px rgba(0,0,0,.34)}',
+      // 2020 后：iPhone 15 Pro 风格 —— 钛金属描边 + 大圆角 + 灵动岛 + Home 指示条 + 侧键
+      '.sim-ph[data-era="modern"]{border:3px solid #1a1a1c;border-radius:46px;box-shadow:0 24px 64px rgba(0,0,0,.4),inset 0 0 0 1px rgba(255,255,255,.09)}',
+      // 侧键：左静音+音量、右电源。用伪元素做，不占 DOM
+      '.sim-ph[data-era="modern"]::before{content:"";position:absolute;left:-6px;top:104px;width:3px;height:58px;border-radius:2px;background:linear-gradient(#3a3a3c,#26262a);box-shadow:-1px 0 0 rgba(255,255,255,.06)}',
+      '.sim-ph[data-era="modern"]::after{content:"";position:absolute;right:-6px;top:120px;width:3px;height:76px;border-radius:2px;background:linear-gradient(#3a3a3c,#26262a);box-shadow:1px 0 0 rgba(255,255,255,.06)}',
+      // 灵动岛：顶部居中的黑胶囊
+      '.sim-ph-island{position:absolute;top:9px;left:50%;transform:translateX(-50%);width:112px;height:31px;border-radius:17px;background:#000;z-index:30;pointer-events:none;box-shadow:inset 0 0 0 1px rgba(255,255,255,.07),0 1px 3px rgba(0,0,0,.5)}',
+      '.sim-ph-island::after{content:"";position:absolute;right:9px;top:50%;transform:translateY(-50%);width:7px;height:7px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#2c3e50,#08080c 70%);box-shadow:0 0 0 1px rgba(80,120,160,.35)}',
+      // Home 指示条：底部居中的横线
+      '.sim-ph-homebar{position:absolute;bottom:7px;left:50%;transform:translateX(-50%);width:132px;height:5px;border-radius:3px;background:rgba(0,0,0,.34);z-index:30;pointer-events:none}',
+      '.sim-ph[data-era="modern"] .sim-ph-hd{padding-top:14px;background:transparent;border-bottom:1px solid var(--sim-bd)}',
+      '.sim-ph[data-era="modern"] .sim-ph-body{padding-bottom:16px}',
       '.sim-ph-hd{flex:0 0 auto;display:flex;align-items:center;gap:8px;padding:9px 12px;background:var(--sim-bg);border-bottom:1px solid var(--sim-bd);cursor:move;user-select:none}',
       '.sim-ph-hd .t{flex:1 1 auto;font-weight:700;font-size:var(--sim-fs-3);letter-spacing:.4px}',
       '.sim-ph-hd .tm{font-size:var(--sim-fs-6);color:var(--sim-t2)}',
@@ -12456,6 +12467,8 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
               ? h(
                   'div',
                   { className: 'sim-ph', 'data-era': phoneEra().壳, style: phoneBoxStyle() },
+                  // iPhone 15 Pro 的灵动岛：只有 modern 档才画
+                  phoneEra().壳 === 'modern' ? h('div', { className: 'sim-ph-island' }) : null,
                   h(
                     'div',
                     {
@@ -12511,6 +12524,7 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
                         )
                       )
                     : null),
+                  phoneEra().壳 === 'modern' ? h('div', { className: 'sim-ph-homebar' }) : null,
                 )
               : null,
             asOpen
