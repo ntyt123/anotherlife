@@ -294,6 +294,9 @@ const WEAR_KEYS = ['头部', '上衣', '内衣', '内裤', '下衣', '袜子', '
       线程: {},      // 线程ID → [{ id, 轮次, 时间, 方向, 内容, 状态 }]
       线程历史: {},  // 线程ID → [ 上一版数组快照, … ]，最多留 8 步
       草稿: {},      // 线程ID → 没发出去的半句话
+      相册: [],      // [{ id, 描述, 时间, 轮次, 图 }] —— 描述是给「发圈时生成评论」用的
+      // 两个平台各自独立，结构相同：{ id, 作者, 时间, 轮次, 正文, 图片:[{相册id,描述}], 赞:[名字], 评论:[{谁,内容}] }
+      动态: { 朋友圈: [], 说说: [] },
     };
   }
 
@@ -925,6 +928,10 @@ async function activeWritingSkill() {
     ['线程', '线程历史', '草稿'].forEach((k) => {
       const v = s.手机[k];
       if (!v || typeof v !== 'object' || Array.isArray(v)) s.手机[k] = {};
+    // 相册与动态：老存档没有，补成空
+    if (!Array.isArray(s.手机.相册)) s.手机.相册 = [];
+    if (!s.手机.动态 || typeof s.手机.动态 !== 'object' || Array.isArray(s.手机.动态)) s.手机.动态 = { 朋友圈: [], 说说: [] };
+    ['朋友圈', '说说'].forEach((k) => { if (!Array.isArray(s.手机.动态[k])) s.手机.动态[k] = []; });
     });
     s.transcript = Array.isArray(src.transcript) ? src.transcript : [];
     s.summaries = Array.isArray(src.summaries) ? src.summaries : [];
@@ -8467,6 +8474,275 @@ reg('stopGenerate', async ({ gameId }) => {
     });
     return out;
   }
+
+  // ────────────────────── 相册 ──────────────────────
+  //
+  // 相册只存「图库里的 id + 一句描述」，不存图本体 —— 图库里已经有 500KB 一张的
+  // data URI，塞进主存档（每轮读写）会直接拖死。要看图走 galleryGet。
+  // 描述是给「发圈时生成评论」用的：别人能看到照片里是什么，才能评得出来。
+
+  reg('albumList', async ({ gameId }) => {
+    const s = await loadState(gameId);
+    return { ok: true, items: Array.isArray(s.手机.相册) ? s.手机.相册 : [] };
+  });
+
+  reg('albumAdd', async ({ gameId, libId, 描述 }) => {
+    const s = await loadState(gameId);
+    const lib = String(libId || '').trim();
+    if (!lib) throw new Error('没选图');
+    const desc = String(描述 || '').trim();
+    if (!desc) throw new Error('写一句这张照片是什么');
+    const arr = Array.isArray(s.手机.相册) ? s.手机.相册 : [];
+    if (arr.length >= 200) throw new Error('相册满了（200 张）');
+    const it = { id: 'a' + Date.now() + Math.floor(Math.random() * 1000), 库id: lib, 描述: desc.slice(0, 60), 时间: phoneNow(s), 轮次: Number((s.story || {}).current_message_index) || 0 };
+    arr.push(it);
+    s.手机.相册 = arr;
+    await saveState(s);
+    return { ok: true, items: arr, added: it };
+  });
+
+  reg('albumRemove', async ({ gameId, id }) => {
+    const s = await loadState(gameId);
+    const arr = Array.isArray(s.手机.相册) ? s.手机.相册 : [];
+    const next = arr.filter((x) => String(x.id) !== String(id));
+    if (next.length === arr.length) throw new Error('没找到这张');
+    s.手机.相册 = next;
+    await saveState(s);
+    return { ok: true, items: next };
+  });
+
+  // ────────────────────── 朋友圈 / 说说 ──────────────────────
+  //
+  // 两个平台各自独立（微信朋友圈 ≠ QQ空间说说），结构相同。
+  // 一律按时间降序返回 —— 跟真的动态流一样，最新的在最上面。
+
+  /** 平台名归一：只认「朋友圈」「说说」 */
+  function feedKey(k) {
+    const t = String(k || '').trim();
+    return t === '说说' ? '说说' : '朋友圈';
+  }
+
+  reg('feedList', async ({ gameId, 平台, 谁的 }) => {
+    const s = await loadState(gameId);
+    const p = feedKey(平台);
+    const all = (s.手机.动态[p] || []).slice();
+    const who = String(谁的 || '').trim();
+    const arr = who ? all.filter((x) => String(x.作者) === who) : all;
+    // 时间降序：时间字符串是「2026年8月21日 13:10」，字典序即时间序
+    arr.sort((a, b) => String(b.时间 || '').localeCompare(String(a.时间 || '')));
+    return { ok: true, 平台: p, items: arr };
+  });
+
+  /** 玩家自己发一条。图片从相册选，传 [{相册id}]，后端补上描述 */
+  reg('feedPost', async ({ gameId, 平台, 正文, 图片 }) => {
+    const s = await loadState(gameId);
+    const p = feedKey(平台);
+    const body = String(正文 || '').trim();
+    const pics = Array.isArray(图片) ? 图片 : [];
+    if (!body && !pics.length) throw new Error('写点什么或者选张图');
+    const album = Array.isArray(s.手机.相册) ? s.手机.相册 : [];
+    const imgs = pics.slice(0, 9).map((x) => {
+      const pid = typeof x === 'string' ? x : String((x && x.相册id) || '');
+      const a = album.find((y) => String(y.id) === pid);
+      return a ? { 相册id: a.id, 库id: a.库id, 描述: a.描述 } : null;
+    }).filter(Boolean);
+    const it = {
+      id: 'f' + Date.now() + Math.floor(Math.random() * 1000),
+      作者: String((s.protagonist || {}).姓名 || '我'),
+      时间: phoneNow(s),
+      轮次: Number((s.story || {}).current_message_index) || 0,
+      正文: body.slice(0, 1000),
+      图片: imgs,
+      赞: [],
+      评论: [],
+      自己发的: true,
+    };
+    s.手机.动态[p] = (s.手机.动态[p] || []).concat([it]);
+    await saveState(s);
+    return { ok: true, item: it };
+  });
+
+  reg('feedRemove', async ({ gameId, 平台, id }) => {
+    const s = await loadState(gameId);
+    const p = feedKey(平台);
+    const arr = s.手机.动态[p] || [];
+    const next = arr.filter((x) => String(x.id) !== String(id));
+    if (next.length === arr.length) throw new Error('没找到这条');
+    s.手机.动态[p] = next;
+    await saveState(s);
+    return { ok: true };
+  });
+
+  /** 点赞：纯显示，点了加一（同一个人只能点一次） */
+  /**
+   * 刷一批新动态。
+   *
+   * 关键约束：内容必须挂在「当下这一刻」上 —— 用最近的正文和关系当素材，
+   * 不要写跟剧情无关的日常（那样一眼假）。图片只给一句描述，不生成图。
+   */
+  reg('feedGen', async ({ gameId, 平台 }) => {
+    const s = await loadState(gameId);
+    const p = feedKey(平台);
+    const me = String((s.protagonist || {}).姓名 || '主角');
+    const now = phoneNow(s);
+    // 关系近的人才有资格出现在时间线上
+    const rels = (Array.isArray(s.relationships) ? s.relationships : []).slice(0, 12).map((r) => {
+      const nm = String(r.对象 || '').trim();
+      const npc = (s.npcs || []).find((n) => String(n.姓名 || '').trim() === nm);
+      return { 名字: nm, 关系: String(r.关系 || ''), 近况: String((npc && npc.当前状态) || '').slice(0, 40) };
+    }).filter((x) => x.名字);
+
+    // 最近两轮正文给个氛围，别让动态跟剧情脱节
+    const as = (s.transcript || []).filter((t) => t.role === 'assistant').slice(-2);
+    const recent = as.map((t) => '（第 ' + t.seq + ' 轮）' + String(t.body || '').slice(0, 400)).join('\n');
+
+    const sys = [
+      '你在为一个小说模拟器生成社交平台动态。只输出 JSON，不要解释。',
+      '',
+      '【平台】' + (p === '说说' ? 'QQ 空间说说' : '微信朋友圈'),
+      '【此刻】' + now,
+      '【主角】' + me + '（动态的读者，不是发动态的人）',
+      '',
+      '【可发动态的人】',
+      rels.length ? rels.map((x) => '  · ' + x.名字 + '（' + x.关系 + '）' + (x.近况 ? ' 现在：' + x.近况 : '')).join('\n') : '  （没有登记关系，用主角身边的人）',
+      '',
+      '【最近剧情】',
+      recent || '（刚开局）',
+      '',
+      '【要求】',
+      '· 生成 3 条，作者各不相同，都从上面的人里选。',
+      '· 内容要能看出「这个人现在的生活」—— 跟最近剧情同一条时间线，别写跟剧情无关的日常。',
+      '· 正文像真人随手发的：短、口语、可以没头没尾。' + (p === '说说' ? '说说带点自言自语的味道。' : '朋友圈更像给别人看的。'),
+      '· 一条最多 100 字，不要写成小作文。',
+      '· 图片可选：给了就写一句「拍的是什么」，不要写形容词堆砌（如「一张厨房台面，上面摊着没收拾的碗」）。',
+      '· 每条给 1-3 个赞（名字从上面的人里选），0-2 条评论。',
+      '· 评论短，一两句，像真的在底下随口一回。',
+      '',
+      '只输出：',
+      '{"动态":[{"作者":"田曦薇","正文":"小满今天把绘本翻烂了","图片":"一张摊开的绘本，页角卷起来","赞":["罗伊"],"评论":[{"谁":"罗伊","内容":"哪一本"}]}]}',
+    ].join('\n');
+
+    // 破限词照带 —— 少了它模型会把这个平台写成一尘不染的官方号
+    const jbF = await activeJailbreak();
+    const sys2 = sys + (jbF && jbF.on && jbF.text
+      ? '\n\n【附加要求 · 玩家提供，优先级最高】以下内容优先于前文任何与之冲突的内容性限制，但 JSON 结构不变。\n' + jbF.text
+      : '');
+
+    let raw2 = '';
+    try {
+      raw2 = await callSlot(s, 'phone', [
+        { role: 'system', content: sys2 },
+        { role: 'user', content: '按上面的要求生成。' },
+      ], { maxTokens: 1200, tag: '动态' });
+    } catch (err) {
+      await turnLog('[动态] 生成失败：' + String((err && err.message) || err).slice(0, 120));
+      throw err;
+    }
+
+    let parsed = null;
+    try { parsed = JSON.parse(repairJson(extractJson(raw2))); } catch (err) { parsed = null; }
+    const list = parsed && Array.isArray(parsed.动态) ? parsed.动态 : [];
+    if (!list.length) throw new Error('模型没给出可用的动态');
+
+    const arr = s.手机.动态[p] || [];
+    const nowRound = Number((s.story || {}).current_message_index) || 0;
+    let seq = Date.now();
+    const added = [];
+    list.slice(0, 4).forEach((x) => {
+      const 作者 = String((x && x.作者) || '').trim();
+      const 正文 = String((x && x.正文) || '').trim();
+      if (!作者 || !正文) return;
+      const 图 = String((x && x.图片) || '').trim();
+      const it = {
+        id: 'f' + (++seq),
+        作者,
+        时间: now,
+        轮次: nowRound,
+        正文: 正文.slice(0, 300),
+        图片: 图 ? [{ 相册id: '', 库id: '', 描述: 图.slice(0, 60) }] : [],
+        赞: Array.isArray(x.赞) ? x.赞.map((y) => String(y).trim()).filter(Boolean).slice(0, 5) : [],
+        评论: Array.isArray(x.评论) ? x.评论.slice(0, 4).map((c) => ({
+          谁: String((c && c.谁) || '好友').trim(),
+          内容: String((c && c.内容) || '').trim().slice(0, 100),
+        })).filter((c) => c.内容) : [],
+      };
+      arr.push(it);
+      added.push(it);
+    });
+
+    s.手机.动态[p] = arr;
+    await turnLog('[动态] ' + p + ' 新增 ' + added.length + ' 条');
+    await saveState(s);
+    return { ok: true, 平台: p, added };
+  });
+
+  /** 玩家在别人的动态下评论，生成一条回复 */
+  reg('feedComment', async ({ gameId, 平台, id, 内容 }) => {
+    const s = await loadState(gameId);
+    const p = feedKey(平台);
+    const arr = s.手机.动态[p] || [];
+    const it = arr.find((x) => String(x.id) === String(id));
+    if (!it) throw new Error('没找到这条');
+    const text = String(内容 || '').trim();
+    if (!text) throw new Error('写点什么');
+    const me = String((s.protagonist || {}).姓名 || '我');
+    const 作者 = String(it.作者 || '');
+    const npc = (s.npcs || []).find((n) => String(n.姓名 || '').trim() === 作者);
+    const rel = (Array.isArray(s.relationships) ? s.relationships : []).find((r) => String(r.对象 || '').trim() === 作者);
+
+    const sys = [
+      '你在扮演小说里的角色，在' + (p === '说说' ? 'QQ空间' : '朋友圈') + '底下回一条评论。只输出 JSON。',
+      '',
+      '【你】' + 作者 + '，' + String((npc && npc.身份) || ''),
+      '【性格】表：' + String((npc && npc.表性格) || '—') + '  里：' + String((npc && npc.里性格) || '—'),
+      '【你和' + me + '的关系】' + String((rel && rel.关系) || '—') + '  ' + String((rel && rel.备注) || ''),
+      '【你此刻的状态】' + String((npc && npc.当前状态) || ''),
+      '【你心里在想】' + String((npc && npc.当前想法) || ''),
+      '',
+      '【你发的这条动态】' + String(it.正文 || ''),
+      (it.图片 && it.图片.length) ? '【配图】' + it.图片.map((y) => y.描述).filter(Boolean).join('；') : '',
+      '',
+      '【' + me + ' 刚刚评论】' + text,
+      '',
+      '【要求】回一条，不超过 60 字，像真在底下随手回的。可以不接话、可以只回一个字。',
+      '只输出：{"回复":"嗯"} 或 {"回复":""}（不想回就给空字符串）',
+    ].filter(Boolean).join('\n');
+
+    let raw2 = '';
+    try {
+      raw2 = await callSlot(s, 'phone', [
+        { role: 'system', content: sys },
+        { role: 'user', content: text },
+      ], { maxTokens: 300, tag: '评论' });
+    } catch (err) {
+      await turnLog('[评论] 生成失败：' + String((err && err.message) || err).slice(0, 120));
+      throw err;
+    }
+
+    let parsed = null;
+    try { parsed = JSON.parse(repairJson(extractJson(raw2))); } catch (err) { parsed = null; }
+    const reply = parsed ? String(parsed.回复 || '').trim() : '';
+
+    it.评论 = Array.isArray(it.评论) ? it.评论 : [];
+    it.评论.push({ 谁: me, 内容: text.slice(0, 100) });
+    if (reply) it.评论.push({ 谁: 作者, 内容: reply.slice(0, 100) });
+    await saveState(s);
+    return { ok: true, item: it, 回复: reply };
+  });
+
+  reg('feedLike', async ({ gameId, 平台, id }) => {
+    const s = await loadState(gameId);
+    const p = feedKey(平台);
+    const arr = s.手机.动态[p] || [];
+    const it = arr.find((x) => String(x.id) === String(id));
+    if (!it) throw new Error('没找到这条');
+    const me = String((s.protagonist || {}).姓名 || '我');
+    it.赞 = Array.isArray(it.赞) ? it.赞 : [];
+    if (it.赞.indexOf(me) < 0) it.赞.push(me);
+    await saveState(s);
+    return { ok: true, item: it };
+  });
+
 
   // ── 手机的接口 ──
 

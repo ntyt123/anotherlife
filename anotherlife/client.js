@@ -234,8 +234,36 @@ window.__ModuleLoader__.load({
       '.sim-ph-hd .t{flex:1 1 auto;font-weight:700;font-size:var(--sim-fs-3);letter-spacing:.4px}',
       '.sim-ph-hd .tm{font-size:var(--sim-fs-6);color:var(--sim-t2)}',
       '.sim-ph-hd-btn{flex:0 0 auto;width:24px;height:24px;border-radius:8px;border:1px solid var(--sim-bd);background:transparent;color:var(--sim-t2);cursor:pointer;font-size:12px;line-height:1}',
-      '.sim-ph-body{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;overflow:hidden;background:var(--sim-bg2)}',
+      '.sim-ph-body{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;overflow:hidden;position:relative;background:var(--sim-bg2)}',
       '.sim-ph-list{flex:1 1 auto;min-height:0;overflow-y:auto}',
+      '.sim-ph-alb{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;padding:9px;flex:1 1 auto;min-height:0;overflow-y:auto;align-content:start}',
+      '.sim-ph-feed{flex:1 1 auto;min-height:0;overflow-y:auto}',
+      '.sim-ph-post{padding:11px 12px;border-bottom:1px solid var(--sim-bd)}',
+      '.sim-ph-post-hd{display:flex;gap:9px;align-items:flex-start}',
+      '.sim-ph-post-av{flex:0 0 auto;width:34px;height:34px;border-radius:6px;background:var(--sim-bg);border:1px solid var(--sim-bd);display:flex;align-items:center;justify-content:center;font-size:var(--sim-fs-5);color:var(--sim-t)}',
+      '.sim-ph-post-nm{font-size:var(--sim-fs-5);color:#576b95;font-weight:600;line-height:1.3}',
+      '.sim-ph-post-tm{font-size:10px;color:var(--sim-t2);line-height:1.3}',
+      '.sim-ph-post-bd{font-size:var(--sim-fs-5);line-height:1.6;margin-top:4px;white-space:pre-wrap;word-break:break-word;color:var(--sim-t)}',
+      '.sim-ph-post-img{display:inline-flex;align-items:center;gap:6px;margin-top:7px;padding:8px 10px;border-radius:8px;border:1px dashed var(--sim-bd);background:var(--sim-bg);max-width:100%}',
+      '.sim-ph-post-img .d{font-size:var(--sim-fs-6);color:var(--sim-t2);line-height:1.4}',
+      '.sim-ph-post-act{display:flex;gap:14px;margin-top:7px;font-size:var(--sim-fs-6);color:var(--sim-t2)}',
+      '.sim-ph-post-act .a{cursor:pointer;user-select:none}',
+      '.sim-ph-post-act .a:hover{color:#576b95}',
+      '.sim-ph-post-act .a.on{color:#e64340}',
+      '.sim-ph-cmts{margin-top:6px;background:var(--sim-bg);border-radius:7px;padding:6px 9px;display:flex;flex-direction:column;gap:4px}',
+      '.sim-ph-cmt{font-size:var(--sim-fs-6);line-height:1.5;color:var(--sim-t);word-break:break-word}',
+      '.sim-ph-cmt b{color:#576b95;font-weight:600}',
+      '.sim-ph-alb-i{position:relative;aspect-ratio:1;border-radius:7px;overflow:hidden;background:var(--sim-bg);border:1px solid var(--sim-bd);cursor:pointer}',
+      '.sim-ph-alb-i img{width:100%;height:100%;object-fit:cover;display:block}',
+      '.sim-ph-alb-i .d{position:absolute;left:0;right:0;bottom:0;padding:3px 5px;font-size:10px;color:#fff;background:linear-gradient(transparent,rgba(0,0,0,.65));overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+      '.sim-ph-alb-i .x{position:absolute;top:3px;right:3px;width:18px;height:18px;border-radius:50%;border:none;background:rgba(0,0,0,.55);color:#fff;font-size:11px;line-height:18px;padding:0;cursor:pointer}',
+      '.sim-ph-bar{flex:0 0 auto;display:flex;gap:7px;padding:8px 10px;background:var(--sim-bg);border-top:1px solid var(--sim-bd)}',
+      '.sim-ph-pick{position:absolute;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:16px;z-index:20}',
+      '.sim-ph-pick-c{background:var(--sim-bg2);border-radius:14px;padding:14px;width:100%;max-height:100%;display:flex;flex-direction:column;gap:10px;overflow:hidden}',
+      '.sim-ph-pick-g{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;overflow-y:auto;min-height:0;flex:1 1 auto}',
+      '.sim-ph-pick-g .it{aspect-ratio:1;border-radius:6px;overflow:hidden;border:2px solid transparent;cursor:pointer}',
+      '.sim-ph-pick-g .it.on{border-color:var(--sim-say, #3d6bb3)}',
+      '.sim-ph-pick-g img{width:100%;height:100%;object-fit:cover;display:block}',
       '.sim-ph-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;padding:22px 16px}',
       '.sim-ph-app{display:flex;flex-direction:column;align-items:center;gap:7px;cursor:pointer}',
       '.sim-ph-app .ic{width:52px;height:52px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:22px;background:var(--sim-bg);border:1px solid var(--sim-bd)}',
@@ -3751,6 +3779,18 @@ function App({ gameId, close }) {
         const [phoneBusy, setPhoneBusy] = React.useState(false);
         const [phoneCanUndo, setPhoneCanUndo] = React.useState(false);
         const [phoneWho, setPhoneWho] = React.useState('');
+        const [phoneAlbum, setPhoneAlbum] = React.useState([]);
+        const [phoneAlbumLoaded, setPhoneAlbumLoaded] = React.useState(false);
+        const [phonePick, setPhonePick] = React.useState(null);   // 从图库选图：{libId, 描述}
+        const [phoneLibrary, setPhoneLibrary] = React.useState(null);
+        const [phoneThumbs, setPhoneThumbs] = React.useState({});
+        const [phonePlatform, setPhonePlatform] = React.useState('朋友圈');
+        const [phoneFeed, setPhoneFeed] = React.useState([]);
+        const [phoneFeedWho, setPhoneFeedWho] = React.useState('');
+        const [phoneGenBusy, setPhoneGenBusy] = React.useState(false);
+        const [phoneCompose, setPhoneCompose] = React.useState(null);  // {正文, 图:[相册id]}
+        const [phoneCmtFor, setPhoneCmtFor] = React.useState('');      // 正在给哪条写评论
+        const [phoneCmtText, setPhoneCmtText] = React.useState('');
           // 缩放手柄的尺寸与最小可用尺寸
           const AS_MIN_W = 300;
           const AS_MIN_H = 260;
@@ -5204,6 +5244,9 @@ function App({ gameId, close }) {
           function phoneHeadTitle() {
             if (phoneView === 'contacts') return '联系人';
             if (phoneView === 'thread') return phoneWho || '短信';
+            if (phoneView === 'album') return '相册';
+            if (phoneView === 'feed') return phoneFeedWho ? phoneFeedWho + '的' + phonePlatform : phonePlatform;
+            if (phoneView === 'compose') return phonePlatform === '说说' ? '发说说' : '发朋友圈';
             return '手机';
           }
 
@@ -5229,7 +5272,7 @@ function App({ gameId, close }) {
             const w = (state && state.world) || {};
             const t = String(w['当前日期时间'] || '');
             const y = Number((t.match(/(\d{4})/) || [])[1] || 0);
-            return { 年: y, 有微信: y >= 2011, 有微博: y >= 2009, 有相机: y >= 2003 };
+            return { 年: y, 有微信: y >= 2011, 有QQ: y >= 2005, 有微博: y >= 2009, 有相机: y >= 2003 };
           }
 
           /** 九个格子里的一个 */
@@ -5268,6 +5311,101 @@ function App({ gameId, close }) {
           function phoneTypingMs(text) {
             const n = String(text == null ? '' : text).length;
             return Math.min(3500, 400 + n * 80);
+          }
+
+          /** 读相册 + 图库缩略图（相册只存库 id，显示要靠这张表） */
+          function phoneLoadAlbum() {
+            return Promise.all([
+              run(call('albumList', {}, gameId)),
+              run(call('galleryList', {}, gameId)),
+            ]).then(function (r) {
+              const a = r[0] || {};
+              const g = r[1] || {};
+              setPhoneAlbum(Array.isArray(a.items) ? a.items : []);
+              const map = {};
+              (Array.isArray(g.items) ? g.items : []).forEach(function (x) { map[String(x.id)] = String(x.thumb || ""); });
+              setPhoneThumbs(map);
+              setPhoneAlbumLoaded(true);
+            });
+          }
+
+          /** 点「从图库添加」：拉一次图库，弹出选图框 */
+          function phoneOpenPick() {
+            run(call('galleryList', {}, gameId)).then(function (r) {
+              const items = (r && Array.isArray(r.items)) ? r.items : [];
+              setPhoneLibrary(items);
+              setPhonePick({ libId: '', 描述: '' });
+            });
+          }
+
+          /** 确定添加：把选中的图 + 描述写进相册 */
+          function phoneDoAddPick() {
+            if (!phonePick || !phonePick.libId) return;
+            const desc = String(phonePick.描述 || '').trim();
+            if (!desc) return;
+            run(call('albumAdd', { libId: phonePick.libId, 描述: desc }, gameId)).then(function (r) {
+              if (!r || !r.ok) return;
+              setPhonePick(null);
+              phoneLoadAlbum();
+            });
+          }
+
+          /** 读动态流。平台 + 可选「只看某人」 */
+          function phoneLoadFeed(plat, who) {
+            const p = plat || phonePlatform;
+            const w = who === undefined ? phoneFeedWho : who;
+            return run(call('feedList', { 平台: p, 谁的: w || '' }, gameId)).then(function (r) {
+              if (r && r.ok) setPhoneFeed(Array.isArray(r.items) ? r.items : []);
+            });
+          }
+
+          /** 刷一批新的（调模型） */
+          function phoneDoGen() {
+            if (phoneGenBusy) return;
+            setPhoneGenBusy(true);
+            run(call('feedGen', { 平台: phonePlatform }, gameId))
+              .then(function (r) {
+                if (r && r.ok) phoneLoadFeed(phonePlatform);
+              })
+              .finally(function () { setPhoneGenBusy(false); });
+          }
+
+          /** 发一条 */
+          function phoneDoPost() {
+            if (!phoneCompose) return;
+            const body = String(phoneCompose.正文 || '').trim();
+            const pics = Array.isArray(phoneCompose.图) ? phoneCompose.图 : [];
+            if (!body && !pics.length) return;
+            run(call('feedPost', { 平台: phonePlatform, 正文: body, 图片: pics.map(function (x) { return { 相册id: x }; }) }, gameId))
+              .then(function (r) {
+                if (r && r.ok) { setPhoneCompose(null); phoneLoadFeed(phonePlatform); }
+              });
+          }
+
+          /** 点赞 */
+          function phoneDoLike(id) {
+            run(call('feedLike', { 平台: phonePlatform, id: id }, gameId)).then(function (r) {
+              if (r && r.ok) phoneLoadFeed(phonePlatform);
+            });
+          }
+
+          /** 发评论（会带回一条回复） */
+          function phoneDoComment(id) {
+            const t = String(phoneCmtText || '').trim();
+            if (!t) return;
+            run(call('feedComment', { 平台: phonePlatform, id: id, 内容: t }, gameId)).then(function (r) {
+              if (r && r.ok) {
+                setPhoneCmtText('');
+                setPhoneCmtFor('');
+                phoneLoadFeed(phonePlatform);
+              }
+            });
+          }
+
+          /** 动态里的头像字（没有真头像，用姓名的第一个字） */
+          function feedAv(name) {
+            const n = String(name || '友').trim();
+            return n ? n.slice(0, 1) : '友';
           }
 
           function phoneSendNow() {
@@ -5326,6 +5464,18 @@ function App({ gameId, close }) {
                     h('div', { className: 'n' }, c.姓名),
                     h('div', { className: 'p' }, c.最近 || c.电话 || c.微信 || '')
                   )
+                    ,h('button', {
+                      className: 'sim-ph-hd-btn',
+                      style: { flex: '0 0 auto' },
+                      title: '看她发的',
+                      onClick: function (e) {
+                        e.stopPropagation();
+                        setPhonePlatform('朋友圈');
+                        setPhoneFeedWho(c.姓名);
+                        setPhoneView('feed');
+                        phoneLoadFeed('朋友圈', c.姓名);
+                      },
+                    }, '🖼')
                 )
               ));
             }
@@ -5388,6 +5538,132 @@ function App({ gameId, close }) {
 
             // home：九宫格
             const era = phoneEra();
+            // compose：发一条
+            if (phoneView === 'compose' && phoneCompose) {
+              const picked = Array.isArray(phoneCompose.图) ? phoneCompose.图 : [];
+              return h('div', { className: 'sim-ph-thread' },
+                h('div', { style: { flex: '1 1 auto', minHeight: 0, overflowY: 'auto', padding: '11px 12px', display: 'flex', flexDirection: 'column', gap: '10px' } },
+                  h('textarea', {
+                    value: phoneCompose.正文,
+                    placeholder: phonePlatform === '说说' ? '说点什么…' : '这一刻的想法…',
+                    style: { minHeight: '110px', resize: 'none', borderRadius: '10px', border: '1px solid var(--sim-bd)', background: 'var(--sim-bg)', color: 'var(--sim-t)', padding: '10px 12px', fontSize: 'var(--sim-fs-5)', fontFamily: 'inherit', lineHeight: 1.6 },
+                    onChange: function (e) { setPhoneCompose(Object.assign({}, phoneCompose, { 正文: e.target.value.slice(0, 1000) })); },
+                  }),
+                  // 从相册挑图（最多 9 张）
+                  h('div', { style: { fontSize: 'var(--sim-fs-6)', color: 'var(--sim-t2)' } }, '从相册选图（' + picked.length + '/9）'),
+                  (phoneAlbum && phoneAlbum.length)
+                    ? h('div', { className: 'sim-ph-pick-g', style: { maxHeight: '180px' } }, phoneAlbum.map(function (a) {
+                        const on = picked.indexOf(a.id) >= 0;
+                        const th = phoneThumbs[String(a.库id)] || '';
+                        return h('div', {
+                          key: a.id,
+                          className: 'it' + (on ? ' on' : ''),
+                          onClick: function () {
+                            let next;
+                            if (on) next = picked.filter(function (x) { return x !== a.id; });
+                            else { if (picked.length >= 9) return; next = picked.concat([a.id]); }
+                            setPhoneCompose(Object.assign({}, phoneCompose, { 图: next }));
+                          },
+                        }, th ? h('img', { src: th, alt: '' }) : h('div', { style: { padding: '6px', fontSize: '10px', color: 'var(--sim-t2)' } }, String(a.描述 || '').slice(0, 12)));
+                      }))
+                    : h('div', { style: { fontSize: 'var(--sim-fs-6)', color: 'var(--sim-t2)' } }, '相册是空的，先去相册加几张。'),
+                ),
+                h('div', { className: 'sim-ph-bar' },
+                  h('button', { className: 'sim-btn', onClick: function () { setPhoneCompose(null); setPhoneView('feed'); } }, '取消'),
+                  h('button', { className: 'sim-btn primary', style: { flex: '1 1 auto' }, disabled: !String(phoneCompose.正文 || '').trim() && !picked.length, onClick: phoneDoPost }, '发出去')
+                )
+              );
+            }
+
+            // feed：朋友圈 / 说说
+            if (phoneView === 'feed') {
+              const items = phoneFeed || [];
+              const meN = String((state && state.protagonist && state.protagonist.姓名) || '');
+              return h('div', { className: 'sim-ph-thread' },
+                // 顶部工具栏
+                h('div', { className: 'sim-ph-bar' },
+                  h('span', { style: { flex: '1 1 auto', fontSize: 'var(--sim-fs-5)', fontWeight: 600 } }, phonePlatform),
+                  h('button', { className: 'sim-btn', title: '只看我自己发的', onClick: function () {
+                    const next = phoneFeedWho === meN ? '' : meN;
+                    setPhoneFeedWho(next);
+                    phoneLoadFeed(phonePlatform, next);
+                  } }, phoneFeedWho ? '看全部' : '我的'),
+                  h('button', { className: 'sim-btn' + (phoneGenBusy ? '' : ' primary'), disabled: phoneGenBusy, onClick: phoneDoGen }, phoneGenBusy ? '…' : '刷新')
+                ),
+                // 列表
+                items.length
+                  ? h('div', { className: 'sim-ph-feed' }, items.map(function (it) {
+                      const liked = Array.isArray(it.赞) && it.赞.indexOf(meN) >= 0;
+                      return h('div', { className: 'sim-ph-post', key: it.id },
+                        h('div', { className: 'sim-ph-post-hd' },
+                          h('div', { className: 'sim-ph-post-av' }, feedAv(it.作者)),
+                          h('div', { style: { flex: '1 1 auto', minWidth: 0 } },
+                            h('div', { className: 'sim-ph-post-nm' }, String(it.作者 || '')),
+                            h('div', { className: 'sim-ph-post-tm' }, phoneClock(it.时间) || String(it.时间 || '').slice(0, 16)),
+                            it.正文 ? h('div', { className: 'sim-ph-post-bd' }, String(it.正文)) : null,
+                            (it.图片 && it.图片.length) ? it.图片.map(function (p, pi) {
+                              return h('div', { className: 'sim-ph-post-img', key: 'p' + pi },
+                                h('span', null, '🖼'),
+                                h('span', { className: 'd' }, String(p.描述 || '一张图'))
+                              );
+                            }) : null,
+                            h('div', { className: 'sim-ph-post-act' },
+                              h('span', { className: 'a' + (liked ? ' on' : ''), onClick: function () { phoneDoLike(it.id); } },
+                                '♥ ' + (Array.isArray(it.赞) && it.赞.length ? it.赞.join('、') : '赞')),
+                              h('span', { className: 'a', onClick: function () { setPhoneCmtFor(phoneCmtFor === it.id ? '' : it.id); setPhoneCmtText(''); } }, '评论'),
+                              it.自己发的 ? h('span', { className: 'a', onClick: function () {
+                                run(call('feedRemove', { 平台: phonePlatform, id: it.id }, gameId)).then(function (r) { if (r && r.ok) phoneLoadFeed(phonePlatform); });
+                              } }, '删') : null
+                            ),
+                            (it.评论 && it.评论.length) ? h('div', { className: 'sim-ph-cmts' }, it.评论.map(function (c, ci) {
+                              return h('div', { className: 'sim-ph-cmt', key: 'c' + ci }, h('b', null, String(c.谁 || '') + '：'), String(c.内容 || ''));
+                            })) : null,
+                            phoneCmtFor === it.id ? h('div', { className: 'sim-ph-in', style: { borderTop: 'none', background: 'transparent', paddingTop: '6px' } },
+                              h('textarea', { value: phoneCmtText, placeholder: '回复 ' + String(it.作者 || ''), onChange: function (e) { setPhoneCmtText(e.target.value.slice(0, 100)); } }),
+                              h('button', { className: 'sim-btn primary', onClick: function () { phoneDoComment(it.id); } }, '发')
+                            ) : null
+                          )
+                        )
+                      );
+                    }))
+                  : h('div', { className: 'sim-ph-empty' }, phoneGenBusy ? '正在刷新…' : '还没有动态，点「刷新」看看。')
+                ,
+                h('div', { className: 'sim-ph-bar' },
+                  h('button', { className: 'sim-btn primary', style: { flex: '1 1 auto' }, onClick: function () { setPhoneCompose({ 正文: '', 图: [] }); setPhoneView('compose'); if (!phoneAlbumLoaded) phoneLoadAlbum(); else phoneLoadAlbum(); } }, '发一条')
+                )
+              );
+            }
+
+            // album：网格 + 底部添加
+            if (phoneView === 'album') {
+              const items = phoneAlbum || [];
+              return h('div', { className: 'sim-ph-thread' },
+                items.length
+                  ? h('div', { className: 'sim-ph-alb' }, items.map(function (a) {
+                      const th = phoneThumbs[String(a.库id)] || '';
+                      return h('div', { className: 'sim-ph-alb-i', key: a.id },
+                        th ? h('img', { src: th, alt: '' }) : null,
+                        h('div', { className: 'd' }, String(a.描述 || '')),
+                        h('button', {
+                          className: 'x',
+                          title: '删掉这张',
+                          onClick: function (e) {
+                            e.stopPropagation();
+                            run(call('albumRemove', { id: a.id }, gameId)).then(function (r) {
+                              if (r && r.ok) { setPhoneAlbum(r.items || []); }
+                            });
+                          },
+                        }, '✕')
+                      );
+                    }))
+                  : h('div', { className: 'sim-ph-empty' }, '相册还是空的。')
+                ,
+                h('div', { className: 'sim-ph-bar' },
+                  h('button', { className: 'sim-btn primary', onClick: phoneOpenPick }, '从图库添加')
+                )
+              );
+            }
+
             return h('div', { className: 'sim-ph-grid' },
               phoneApp('✉️', '短信', () => setPhoneView('contacts'), !!(phoneContacts && phoneContacts.length) === false),
               phoneApp('👥', '联系人', () => {
@@ -5397,10 +5673,10 @@ function App({ gameId, close }) {
                 }
               }),
               phoneApp('📷', '相机', () => {}, !era.有相机),
-              phoneApp('🖼️', '相册', () => {}, true),
+              phoneApp('🖼️', '相册', () => { setPhoneView('album'); if (!phoneAlbumLoaded) phoneLoadAlbum(); }),
               phoneApp('📞', '电话', () => {}, true),
-              phoneApp('💬', '微信', () => {}, !era.有微信),
-              phoneApp('🅦', '微博', () => {}, !era.有微博),
+              phoneApp('💬', '微信', () => { setPhonePlatform('朋友圈'); setPhoneFeedWho(''); setPhoneView('feed'); phoneLoadFeed('朋友圈', ''); }, !era.有微信),
+              phoneApp('🐧', 'QQ', () => { setPhonePlatform('说说'); setPhoneFeedWho(''); setPhoneView('feed'); phoneLoadFeed('说说', ''); }, !era.有QQ),
             );
           }
           /** 浮窗实际用的定位样式：拖过就用 left/top，没拖过保持默认的右下角 */
@@ -11920,7 +12196,7 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
                       ? h('button', {
                           className: 'sim-ph-hd-btn',
                           title: '返回',
-                          onClick: () => { setPhoneView('home'); setPhoneThreadId(''); setPhoneMsgs([]); setPhoneIn(''); },
+                          onClick: () => { const back = phoneView === 'compose' ? 'feed' : 'home'; if (back === 'home') { setPhoneThreadId(''); setPhoneMsgs([]); setPhoneIn(''); setPhoneFeedWho(''); } setPhoneView(back); },
                         }, '‹')
                       : null,
                     h('span', { className: 't' }, phoneHeadTitle()),
@@ -11931,7 +12207,31 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
                       onClick: () => setPhoneOpen(false),
                     }, '✕'),
                   ),
-                  h('div', { className: 'sim-ph-body' }, phoneBody()),
+                  h('div', { className: 'sim-ph-body' }, phoneBody(), phonePick ? h('div', { className: 'sim-ph-pick' },
+                    h('div', { className: 'sim-ph-pick-c' },
+                      h('div', { style: { fontWeight: 600, fontSize: 'var(--sim-fs-4)' } }, '从图库选一张'),
+                      (phoneLibrary && phoneLibrary.length)
+                        ? h('div', { className: 'sim-ph-pick-g' }, phoneLibrary.map(function (x) {
+                            return h('div', {
+                              key: x.id,
+                              className: 'it' + (phonePick.libId === x.id ? ' on' : ''),
+                              onClick: function () { setPhonePick(Object.assign({}, phonePick, { libId: x.id })); },
+                            }, h('img', { src: x.thumb, alt: '' }));
+                          }))
+                        : h('div', { className: 'sim-ph-empty' }, '图库是空的，先去图库上传几张。'),
+                      h('textarea', {
+                        className: '',
+                        value: phonePick.描述,
+                        placeholder: '这张照片里是什么？（别人评论时要看这个）',
+                        style: { minHeight: '52px', resize: 'none', borderRadius: '9px', border: '1px solid var(--sim-bd)', background: 'var(--sim-bg)', color: 'var(--sim-t)', padding: '8px 10px', fontSize: 'var(--sim-fs-5)', fontFamily: 'inherit' },
+                        onChange: function (e) { setPhonePick(Object.assign({}, phonePick, { 描述: e.target.value.slice(0, 60) })); },
+                      }),
+                      h('div', { style: { display: 'flex', gap: '8px', justifyContent: 'flex-end' } },
+                        h('button', { className: 'sim-btn', onClick: function () { setPhonePick(null); } }, '取消'),
+                        h('button', { className: 'sim-btn primary', disabled: !phonePick.libId || !String(phonePick.描述 || '').trim(), onClick: phoneDoAddPick }, '加进相册')
+                      )
+                    )
+                  ) : null),
                 )
               : null,
             asOpen
