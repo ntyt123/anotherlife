@@ -630,6 +630,28 @@ const WEAR_KEYS = ['头部', '上衣', '内衣', '内裤', '下衣', '袜子', '
     return SCENT_LINES;
   }
 
+  /** 内衣内裤的气味词库（scent-under.json）。结构：{ 内衣: {0:[...],...}, 内裤: {...} } */
+  const SCENT_UNDER_FILE = HERE_DIR ? HERE_DIR.replace(/[\\/]+$/, '') + '/scent-under.json' : '';
+  let SCENT_UNDER = null;
+  let SCENT_UNDER_TRIED = false;
+
+  async function loadScentUnder() {
+    if (SCENT_UNDER_TRIED) return SCENT_UNDER;
+    SCENT_UNDER_TRIED = true;
+    if (!SCENT_UNDER_FILE) return (SCENT_UNDER = null);
+    try {
+      const j = await readJson(SCENT_UNDER_FILE);
+      SCENT_UNDER = j && typeof j === 'object' && !Array.isArray(j) ? j : null;
+      const n1 = SCENT_UNDER && SCENT_UNDER.内衣 ? Object.keys(SCENT_UNDER.内衣).filter(function (k) { return /^[0-5]$/.test(k); }).length : 0;
+      const n2 = SCENT_UNDER && SCENT_UNDER.内裤 ? Object.keys(SCENT_UNDER.内裤).filter(function (k) { return /^[0-5]$/.test(k); }).length : 0;
+      await turnLog('[scent] 内衣词库 ' + n1 + ' 档 / 内裤 ' + n2 + ' 档');
+    } catch (e) {
+      SCENT_UNDER = null;
+      await turnLog('[scent] 读不到 scent-under.json，用内置兜底：' + String((e && e.message) || e));
+    }
+    return SCENT_UNDER;
+  }
+
   async function writeJson(path, data) {
     // 不缩进：存档是给程序读的，缩进白占一成半的体积（实测 856KB → 722KB）
     const body = JSON.stringify(data);
@@ -832,6 +854,12 @@ async function activeWritingSkill() {
 
 
   async function loadState(gameId) {
+    // 气味词库要先加载：下面 ensureWear / migrateScentText 都可能用到 scentTextOf，
+    // 而它读的是这两个全局变量。懒加载，进程内只读一次文件。
+    // 之前一直没有调用点 —— scent-lines.json 那 408KB、六档五千句从来没被用过，
+    // 气味文案一直走的是内置三池兜底（日志里 [scent] 一次都没出现过）。
+    await loadScentLines();
+    await loadScentUnder();
     let raw = await readJson(statePath(gameId));
     if (!raw) {
       // 一次性迁移：很早期的版本只存了一个全局单档。
@@ -3074,9 +3102,35 @@ function sockLooks(name) {
  * 按档位生成一句气味描写。
  * 同一档位内固定用同一句（跨档才换）—— 每轮换一句会让界面上那句话一直闪。
  */
-function scentTextOf(level, material, sockName, extra) {
+/**
+ * 内衣内裤气味的兜底（scent-under.json 读不到时用）。
+ * 每档只放一两句，够看出档位差异就行 —— 真正跑起来靠 json 里那一百多句。
+ * 写法跟袜子词库一致：一句流水句，什么时候换的 + 此刻的样子 + 闻起来怎样。
+ */
+const UNDER_FALLBACK = {
+  内衣: {
+    0: ['今早刚换的，棉布还带着洗衣粉的干爽。', '昨晚才洗过，布里那点皂味还没散。'],
+    1: ['穿了半天，胸下压出一圈印，凑近了才有一点汗味。'],
+    2: ['一天下来，边上软塌了，贴着皮肤那块有股温吞的汗气。'],
+    3: ['两天没换，布面发潮，领口那道汗痕已经干成浅黄。'],
+    4: ['第三天了，边上起球，脱下来的时候能闻到酸。'],
+    5: ['四五天没动过，布板了，贴上去像碰到一块凉石头。'],
+  },
+  内裤: {
+    0: ['今早刚换的，布还是凉的。', '昨晚洗过晾干，只有一点皂味。'],
+    1: ['半天下来，贴着的那块有点潮，自己不太察觉得到。'],
+    2: ['一天了，布贴住不动，动一下才觉得闷。'],
+    3: ['两天没换，一坐下来就有味道钻出来。'],
+    4: ['第三天，闷得有点发酸，布边上起了毛球。'],
+    5: ['多日没换，酸味已经实了，脱下来自己都要别开脸。'],
+  },
+};
+
+function scentTextOf(level, material, sockName, extra, kind, sub) {
   const lv = Math.max(0, Math.min(5, Number(level) || 0));
-  const looks = sockLooks(sockName);
+  // 内衣内裤的款式词跟袜子不是一套（sockLooks 只认船袜/中筒/连裤这些），
+  const isUnder = kind === 'under';
+  const looks = isUnder ? { color: '', style: '' } : sockLooks(sockName);
   const fill = function (s) {
     return String(s == null ? '' : s)
       .replace(/\{材\}/g, MAT_WORD[material] || '布面')
@@ -3096,12 +3150,19 @@ function scentTextOf(level, material, sockName, extra) {
   // 外部整句词库优先（scent-lines.json）。整句是一条流水句 ——
   // 什么时候换的 + 此刻在脚上的样子 + 闻起来怎么样，写在一个句子里。
   // 三个池分开拼就不行：各自完整，拼起来变三个主语三件事，读着像三条读数。
-  if (SCENT_LINES) {
-    const lines = SCENT_LINES[String(lv)];
+  // 内衣内裤走自己的库（json 优先，读不到用内置兜底）；袜子走 scent-lines.json
+  const lib = isUnder
+    ? ((SCENT_UNDER && SCENT_UNDER[sub]) || UNDER_FALLBACK[sub] || null)
+    : SCENT_LINES;
+  if (lib) {
+    const lines = lib[String(lv)];
     if (Array.isArray(lines) && lines.length) {
       return 收句号(lines[Math.abs(seed) % lines.length]);
     }
   }
+  // 内衣内裤没有三池兜底 —— 库里查不到就返回空，界面显示「（未记录）」
+  if (isUnder) return '';
+
   const p1 = SCENT_TEXT[lv] || SCENT_TEXT[2];
   const p2 = SOCK_LOOK_TEXT[lv];
   const p3 = SOCK_WEAR_TEXT[lv];
@@ -3546,6 +3607,103 @@ function tickUnderDirt(s, dh) {
   (Array.isArray(s.npcs) ? s.npcs : []).forEach((n, i) => walk(n, ['npcs', i]));
   return out;
 }
+
+/** 内衣内裤的材质识别（跟袜子不是一套：袜子认羊毛竹纤维，这里认蕾丝冰丝） */
+function detectUnderMaterial(name) {
+  const n = String(name || '');
+  if (/冰丝/.test(n)) return '冰丝';
+  if (/蕾丝|花边|网纱|网眼|镂空/.test(n)) return '蕾丝';
+  if (/莫代尔/.test(n)) return '莫代尔';
+  if (/真丝|丝质|缎|绸|雪纺/.test(n)) return '丝';
+  if (/棉/.test(n)) return '棉';
+  return '混纺';
+}
+
+/** 内衣穿多久到满值（小时）。比袜子短 —— 贴身层更该勤换 */
+const UNDER_BRA_HOURS = { 棉: 60, 丝: 48, 蕾丝: 40, 莫代尔: 54, 冰丝: 44, 混纺: 50 };
+/** 内裤更短一档 */
+const UNDER_BRIEF_HOURS = { 棉: 48, 丝: 40, 蕾丝: 34, 莫代尔: 44, 冰丝: 38, 混纺: 42 };
+
+function tickUnderScent(s, dh, body) {
+  const out = [];
+  const bodyText = String(body || '');
+  const list = [];
+  list.push({ owner: s.protagonist, base: [] });
+  (Array.isArray(s.npcs) ? s.npcs : []).forEach((n, i) => list.push({ owner: n, base: ['npcs', i] }));
+
+  list.forEach(({ owner, base }) => {
+    if (!owner || typeof owner !== 'object') return;
+    // 只算女性（跟袜子气味、沾染同一条设定）
+    if (String(owner.性别 || '').indexOf('男') >= 0) return;
+    const w = owner.穿着;
+    if (!w || typeof w !== 'object') return;
+    ['内衣', '内裤'].forEach((key) => {
+      const slot = w[key];
+      if (!slot || typeof slot !== 'object') return;
+      const nm = String(slot.物品 || '').trim();
+      if (!nm) return;
+      const mat = detectUnderMaterial(nm);
+      const full = (key === '内衣' ? UNDER_BRA_HOURS : UNDER_BRIEF_HOURS)[mat] || 50;
+
+      // ⓪ 老数据：没有强度就补一个初始值（默认刚换上，因为它本来就该一天一换）
+      const hasInten = slot.气味强度 != null && slot.气味强度 !== '' && Number.isFinite(Number(slot.气味强度));
+      if (!hasInten) {
+        const t0 = scentTextOf(0, mat, nm, String(owner.姓名 || ''), 'under', key);
+        out.push(engineDiff(base.concat(['穿着', key, '气味强度']), undefined, 0, 'underscent'));
+        out.push(engineDiff(base.concat(['穿着', key, '穿着小时']), undefined, 0, 'underscent'));
+        out.push(engineDiff(base.concat(['穿着', key, '材质']), undefined, mat, 'underscent'));
+        out.push(engineDiff(base.concat(['穿着', key, '气味']), String(slot.气味 || ''), t0, 'underscent'));
+        out.push(engineDiff(base.concat(['穿着', key, '穿着时长']), String(slot.穿着时长 || ''), '刚换上', 'underscent'));
+        slot.气味强度 = 0;
+        slot.穿着小时 = 0;
+        slot.材质 = mat;
+        slot.气味 = t0;
+        slot.穿着时长 = '刚换上';
+        return;
+      }
+
+      // 已有强度：只校正文本（模型写的那句不要）
+      const txt = String(slot.气味 || '').trim();
+      const t2 = scentTextOf(scentLevel(Number(slot.气味强度)), mat, nm, String(owner.姓名 || ''), 'under', key);
+      if (txt && t2 && txt !== t2) {
+        out.push(engineDiff(base.concat(['穿着', key, '气味']), txt, t2, 'underscent'));
+        slot.气味 = t2;
+      }
+
+      // ① 累加：只在时间推进时
+      if (!(dh > 0)) return;
+      // 不在场就不跟时间走（跟袜子一个道理：我们不知道她换没换）
+      const who = String(owner.姓名 || '').trim();
+      if (bodyText && who.length >= 2 && bodyText.indexOf(who) < 0) return;
+      const dhEff = Math.min(dh, 24);
+      const rate = 100 / full;
+      const before = Number(slot.气味强度) || 0;
+      const beforeH = Number(slot.穿着小时) || 0;
+      const after = Math.min(100, Math.round((before + dhEff * rate) * 10) / 10);
+      const afterH = Math.min(160, Math.round((beforeH + dhEff) * 10) / 10);
+      if (after !== before) {
+        out.push(engineDiff(base.concat(['穿着', key, '气味强度']), before, after, 'underscent'));
+        slot.气味强度 = after;
+      }
+      if (afterH !== beforeH) {
+        out.push(engineDiff(base.concat(['穿着', key, '穿着小时']), beforeH, afterH, 'underscent'));
+        slot.穿着小时 = afterH;
+      }
+      const newText = scentTextOf(scentLevel(after), mat, nm, who, 'under', key);
+      if (newText && newText !== txt) {
+        out.push(engineDiff(base.concat(['穿着', key, '气味']), txt, newText, 'underscent'));
+        slot.气味 = newText;
+      }
+      const newDur = humanSockHours(afterH);
+      if (newDur !== String(slot.穿着时长 || '')) {
+        out.push(engineDiff(base.concat(['穿着', key, '穿着时长']), String(slot.穿着时长 || ''), newDur, 'underscent'));
+        slot.穿着时长 = newDur;
+      }
+    });
+  });
+  return out;
+}
+
 
 
 /**
@@ -6337,6 +6495,11 @@ function seasonText(s) {
           // 返回的条目自带 from（applyDiffs 已跑过），重算/删轮才能一起退回去。
           const sockDiffs = tickSockScent(s, sp.body);
           sockDiffs.forEach((d) => diffs.push(d));
+
+          // 内衣内裤的气味（跟袜子分开算：材质表、满值小时都不一样）
+          // 需要 dh 和正文：dh 判断推进多久，正文判断她这一轮在不在场
+          const underDiffs = tickUnderScent(s, Number(s._lastDh) || 0, sp.body);
+          underDiffs.forEach((d) => diffs.push(d));
 
           // 身体痕迹消退：复用 tickSockScent 刚算好的小时差
           const traceDiffs = tickBodyTraces(s, Number(s._lastDh) || 0);
