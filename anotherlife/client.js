@@ -222,6 +222,12 @@ window.__ModuleLoader__.load({
       // 值可能是一句话那么长的标签：包一层让它在标签右侧换行；底色用中性的淡底深字，主题色底看不清
       '.sim-know .vals{flex:1 1 auto;min-width:0;display:flex;flex-wrap:wrap;gap:5px}',
       '.sim-know .tag{display:inline-block;max-width:100%;padding:2px 9px;border-radius:8px;background:var(--sim-bg);border:1px solid var(--sim-bd);color:var(--sim-t);font-size:var(--sim-fs-5);line-height:1.6;white-space:normal;word-break:break-word}',
+  '.sim-priv{display:flex;gap:10px;align-items:flex-start;padding:4px 0}',
+  '.sim-priv .k{flex:0 0 auto;min-width:62px;padding-top:3px;color:var(--sim-t2);font-size:var(--sim-fs-4)}',
+  '.sim-priv-list{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:5px}',
+  '.sim-priv-item{padding:4px 9px;border-radius:8px;background:var(--sim-bg2);border:1px solid var(--sim-bd)}',
+  '.sim-priv-main{font-size:var(--sim-fs-5);line-height:1.55;color:var(--sim-t);word-break:break-word}',
+  '.sim-priv-sub{margin-top:1px;font-size:var(--sim-fs-6);line-height:1.5;color:var(--sim-t2);word-break:break-word}',
       '.sim-know .tag .sens{display:inline-block;width:5px;height:5px;border-radius:50%;background:#d97a41;margin-left:5px;vertical-align:middle}',
       // 内容长的（角色弹窗那种）用单列，两列会被长标签撑错位
       '.sim-know-list{display:flex;flex-direction:column;gap:9px}',
@@ -1518,7 +1524,7 @@ window.__ModuleLoader__.load({
          * 基本信息只渲染 protNarrow（白名单），而这几个会被显式排除掉。
          * 所以往这里加字段是一处两得 —— 既从基本信息里拿掉，又出现在私密面板里。
          */
-        const NSFW_KEYS = ['性癖', '敏感点', '底线', '经验', '私人关系', '隐患'];
+const NSFW_KEYS = ['性癖', '敏感点', '底线', '经验', '私人关系', '隐患', '私密物品', '自察'];
         /** 短词数组：从通用字段表里拿出来，单独排成一排小标签（跟疾病与伤病同一种显示方式） */
         const TAGROW_KEYS = ['标签', '特点', '代表作品'];
         /**
@@ -7870,7 +7876,9 @@ onDoubleClick: () => {
                 h(
                   'div',
                   { className: 'sim-know-list' },
-                  NSFW_KEYS.map((k) => knowField(k, draft.protagonist[k]))
+                  NSFW_KEYS.filter((k) => k !== '私密物品' && k !== '自察').map((k) => knowField(k, draft.protagonist[k])),
+                  privField('私密物品', draft.protagonist.私密物品, ['名称', '藏处'], ['来历']),
+                  privField('自察', draft.protagonist.自察, ['时刻', '部位'], ['感觉'])
                 )
               ),
               // 代表作品／主要奖项 不在这里显示：它们属于演艺资料，由「星途模拟」页签整批展示
@@ -8178,6 +8186,35 @@ function renderTrace(v) {
                       );
                     })
                   )
+            );
+          }
+
+          /**
+           * 「私密物品」「自察」这类「一组小对象」的字段。
+           * 每条一个小块：主行是骨架（名称——藏处 / 时刻·部位），次行是小字（来历 / 感觉）。
+           * 空数组整块不出现 —— 不写「未知」，那只是白占地方。
+           */
+          function privField(label, arr, mainKeys, subKeys) {
+            const rows = (Array.isArray(arr) ? arr : []).filter(
+              (x) => x && typeof x === 'object' && !Array.isArray(x)
+            );
+            const items = rows
+              .map((x) => ({
+                main: mainKeys.map((k) => String(x[k] || '').trim()).filter(Boolean).join(' —— '),
+                sub: subKeys.map((k) => String(x[k] || '').trim()).filter(Boolean).join(' · '),
+              }))
+              .filter((x) => x.main || x.sub);
+            if (!items.length) return null;
+            return h('div', { className: 'sim-priv', key: label },
+              h('span', { className: 'k' }, label),
+              h('div', { className: 'sim-priv-list' },
+                items.map((x, i) =>
+                  h('div', { className: 'sim-priv-item', key: i },
+                    x.main ? h('div', { className: 'sim-priv-main' }, x.main) : null,
+                    x.sub ? h('div', { className: 'sim-priv-sub' }, x.sub) : null
+                  )
+                )
+              )
             );
           }
           /** 「身体」：只显示剧情里真被记下来的部位；一个都没有就整块不出现 */
@@ -9556,7 +9593,9 @@ function toggleFans(npc) {
                       { className: 'sim-know-list' },
                       ['性癖', '敏感点', '底线', '经验'].map((k) =>
             k === '敏感点' ? knowField(k, npc && npc[k], npc && npc.敏感度) : knowField(k, npc && npc[k])
-          )
+                      ),
+                      privField('私密物品', npc && npc.私密物品, ['名称', '藏处'], ['来历']),
+                      privField('自察', npc && npc.自察, ['时刻', '部位'], ['感觉']),
                     )
                   ),
                   bodyBlock(npc),
