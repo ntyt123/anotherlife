@@ -5408,6 +5408,40 @@ function App({ gameId, close }) {
             return n ? n.slice(0, 1) : '友';
           }
 
+          /**
+           * 把「自己那条之后的内容」按字数逐条放出来。
+           *
+           * 抽成公共函数的原因：正常发送、重发、重生成三条路径都要这套效果，
+           * 之前只有「正常发送」内联了它，另外两条直接 setPhoneMsgs 一次铺开，
+           * 所以看起来只有正常发送才有「正在输入」。
+           */
+          function phoneReveal(all, lastOut) {
+            const arr = Array.isArray(all) ? all : [];
+            if (lastOut < 0) { setPhoneBusy(false); return; }
+            setPhoneMsgs(arr.slice(0, lastOut + 1));
+            const rest = arr.slice(lastOut + 1);
+            if (!rest.length) { setPhoneBusy(false); return; }
+            let k = 0;
+            const step = function () {
+              if (k >= rest.length) { setPhoneBusy(false); return; }
+              const cur = rest[k];
+              const wait = cur && cur.类型 === 'image' ? 1200 : phoneTypingMs(cur && cur.内容);
+              window.setTimeout(function () {
+                k++;
+                setPhoneMsgs(arr.slice(0, lastOut + 1 + k));
+                step();
+              }, wait);
+            };
+            step();
+          }
+
+          /** 从返回的完整线程里找「最后一条自己发的」的位置 */
+          function phoneLastOut(all) {
+            let n = -1;
+            (Array.isArray(all) ? all : []).forEach(function (m, k) { if (m && m.方向 === 'out') n = k; });
+            return n;
+          }
+
           function phoneSendNow() {
             const t = String(phoneIn || '').trim();
             if (!t || phoneBusy || !phoneThreadId) return;
@@ -5423,25 +5457,7 @@ function App({ gameId, close }) {
               .then((r) => {
                 if (!r || !r.ok) { setPhoneBusy(false); setPhoneMsgs(base.slice(0, -1)); return; }
                 const all = r.messages || [];
-                // 定位「我刚发的那条」在真实数组里的位置：最后一条 out
-                let lastOut = -1;
-                all.forEach((m, k) => { if (m && m.方向 === 'out') lastOut = k; });
-                if (lastOut < 0) { setPhoneBusy(false); return; }
-                setPhoneMsgs(all.slice(0, lastOut + 1));
-                const rest = all.slice(lastOut + 1);
-                if (!rest.length) { setPhoneBusy(false); return; }
-                let k = 0;
-                const step = () => {
-                  if (k >= rest.length) { setPhoneBusy(false); return; }
-                  const cur = rest[k];
-                  const wait = cur && cur.类型 === 'image' ? 1200 : phoneTypingMs(cur && cur.内容);
-                  window.setTimeout(() => {
-                    k++;
-                    setPhoneMsgs(all.slice(0, lastOut + 1 + k));
-                    step();
-                  }, wait);
-                };
-                step();
+                phoneReveal(all, phoneLastOut(all));
               })
               .catch(() => { setPhoneBusy(false); setPhoneMsgs(base.slice(0, -1)); });
           }
@@ -5497,12 +5513,28 @@ function App({ gameId, close }) {
               h('span', { className: 'ops' + (m.方向 === 'out' ? ' left' : '') },
                     m.方向 === 'in'
                       ? h('button', {
-                          onClick: () => run(call('phoneRegen', { threadId: phoneThreadId, msgId: m.id }, gameId))
-                            .then((r) => { if (r && r.ok) setPhoneMsgs(r.messages || []); }),
+                          onClick: () => {
+                            setPhoneBusy(true);
+                            run(call('phoneRegen', { threadId: phoneThreadId, msgId: m.id }, gameId))
+                              .then((r) => {
+                                if (!r || !r.ok) { setPhoneBusy(false); return; }
+                                const all = r.messages || [];
+                                phoneReveal(all, phoneLastOut(all));
+                              })
+                              .catch(() => setPhoneBusy(false));
+                          },
                         }, '重生成')
                       : m.类型 === 'image' ? null : h('button', {
-                          onClick: () => run(call('phoneResend', { threadId: phoneThreadId, msgId: m.id }, gameId))
-                            .then((r) => { if (r && r.ok) setPhoneMsgs(r.messages || []); }),
+                          onClick: () => {
+                            setPhoneBusy(true);
+                            run(call('phoneResend', { threadId: phoneThreadId, msgId: m.id }, gameId))
+                              .then((r) => {
+                                if (!r || !r.ok) { setPhoneBusy(false); return; }
+                                const all = r.messages || [];
+                                phoneReveal(all, phoneLastOut(all));
+                              })
+                              .catch(() => setPhoneBusy(false));
+                          },
                         }, '重发'),
                     h('button', {
                       onClick: () => run(call('phoneDelete', { threadId: phoneThreadId, msgId: m.id }, gameId))
