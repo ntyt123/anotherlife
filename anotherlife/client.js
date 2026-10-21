@@ -3790,6 +3790,7 @@ function App({ gameId, close }) {
         const [phoneGenBusy, setPhoneGenBusy] = React.useState(false);
         const [phoneCompose, setPhoneCompose] = React.useState(null);  // {正文, 图:[相册id]}
         const [phoneCmtFor, setPhoneCmtFor] = React.useState('');      // 正在给哪条写评论
+        const [phoneAct, setPhoneAct] = React.useState(null);  // {姓名, 号码}
         const [phoneCmtText, setPhoneCmtText] = React.useState('');
           // 缩放手柄的尺寸与最小可用尺寸
           const AS_MIN_W = 300;
@@ -5246,6 +5247,7 @@ function App({ gameId, close }) {
             if (phoneView === 'thread') return phoneWho || '短信';
             if (phoneView === 'album') return '相册';
             if (phoneView === 'feed') return phoneFeedWho ? phoneFeedWho + '的' + phonePlatform : phonePlatform;
+            if (phoneView === 'call') return phoneWho ? '通话 · ' + phoneWho : '通话';
             if (phoneView === 'compose') return phonePlatform === '说说' ? '发说说' : '发朋友圈';
             return '手机';
           }
@@ -5403,6 +5405,17 @@ function App({ gameId, close }) {
           }
 
           /** 动态里的头像字（没有真头像，用姓名的第一个字） */
+          /** 联系人副标题：优先电话，退到微信/QQ。带个前缀，一眼看出是哪种号 */
+          function phoneNumberText(c) {
+            const t = String((c && c.电话) || '').trim();
+            const w = String((c && c.微信) || '').trim();
+            const q = String((c && c.QQ) || '').trim();
+            if (t) return t;
+            if (w) return '微信 ' + w;
+            if (q) return 'QQ ' + q;
+            return '没有号码';
+          }
+
           function feedAv(name) {
             const n = String(name || '友').trim();
             return n ? n.slice(0, 1) : '友';
@@ -5484,27 +5497,30 @@ function App({ gameId, close }) {
                 h('div', {
                   className: 'sim-ph-row',
                   key: c.姓名,
-                  onClick: () => phoneOpenThread(c.姓名),
+                  // 点整条 → 弹「发短信 / 打电话」
+                  onClick: () => setPhoneAct({ 姓名: String(c.姓名 || ''), 号码: phoneNumberText(c) }),
                 },
                   h('div', { className: 'sim-ph-av' }, String(c.姓名 || '?').slice(0, 1)),
                   h('div', { className: 'sim-ph-rc' },
                     h('div', { className: 'n' }, c.姓名),
-                    h('div', { className: 'p' }, c.最近 || c.电话 || c.微信 || '')
+                    h('div', { className: 'p' }, phoneNumberText(c))
                   )
-                    ,h('button', {
-                      className: 'sim-ph-hd-btn',
-                      style: { flex: '0 0 auto' },
-                      title: '看她发的',
-                      onClick: function (e) {
-                        e.stopPropagation();
-                        setPhonePlatform('朋友圈');
-                        setPhoneFeedWho(c.姓名);
-                        setPhoneView('feed');
-                        phoneLoadFeed('朋友圈', c.姓名);
-                      },
-                    }, '🖼')
                 )
               ));
+            }
+
+            // call：只有壳 —— 通话本身要语音/生图，都还没接
+            if (phoneView === 'call') {
+              return h('div', { className: 'sim-ph-thread' },
+                h('div', { style: { flex: '1 1 auto', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '10px', padding: '24px' } },
+                  h('div', { style: { fontSize: '52px', opacity: .35 } }, '📞'),
+                  h('div', { style: { fontSize: 'var(--sim-fs-4)', fontWeight: 600 } }, phoneWho || ''),
+                  h('div', { style: { fontSize: 'var(--sim-fs-6)', color: 'var(--sim-t2)' } }, '暂无通话记录')
+                ),
+                h('div', { className: 'sim-ph-bar' },
+                  h('button', { className: 'sim-btn', style: { flex: '1 1 auto' }, onClick: () => setPhoneView('contacts') }, '返回')
+                )
+              );
             }
 
             if (phoneView === 'thread') {
@@ -12260,7 +12276,7 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
                       onClick: () => setPhoneOpen(false),
                     }, '✕'),
                   ),
-                  h('div', { className: 'sim-ph-body' }, phoneBody(), phonePick ? h('div', { className: 'sim-ph-pick' },
+                  h('div', { className: 'sim-ph-body' }, phoneBody(), phoneAct ? h('div', { className: 'sim-ph-pick' }, h('div', { className: 'sim-ph-pick-c', style: { gap: '9px' } }, h('div', { style: { fontWeight: 600, fontSize: 'var(--sim-fs-4)' } }, phoneAct.姓名), h('div', { style: { fontSize: 'var(--sim-fs-6)', color: 'var(--sim-t2)' } }, phoneAct.号码 || '没有号码'), h('div', { style: { display: 'flex', gap: '8px' } }, h('button', { className: 'sim-btn primary', style: { flex: '1 1 auto' }, onClick: () => { const nm = phoneAct.姓名; setPhoneAct(null); phoneOpenThread(nm); } }, '发短信'), h('button', { className: 'sim-btn', style: { flex: '1 1 auto' }, onClick: () => { setPhoneWho(phoneAct.姓名); setPhoneAct(null); setPhoneView('call'); } }, '打电话')), h('button', { className: 'sim-btn', style: { width: '100%' }, onClick: () => setPhoneAct(null) }, '取消'))) : null, phonePick ? h('div', { className: 'sim-ph-pick' },
                     h('div', { className: 'sim-ph-pick-c' },
                       h('div', { style: { fontWeight: 600, fontSize: 'var(--sim-fs-4)' } }, '从图库选一张'),
                       (phoneLibrary && phoneLibrary.length)
