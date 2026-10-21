@@ -9098,6 +9098,23 @@ const HUMAN_MSG = [
   });
 
   /** 群加人 / 退群 */
+  /** 解散群：连它的会话、历史、草稿一起删掉 */
+  reg('phoneGroupDelete', async ({ gameId, 群名 }) => {
+    const s = await loadState(gameId);
+    const nm = String(群名 || "").trim();
+    if (!s.手机.群 || !s.手机.群[nm]) throw new Error('没有这个群');
+    delete s.手机.群[nm];
+    // 线程可能挂在任何一个平台上（建群时在微信就 wechat:群:名）
+    ['wechat', 'qq', 'sms'].forEach(function (p) {
+      const tid = p + ':群:' + nm;
+      delete s.手机.线程[tid];
+      delete s.手机.线程历史[tid];
+      delete s.手机.草稿[tid];
+    });
+    await saveState(s);
+    return { ok: true };
+  });
+
   reg('phoneGroupMember', async ({ gameId, 群名, 加, 减 }) => {
     const s = await loadState(gameId);
     const nm = String(群名 || "").trim();

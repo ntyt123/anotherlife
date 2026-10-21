@@ -5326,6 +5326,21 @@ function App({ gameId, close }) {
             });
           }
 
+          /** 解散一个群（带确认） */
+          /** 解散一个群（带确认）。ask 是 Promise 式，不是回调式 */
+          function phoneDeleteGroup(群名) {
+            ask('解散「' + 群名 + '」？群里的聊天记录也会一起没掉。').then(function (ok) {
+              if (!ok) return;
+              run(call('phoneGroupDelete', { 群名: 群名 }, gameId)).then(function (r) {
+                if (r && r.ok) {
+                  // 如果正停在这个群里，退回去
+                  if (phoneWho === 群名) { setPhoneWho(''); setPhoneThreadId(''); setPhoneView('groups'); }
+                  phoneLoadGroups();
+                }
+              });
+            });
+          }
+
           function phoneLoadContacts(plat) {
             const p = plat || (phoneApp2 === 'wechat' ? 'wechat' : phoneApp2 === 'qq' ? 'qq' : 'sms');
             return run(call('phoneGet', { 平台: p }, gameId)).then(function (r) {
@@ -5528,6 +5543,13 @@ function App({ gameId, close }) {
                         h('div', { className: 'sim-ph-rc' },
                           h('div', { className: 'n' }, g.群名),
                           h('div', { className: 'p' }, (Array.isArray(g.成员) ? g.成员.join('、') : '') + (g.条数 ? '　' + g.最近 : ''))
+                        ,
+                        h('button', {
+                          className: 'sim-ph-hd-btn',
+                          style: { flex: '0 0 auto' },
+                          title: '解散这个群',
+                          onClick: function (e) { e.stopPropagation(); phoneDeleteGroup(g.群名); },
+                        }, '✕')
                         )
                       );
                     }))
