@@ -282,6 +282,7 @@ window.__ModuleLoader__.load({
       '.sim-ph-msg.out{align-self:flex-end;background:var(--sim-say, #3d6bb3);color:#fff}',
       '.sim-ph-msg.in{align-self:flex-start;background:var(--sim-bg);border:1px solid var(--sim-bd);color:var(--sim-t)}',
       '.sim-ph-msg .ts{display:block;margin-top:3px;font-size:var(--sim-fs-6);opacity:.6}',
+      '.sim-ph-who{font-size:10px;color:var(--sim-t2);margin-bottom:2px;line-height:1.3}',
       '.sim-ph-msg .ops{position:absolute;top:-8px;right:-6px;display:none;gap:3px}',
       '.sim-ph-msg .ops.left{right:auto;left:-6px}',
       '.sim-ph-typing{align-self:flex-start;display:inline-flex;align-items:center;gap:7px;padding:7px 12px;border-radius:12px;background:var(--sim-bg);border:1px solid var(--sim-bd);color:var(--sim-t2);font-size:var(--sim-fs-6);line-height:1.5}',
@@ -3792,6 +3793,8 @@ function App({ gameId, close }) {
         const [phoneCmtFor, setPhoneCmtFor] = React.useState('');      // 正在给哪条写评论
         const [phoneAct, setPhoneAct] = React.useState(null);  // {姓名, 号码}
         const [phoneApp2, setPhoneApp2] = React.useState('');  // '' | 'wechat' | 'qq' —— 当前在哪个 app 里
+        const [phoneGroups, setPhoneGroups] = React.useState([]);
+        const [phoneGroupPick, setPhoneGroupPick] = React.useState(null);  // 建群：{成员:[], 群名:""}
         const [phoneCmtText, setPhoneCmtText] = React.useState('');
           // 缩放手柄的尺寸与最小可用尺寸
           const AS_MIN_W = 300;
@@ -5246,6 +5249,8 @@ function App({ gameId, close }) {
           function phoneHeadTitle() {
             if (phoneView === 'contacts') return '联系人';
             if (phoneView === 'thread') return phoneWho || '短信';
+            if (phoneView === 'groups') return '群聊';
+            if (phoneView === 'newgroup') return '拉个群';
             if (phoneView === 'apphome') return phoneApp2 === 'qq' ? 'QQ' : '微信';
             if (phoneView === 'album') return '相册';
             if (phoneView === 'feed') return phoneFeedWho ? phoneFeedWho + '的' + phonePlatform : phonePlatform;
@@ -5294,6 +5299,30 @@ function App({ gameId, close }) {
           /** 打开某个联系人的短信线程 */
           /** 打开某个联系人的会话。平台决定线程前缀：sms / wechat / qq 各自独立 */
           /** 读某个平台的通讯录：sms 认电话、wechat 认微信号、qq 认 QQ 号 */
+          /** 读群列表 */
+          function phoneLoadGroups() {
+            const p = phoneApp2 === 'qq' ? 'qq' : 'wechat';
+            return run(call('phoneGroupList', { 平台: p }, gameId)).then(function (r) {
+              if (r && r.ok) setPhoneGroups(Array.isArray(r.groups) ? r.groups : []);
+            });
+          }
+
+          /** 打开一个群 */
+          function phoneOpenGroup(群名) {
+            const p = phoneApp2 === 'qq' ? 'qq' : 'wechat';
+            const tid = p + ':群:' + 群名;
+            setPhoneWho(群名);
+            setPhoneThreadId(tid);
+            setPhoneView('thread');
+            setPhoneMsgs([]);
+            setPhoneIn('');
+            run(call('phoneThread', { threadId: tid }, gameId)).then(function (r) {
+              if (!r || !r.ok) return;
+              setPhoneMsgs(r.messages || []);
+              setPhoneCanUndo(!!r.canUndo);
+            });
+          }
+
           function phoneLoadContacts(plat) {
             const p = plat || (phoneApp2 === 'wechat' ? 'wechat' : phoneApp2 === 'qq' ? 'qq' : 'sms');
             return run(call('phoneGet', { 平台: p }, gameId)).then(function (r) {
@@ -5506,6 +5535,70 @@ function App({ gameId, close }) {
 
           /** 手机里显示什么 */
           function phoneBody() {
+            // groups：群列表
+            if (phoneView === 'groups') {
+              const gs = phoneGroups || [];
+              return h('div', { className: 'sim-ph-thread' },
+                gs.length
+                  ? h('div', { className: 'sim-ph-list' }, gs.map(function (g) {
+                      return h('div', { className: 'sim-ph-row', key: g.群名, onClick: function () { phoneOpenGroup(g.群名); } },
+                        h('div', { className: 'sim-ph-av' }, '👥'),
+                        h('div', { className: 'sim-ph-rc' },
+                          h('div', { className: 'n' }, g.群名),
+                          h('div', { className: 'p' }, (Array.isArray(g.成员) ? g.成员.join('、') : '') + (g.条数 ? '　' + g.最近 : ''))
+                        )
+                      );
+                    }))
+                  : h('div', { className: 'sim-ph-empty' }, '还没有群。')
+                ,
+                h('div', { className: 'sim-ph-bar' },
+                  h('button', { className: 'sim-btn primary', style: { flex: '1 1 auto' }, onClick: function () { setPhoneGroupPick({ 成员: [], 群名: '' }); setPhoneView('newgroup'); phoneLoadContacts(); } }, '拉个群')
+                )
+              );
+            }
+
+            // newgroup：建群 —— 选人 + 起名
+            if (phoneView === 'newgroup' && phoneGroupPick) {
+              const picked = Array.isArray(phoneGroupPick.成员) ? phoneGroupPick.成员 : [];
+              const cs = phoneContacts || [];
+              return h('div', { className: 'sim-ph-thread' },
+                h('div', { style: { flex: '1 1 auto', minHeight: 0, overflowY: 'auto' } },
+                  h('div', { style: { padding: '9px 12px', fontSize: 'var(--sim-fs-6)', color: 'var(--sim-t2)' } }, '选人（已选 ' + picked.length + '）'),
+                  h('div', { className: 'sim-ph-list', style: { overflow: 'visible' } }, cs.map(function (c) {
+                      const on = picked.indexOf(c.姓名) >= 0;
+                      return h('div', {
+                        className: 'sim-ph-row',
+                        key: c.姓名,
+                        onClick: function () {
+                          const next = on ? picked.filter(function (x) { return x !== c.姓名; }) : picked.concat([c.姓名]);
+                          setPhoneGroupPick(Object.assign({}, phoneGroupPick, { 成员: next }));
+                        },
+                      },
+                        h('div', { className: 'sim-ph-av' }, on ? '✓' : String(c.姓名 || '?').slice(0, 1)),
+                        h('div', { className: 'sim-ph-rc' }, h('div', { className: 'n' }, c.姓名))
+                      );
+                    }))
+                ),
+                h('div', { style: { padding: '0 12px 8px' } },
+                  h('input', {
+                    value: phoneGroupPick.群名,
+                    placeholder: '群名（不填就自动起）',
+                    style: { width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: '9px', border: '1px solid var(--sim-bd)', background: 'var(--sim-bg)', color: 'var(--sim-t)', fontSize: 'var(--sim-fs-5)', fontFamily: 'inherit' },
+                    onChange: function (e) { setPhoneGroupPick(Object.assign({}, phoneGroupPick, { 群名: e.target.value.slice(0, 20) })); },
+                  })
+                ),
+                h('div', { className: 'sim-ph-bar' },
+                  h('button', { className: 'sim-btn', onClick: function () { setPhoneGroupPick(null); setPhoneView('groups'); } }, '取消'),
+                  h('button', { className: 'sim-btn primary', style: { flex: '1 1 auto' }, disabled: picked.length < 2, onClick: function () {
+                    const p = phoneApp2 === 'qq' ? 'qq' : 'wechat';
+                    run(call('phoneGroupCreate', { 平台: p, 成员: picked, 群名: phoneGroupPick.群名 }, gameId)).then(function (r) {
+                      if (r && r.ok) { setPhoneGroupPick(null); setPhoneView('groups'); phoneLoadGroups(); }
+                    });
+                  } }, '建群')
+                )
+              );
+            }
+
             // apphome：微信 / QQ 的首页 —— 两个入口（聊天 / 朋友圈或说说）
             if (phoneView === 'apphome') {
               const isWx = phoneApp2 === 'wechat';
@@ -5515,6 +5608,10 @@ function App({ gameId, close }) {
                   h('div', { style: { fontSize: 'var(--sim-fs-4)', fontWeight: 600, marginTop: '4px' } }, isWx ? '微信' : 'QQ')
                 ),
                 h('div', { style: { flex: '1 1 auto', minHeight: 0, overflowY: 'auto' } },
+                  h('div', { className: 'sim-ph-row', onClick: function () { setPhoneView('groups'); phoneLoadGroups(); } },
+                    h('div', { className: 'sim-ph-av' }, '👥'),
+                    h('div', { className: 'sim-ph-rc' }, h('div', { className: 'n' }, '群聊'), h('div', { className: 'p' }, '拉几个人开一个'))
+                  ),
                   h('div', { className: 'sim-ph-row', onClick: function () { setPhoneView('contacts'); phoneLoadContacts(isWx ? 'wechat' : 'qq'); } },
                     h('div', { className: 'sim-ph-av' }, '💬'),
                     h('div', { className: 'sim-ph-rc' }, h('div', { className: 'n' }, '聊天'), h('div', { className: 'p' }, isWx ? '发消息给加了微信的人' : '发消息给 QQ 好友'))
@@ -5576,6 +5673,8 @@ function App({ gameId, close }) {
                   className: 'sim-ph-msg ' + (m.方向 === 'out' ? 'out' : 'in'),
                   key: m.id,
                 },
+                  // 群聊每条带说话人；单聊没有这个字段就不显示
+                  m.谁 ? h('div', { className: 'sim-ph-who' }, String(m.谁)) : null,
                   m.类型 === 'image'
                     ? h('div', { className: 'sim-ph-img' },
                         h('span', { className: 'ic' }, '🖼'),
@@ -12350,7 +12449,7 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
                           className: 'sim-ph-hd-btn',
                           title: '返回',
                           onClick: () => { // 三层：compose→feed，app 里的 feed/contacts→apphome，其余→home
-                const inApp = !!phoneApp2 && (phoneView === 'feed' || phoneView === 'contacts');
+                const inApp = !!phoneApp2 && (phoneView === 'feed' || phoneView === 'contacts' || phoneView === 'groups' || phoneView === 'newgroup');
                 const back = phoneView === 'compose' ? 'feed' : (inApp ? 'apphome' : 'home'); if (back === 'home') { setPhoneThreadId(''); setPhoneMsgs([]); setPhoneIn(''); setPhoneFeedWho(''); } setPhoneView(back); },
                         }, '‹')
                       : null,
