@@ -8412,6 +8412,31 @@ const HUMAN_MSG = [
     return t.length <= PHONE_CLIP ? t : t.slice(0, PHONE_CLIP - 1) + '…';
   }
 
+  /**
+   * 模型经常不按「单独一条图片对象」输出，而是把 JSON 塞进一句话中间：
+   *   「刚收工 妆还没卸 {"类型":"图片","描述":"化妆间自拍"} 你这时候说这个」
+   * 直接当文本渲染，玩家就会看到一大坨 JSON 原文。
+   *
+   * 这里把这种混排拆开：文本归文本、图片归图片，保持原有顺序。
+   */
+  function splitImageJson(text) {
+    const s = String(text || '');
+    const out = [];
+    const re = /\{\s*"类型"\s*:\s*"图片"\s*,\s*"描述"\s*:\s*"((?:[^"\\]|\\.)*)"\s*\}/g;
+    let last = 0;
+    let m;
+    while ((m = re.exec(s))) {
+      const before = s.slice(last, m.index).trim();
+      if (before) out.push({ 文本: before });
+      out.push({ 图片: m[1].replace(/\\"/g, '"').replace(/\\\\/g, '\\') });
+      last = m.index + m[0].length;
+    }
+    const after = s.slice(last).trim();
+    if (after) out.push({ 文本: after });
+    if (!out.length) return [{ 文本: s }];
+    return out;
+  }
+
   /** 时间：取当前游戏时间，不推进 —— 手机里的聊天是正文之外的一小段插曲 */
   function phoneNow(s) {
     return String((s.world && s.world['当前日期时间']) || '').trim();
@@ -8968,7 +8993,12 @@ const HUMAN_MSG = [
         if (文字) { cur.push(加人(mk("in", 文字))); return; }
         return;
       }
-      if (String(r || "").trim()) cur.push(mk("in", r));
+      // 字符串里可能夹着图片 JSON，拆开逐条压进去
+      const 片段 = splitImageJson(String(r || ""));
+      片段.forEach(function (p) {
+        if (p.图片) cur.push(mk("in", "", "image", p.图片));
+        else if (p.文本) cur.push(mk("in", p.文本));
+      });
     });
 
     s.手机.线程[tid] = cur;
