@@ -3782,8 +3782,6 @@ function App({ gameId, close }) {
         const [phoneWho, setPhoneWho] = React.useState('');
         const [phoneAlbum, setPhoneAlbum] = React.useState([]);
         const [phoneAlbumLoaded, setPhoneAlbumLoaded] = React.useState(false);
-        const [phonePick, setPhonePick] = React.useState(null);   // 从图库选图：{libId, 描述}
-        const [phoneLibrary, setPhoneLibrary] = React.useState(null);
         const [phoneThumbs, setPhoneThumbs] = React.useState({});
         const [phonePlatform, setPhonePlatform] = React.useState('朋友圈');
         const [phoneFeed, setPhoneFeed] = React.useState([]);
@@ -5372,27 +5370,6 @@ function App({ gameId, close }) {
             });
           }
 
-          /** 点「从图库添加」：拉一次图库，弹出选图框 */
-          function phoneOpenPick() {
-            run(call('galleryList', {}, gameId)).then(function (r) {
-              const items = (r && Array.isArray(r.items)) ? r.items : [];
-              setPhoneLibrary(items);
-              setPhonePick({ libId: '', 描述: '' });
-            });
-          }
-
-          /** 确定添加：把选中的图 + 描述写进相册 */
-          function phoneDoAddPick() {
-            if (!phonePick || !phonePick.libId) return;
-            const desc = String(phonePick.描述 || '').trim();
-            if (!desc) return;
-            run(call('albumAdd', { libId: phonePick.libId, 描述: desc }, gameId)).then(function (r) {
-              if (!r || !r.ok) return;
-              setPhonePick(null);
-              phoneLoadAlbum();
-            });
-          }
-
           /** 读动态流。平台 + 可选「只看某人」 */
           function phoneLoadFeed(plat, who) {
             const p = plat || phonePlatform;
@@ -5891,10 +5868,6 @@ function App({ gameId, close }) {
                       );
                     }))
                   : h('div', { className: 'sim-ph-empty' }, '相册还是空的。')
-                ,
-                h('div', { className: 'sim-ph-bar' },
-                  h('button', { className: 'sim-btn primary', onClick: phoneOpenPick }, '从图库添加')
-                )
               );
             }
 
@@ -12461,31 +12434,6 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
                       onClick: () => setPhoneOpen(false),
                     }, '✕'),
                   ),
-                  h('div', { className: 'sim-ph-body' }, phoneBody(), phoneAct ? h('div', { className: 'sim-ph-pick' }, h('div', { className: 'sim-ph-pick-c', style: { gap: '9px' } }, h('div', { style: { fontWeight: 600, fontSize: 'var(--sim-fs-4)' } }, phoneAct.姓名), h('div', { style: { fontSize: 'var(--sim-fs-6)', color: 'var(--sim-t2)' } }, phoneAct.号码 || '没有号码'), h('div', { style: { display: 'flex', gap: '8px' } }, h('button', { className: 'sim-btn primary', style: { flex: '1 1 auto' }, onClick: () => { const nm = phoneAct.姓名; setPhoneAct(null); phoneOpenThread(nm); } }, '发短信'), h('button', { className: 'sim-btn', style: { flex: '1 1 auto' }, onClick: () => { setPhoneWho(phoneAct.姓名); setPhoneAct(null); setPhoneView('call'); } }, '打电话')), h('button', { className: 'sim-btn', style: { width: '100%' }, onClick: () => setPhoneAct(null) }, '取消'))) : null, phonePick ? h('div', { className: 'sim-ph-pick' },
-                    h('div', { className: 'sim-ph-pick-c' },
-                      h('div', { style: { fontWeight: 600, fontSize: 'var(--sim-fs-4)' } }, '从图库选一张'),
-                      (phoneLibrary && phoneLibrary.length)
-                        ? h('div', { className: 'sim-ph-pick-g' }, phoneLibrary.map(function (x) {
-                            return h('div', {
-                              key: x.id,
-                              className: 'it' + (phonePick.libId === x.id ? ' on' : ''),
-                              onClick: function () { setPhonePick(Object.assign({}, phonePick, { libId: x.id })); },
-                            }, h('img', { src: x.thumb, alt: '' }));
-                          }))
-                        : h('div', { className: 'sim-ph-empty' }, '图库是空的，先去图库上传几张。'),
-                      h('textarea', {
-                        className: '',
-                        value: phonePick.描述,
-                        placeholder: '这张照片里是什么？（别人评论时要看这个）',
-                        style: { minHeight: '52px', resize: 'none', borderRadius: '9px', border: '1px solid var(--sim-bd)', background: 'var(--sim-bg)', color: 'var(--sim-t)', padding: '8px 10px', fontSize: 'var(--sim-fs-5)', fontFamily: 'inherit' },
-                        onChange: function (e) { setPhonePick(Object.assign({}, phonePick, { 描述: e.target.value.slice(0, 60) })); },
-                      }),
-                      h('div', { style: { display: 'flex', gap: '8px', justifyContent: 'flex-end' } },
-                        h('button', { className: 'sim-btn', onClick: function () { setPhonePick(null); } }, '取消'),
-                        h('button', { className: 'sim-btn primary', disabled: !phonePick.libId || !String(phonePick.描述 || '').trim(), onClick: phoneDoAddPick }, '加进相册')
-                      )
-                    )
-                  ) : null),
                 )
               : null,
             asOpen
