@@ -5619,7 +5619,12 @@ function App({ gameId, close }) {
                   className: 'sim-ph-row',
                   key: c.姓名,
                   // 点整条 → 弹「发短信 / 打电话」
-                  onClick: () => setPhoneAct({ 姓名: String(c.姓名 || ''), 号码: phoneNumberText(c) }),
+                  onClick: () => {
+                    // 微信/QQ 里点人 = 跟他聊天，不该再问「短信还是电话」
+                    if (phoneApp2) { phoneOpenThread(c.姓名); return; }
+                    // 手机通讯录里点人 = 选一种联系方式
+                    setPhoneAct({ 姓名: String(c.姓名 || ''), 号码: phoneNumberText(c) });
+                  },
                 },
                   h('div', { className: 'sim-ph-av' }, String(c.姓名 || '?').slice(0, 1)),
                   h('div', { className: 'sim-ph-rc' },
@@ -12434,7 +12439,35 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
                       onClick: () => setPhoneOpen(false),
                     }, '✕'),
                   ),
-                  h('div', { className: 'sim-ph-body' }, phoneBody()),
+                  h('div', { className: 'sim-ph-body' }, phoneBody(), phoneAct
+                    ? h('div', { className: 'sim-ph-pick' },
+                        h('div', { className: 'sim-ph-pick-c', style: { gap: '9px' } },
+                          h('div', { style: { fontWeight: 600, fontSize: 'var(--sim-fs-4)' } }, String(phoneAct.姓名 || '')),
+                          h('div', { style: { fontSize: 'var(--sim-fs-6)', color: 'var(--sim-t2)' } }, String(phoneAct.号码 || '') || '没有号码'),
+                          h('div', { style: { display: 'flex', gap: '8px' } },
+                            h('button', {
+                              className: 'sim-btn primary',
+                              style: { flex: '1 1 auto' },
+                              onClick: function () {
+                                const nm = phoneAct.姓名;
+                                setPhoneAct(null);
+                                phoneOpenThread(nm, 'sms');
+                              },
+                            }, '发短信'),
+                            h('button', {
+                              className: 'sim-btn',
+                              style: { flex: '1 1 auto' },
+                              onClick: function () {
+                                setPhoneWho(phoneAct.姓名);
+                                setPhoneAct(null);
+                                setPhoneView('call');
+                              },
+                            }, '打电话')
+                          ),
+                          h('button', { className: 'sim-btn', style: { width: '100%' }, onClick: function () { setPhoneAct(null); } }, '取消')
+                        )
+                      )
+                    : null),
                 )
               : null,
             asOpen
