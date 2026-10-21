@@ -8527,11 +8527,15 @@ const HUMAN_MSG = [
   function phoneGroupPrompt(s, 成员, 群名, 类型, 玩家说的话) {
     const 年 = (String((s.world && s.world["当前日期时间"]) || "").match(/(\d{4})/) || [])[1] || "";
     const 是短信 = 类型 === "sms";
+    // 每个成员给成一块：是谁 / 此刻在哪在做什么 / 性格 / 跟主角的关系。
+    // 「此刻」是必需的 —— 没有它，模型会让人在家敷着面膜说自己在片场收工。
     const 名单 = 成员.map((npc) => {
       const nm = String((npc && npc.姓名) || "");
       const 身份 = String((npc && npc.身份) || "");
       const 表 = String((npc && npc.表性格) || "");
       const 里 = String((npc && npc.里性格) || "");
+      const 此刻 = String((npc && npc.当前状态) || "").trim();
+      const 想法 = String((npc && npc.当前想法) || "").trim();
       const rel = (Array.isArray(s.relationships) ? s.relationships : []).find((r) => String(r.对象 || "").trim() === nm);
       const 关系 = rel ? String(rel.关系 || "") : "";
       const 健 = String((npc && npc.健康状况) || "").trim();
@@ -8539,7 +8543,13 @@ const HUMAN_MSG = [
         ? npc.疾病与伤病.map(function (x) { return String(x || "").trim(); }).filter(Boolean).join("、")
         : String((npc && npc.疾病与伤病) || "").trim();
       const 身体 = [健, 病].filter(Boolean).join("；");
-      return "  · " + nm + "（" + 身份 + "／表：" + (表 || "—") + "／里：" + (里 || "—") + (关系 ? "／跟主角：" + 关系 : "") + (身体 ? "／身体：" + 身体 : "") + "）";
+      const 行 = [];
+      行.push("  · " + nm + (身份 ? "（" + 身份 + "）" : "") + (关系 ? "｜跟主角：" + 关系 : ""));
+      行.push("      此刻：" + (此刻 || "（未记录 —— 你按他的身份和工作给一个此刻合理的所在，定了就别改口）"));
+      if (想法) 行.push("      心里：" + 想法);
+      if (表 || 里) 行.push("      性格：表 " + (表 || "—") + "／里 " + (里 || "—"));
+      if (身体) 行.push("      身体：" + 身体);
+      return 行.join("\n");
     }).join("\n");
     return [
       "你在扮演一个群聊里的几个角色，群名叫「" + 群名 + "」。",
@@ -8555,6 +8565,8 @@ const HUMAN_MSG = [
       "· 挑 1~3 个人说话，不是每人都得开口。有的人可以不接话。",
       "· 每条不超过 " + PHONE_CLIP + " 字。",
       "· 内容和性格对得上：有人热络、有人敷衍、有人只发一个「？」。",
+      "· 谁说什么，必须跟他「此刻」对得上：人在片场就说片场的事，人在家就说家里的事，在睡觉就别秒回。不要让人说出跟他所在位置矛盾的话，也不要替不在场的人说话。",
+      "· 已经开口过的人，下一句就知道群里在聊什么了 —— 别让他再问「你们聊啥呢」。",
       "· 可以有人答非所问，也可以有人插一句跟当前话题无关的。",
       "· 不要旁白，不要写动作，只写他们打出来的字。",
       "",
