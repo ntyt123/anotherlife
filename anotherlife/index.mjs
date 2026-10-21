@@ -8830,23 +8830,31 @@ reg('stopGenerate', async ({ gameId }) => {
   }
 
   /** 通讯录：有联系方式的人，按姓名拼音排。附每个线程最后一条。 */
-  reg('phoneGet', async ({ gameId }) => {
+  /**
+   * 通讯录。
+   *
+   * 平台决定「谁算有资格出现在这个列表里」：
+   *   sms     只认电话（打不通就没有意义）
+   *   wechat  认微信号
+   *   qq      认 QQ 号
+   * 同一个人可能在三个平台都出现，各自是独立线程（sms:张三 / wechat:张三 / qq:张三）。
+   */
+  reg('phoneGet', async ({ gameId, 平台 }) => {
     const s = await loadState(gameId);
+    const p = String(平台 || 'sms').trim();
     const 线程 = s.手机.线程 || {};
+    const has = (c) => (p === 'sms' ? !!c.电话 : p === 'wechat' ? !!c.微信 : p === 'qq' ? !!c.QQ : false);
     const list = (Array.isArray(s.npcs) ? s.npcs : [])
-      .filter((n) => {
-        const c = phoneOf(n);
-        return !!c.电话;
-      })
+      .filter((n) => has(phoneOf(n)))
       .map((n) => {
         const nm = String(n.姓名 || n.名字 || '').trim();
         const c = phoneOf(n);
-        const arr = Array.isArray(线程['sms:' + nm]) ? 线程['sms:' + nm] : [];
+        const arr = Array.isArray(线程[p + ':' + nm]) ? 线程[p + ':' + nm] : [];
         const last = arr.length ? arr[arr.length - 1] : null;
         return { 姓名: nm, 电话: c.电话, 微信: c.微信, QQ: c.QQ, 最近: last ? last.内容 : '', 条数: arr.length };
       })
       .sort((a, b) => String(a.姓名).localeCompare(String(b.姓名), 'zh-Hans-CN', { sensitivity: 'base' }));
-    return { ok: true, contacts: list, 时间: phoneNow(s) };
+    return { ok: true, 平台: p, contacts: list, 时间: phoneNow(s) };
   });
 
   /** 某个线程的全部消息 */
