@@ -222,12 +222,6 @@ window.__ModuleLoader__.load({
       // 值可能是一句话那么长的标签：包一层让它在标签右侧换行；底色用中性的淡底深字，主题色底看不清
       '.sim-know .vals{flex:1 1 auto;min-width:0;display:flex;flex-wrap:wrap;gap:5px}',
       '.sim-know .tag{display:inline-block;max-width:100%;padding:2px 9px;border-radius:8px;background:var(--sim-bg);border:1px solid var(--sim-bd);color:var(--sim-t);font-size:var(--sim-fs-5);line-height:1.6;white-space:normal;word-break:break-word}',
-  '.sim-priv{display:flex;gap:10px;align-items:flex-start;padding:4px 0}',
-  '.sim-priv .k{flex:0 0 auto;min-width:62px;padding-top:3px;color:var(--sim-t2);font-size:var(--sim-fs-4)}',
-  '.sim-priv-list{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:5px}',
-  '.sim-priv-item{padding:4px 9px;border-radius:8px;background:var(--sim-bg2);border:1px solid var(--sim-bd)}',
-  '.sim-priv-main{font-size:var(--sim-fs-5);line-height:1.55;color:var(--sim-t);word-break:break-word}',
-  '.sim-priv-sub{margin-top:1px;font-size:var(--sim-fs-6);line-height:1.5;color:var(--sim-t2);word-break:break-word}',
       '.sim-know .tag .sens{display:inline-block;width:5px;height:5px;border-radius:50%;background:#d97a41;margin-left:5px;vertical-align:middle}',
       // 内容长的（角色弹窗那种）用单列，两列会被长标签撑错位
       '.sim-know-list{display:flex;flex-direction:column;gap:9px}',
@@ -5662,7 +5656,7 @@ function App({ gameId, close }) {
               h('span', { className: 'sim-chip-t' }, o.title),
               o.badge ? h('span', { className: 'sim-chip-b' + (o.badgeCls ? ' ' + o.badgeCls : '') }, o.badge) : null,
               o.date ? h('span', { className: 'sim-chip-d' }, o.date) : null,
-              h(
+              o.onDelete ? h(
                 'span',
                 {
                   className: 'sim-chip-del',
@@ -5674,7 +5668,7 @@ function App({ gameId, close }) {
                   },
                 },
                 '✕'
-              ),
+              ) : null,
               open && o.tip && o.tip.length
                 ? portalTip(
                     h(
@@ -7877,8 +7871,8 @@ onDoubleClick: () => {
                   'div',
                   { className: 'sim-know-list' },
                   NSFW_KEYS.filter((k) => k !== '私密物品' && k !== '自察').map((k) => knowField(k, draft.protagonist[k])),
-                  privField('私密物品', draft.protagonist.私密物品, ['名称', '藏处'], ['来历']),
-                  privField('自察', draft.protagonist.自察, ['时刻', '部位'], ['感觉'])
+                  privField('私密物品', draft.protagonist.私密物品, '名称', [['藏处', '藏处'], ['来历', '来历']]),
+                  privField('自察', draft.protagonist.自察, '部位', [['时刻', '时刻'], ['感觉', '感觉']])
                 )
               ),
               // 代表作品／主要奖项 不在这里显示：它们属于演艺资料，由「星途模拟」页签整批展示
@@ -8190,29 +8184,34 @@ function renderTrace(v) {
           }
 
           /**
-           * 「私密物品」「自察」这类「一组小对象」的字段。
-           * 每条一个小块：主行是骨架（名称——藏处 / 时刻·部位），次行是小字（来历 / 感觉）。
-           * 空数组整块不出现 —— 不写「未知」，那只是白占地方。
+           * 「私密物品」「自察」这类一组小对象的字段。
+           * 胶囊上只留一个词（物品名 / 部位），其余全塞进悬浮详情 ——
+           * 面板上不该铺一屏灰字，跟穿着、物品走同一个路子。
+           *   label    分区标题（「私密物品」）
+           *   arr      数组
+           *   nameKey  胶囊上显示哪个字段（物品→名称、自察→部位）
+           *   tipKeys  悬浮详情按顺序列哪些字段：[["显示名","字段名"], …]
            */
-          function privField(label, arr, mainKeys, subKeys) {
+          function privField(label, arr, nameKey, tipKeys) {
             const rows = (Array.isArray(arr) ? arr : []).filter(
               (x) => x && typeof x === 'object' && !Array.isArray(x)
             );
             const items = rows
-              .map((x) => ({
-                main: mainKeys.map((k) => String(x[k] || '').trim()).filter(Boolean).join(' —— '),
-                sub: subKeys.map((k) => String(x[k] || '').trim()).filter(Boolean).join(' · '),
-              }))
-              .filter((x) => x.main || x.sub);
+              .map((x) => ({ raw: x, name: String(x[nameKey] || '').trim() }))
+              .filter((x) => x.name);
             if (!items.length) return null;
-            return h('div', { className: 'sim-priv', key: label },
+            return h('div', { className: 'sim-know' },
               h('span', { className: 'k' }, label),
-              h('div', { className: 'sim-priv-list' },
+              h('span', { className: 'vals' },
                 items.map((x, i) =>
-                  h('div', { className: 'sim-priv-item', key: i },
-                    x.main ? h('div', { className: 'sim-priv-main' }, x.main) : null,
-                    x.sub ? h('div', { className: 'sim-priv-sub' }, x.sub) : null
-                  )
+                  chip({
+                    id: 'pv-' + label + '-' + i,
+                    title: x.name,
+                    tip: (tipKeys || []).map((t) => [
+                      t[0],
+                      String(x.raw[t[1]] || '').trim() || '（未记录）',
+                    ]),
+                  })
                 )
               )
             );
@@ -9594,8 +9593,8 @@ function toggleFans(npc) {
                       ['性癖', '敏感点', '底线', '经验'].map((k) =>
             k === '敏感点' ? knowField(k, npc && npc[k], npc && npc.敏感度) : knowField(k, npc && npc[k])
                       ),
-                      privField('私密物品', npc && npc.私密物品, ['名称', '藏处'], ['来历']),
-                      privField('自察', npc && npc.自察, ['时刻', '部位'], ['感觉']),
+                      privField('私密物品', npc && npc.私密物品, '名称', [['藏处', '藏处'], ['来历', '来历']]),
+                      privField('自察', npc && npc.自察, '部位', [['时刻', '时刻'], ['感觉', '感觉']]),
                     )
                   ),
                   bodyBlock(npc),
