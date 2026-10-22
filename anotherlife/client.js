@@ -242,6 +242,20 @@ window.__ModuleLoader__.load({
       '.sim-ph-island::after{content:"";position:absolute;right:9px;top:50%;transform:translateY(-50%);width:7px;height:7px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#2c3e50,#08080c 70%);box-shadow:0 0 0 1px rgba(80,120,160,.35)}',
       // Home 指示条：底部居中的横线
       // 手机自己的确认框（iOS 风格）：不借用全屏的 .sim-mask，免得盖在手机上很突兀
+      // ══════════ QQ 主题 ══════════
+      // QQ 和微信共用同一套结构（.sim-wx / .sim-ph-row），只靠 data-app 换皮。
+      // 三处外观差别：主色、气泡（圆角矩形、无尾巴）、头像（圆形）
+      '.sim-ph[data-app="qq"]{--qq:#12b7f5}',
+      '.sim-ph[data-app="qq"] .sim-wx-body{background:#f2f3f5}',
+      '.sim-ph[data-app="qq"] .sim-wx-bub{border-radius:9px;background:#fff;color:#191919}',
+      '.sim-ph[data-app="qq"] .sim-wx-bub::before{display:none}',
+      '.sim-ph[data-app="qq"] .sim-wx-row.me .sim-wx-bub{background:#12b7f5;color:#fff}',
+      '.sim-ph[data-app="qq"] .sim-wx-row.me .sim-wx-bub::before{display:none}',
+      '.sim-ph[data-app="qq"] .sim-wx-av{border-radius:50%;background:linear-gradient(135deg,#4cc9f0,#12b7f5)}',
+      '.sim-ph[data-app="qq"] .sim-wx-av.me{background:linear-gradient(135deg,#6fd9ff,#12b7f5)}',
+      '.sim-ph[data-app="qq"] .sim-wx-ts{color:#9aa5b1}',
+      '.sim-ph[data-app="qq"] .sim-wx-foot{background:#fff;border-top:1px solid #e5e7eb}',
+      '.sim-ph[data-app="qq"] .sim-wx-send{background:#12b7f5}',
       '.sim-ph-alert{position:absolute;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:20}',
       '.sim-ph-alert-c{width:74%;max-width:270px;background:rgba(250,250,250,.97);border-radius:14px;overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.28)}',
       '.sim-ph-alert-t{padding:18px 16px 16px;font-size:var(--sim-fs-4);line-height:1.45;text-align:center;color:#191919;white-space:pre-wrap}',
@@ -13146,7 +13160,8 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
             phoneOpen
               ? h(
                   'div',
-                  { className: 'sim-ph', 'data-era': phoneEra().壳, style: phoneBoxStyle() },
+                  { className: 'sim-ph', // data-app 让 QQ / 微信 / 短信三套界面能各自套样式（配色、气泡、列表形态都不同）
+            'data-era': phoneEra().壳, 'data-app': phoneApp2 || 'sms', style: phoneBoxStyle() },
                 // 灵动岛
                 // 外壳统一按 iPhone 15 Pro，所以这个常显
                   h('div', { className: 'sim-ph-island' }),
