@@ -9062,7 +9062,13 @@ const HUMAN_MSG = [
     const who = String(谁的 || '').trim();
     const arr = who ? all.filter((x) => String(x.作者) === who) : all;
     // 时间降序：时间字符串是「2026年8月21日 13:10」，字典序即时间序
-    arr.sort((a, b) => String(b.时间 || '').localeCompare(String(a.时间 || '')));
+    // 时间降序；同一时刻的多条（一次生成出来的）再按 id 倒序 ——
+    // id 是 f + 递增时间戳，所以刚生成的排最前面。
+    arr.sort((a, b) => {
+      const t = String(b.时间 || '').localeCompare(String(a.时间 || ''));
+      if (t) return t;
+      return String(b.id || '').localeCompare(String(a.id || ''));
+    });
     return { ok: true, 平台: p, items: arr };
   });
 
@@ -9156,12 +9162,13 @@ const HUMAN_MSG = [
       '· 一条最多 100 字，不要写成小作文。',
       '· 图片可选：给了就写一句「拍的是什么」，不要写形容词堆砌（如「一张厨房台面，上面摊着没收拾的碗」）。',
       '· 每条给 1-3 个赞（名字从上面的人里选），0-2 条评论。',
+      '· **赞和评论里都不要出现「' + me + '」**（那是主角，他是在看的人，不参与生成）。所有人名都从上面的名单里选。',
       '· 评论短，一两句，像真的在底下随口一回。',
       '',
       HUMAN_MSG,
       '',
       '只输出：',
-      '{"动态":[{"作者":"田曦薇","正文":"小满今天把绘本翻烂了","图片":"一张摊开的绘本，页角卷起来","赞":["罗伊"],"评论":[{"谁":"罗伊","内容":"哪一本"}]}]}',
+      '{"动态":[{"作者":"某某","正文":"小满今天把绘本翻烂了","图片":"一张摊开的绘本，页角卷起来","赞":["另一个人"],"评论":[{"谁":"另一个人","内容":"哪一本"}]}]}',
     ].join('\n');
 
     // 破限词照带 —— 少了它模型会把这个平台写成一尘不染的官方号
@@ -9202,11 +9209,11 @@ const HUMAN_MSG = [
         轮次: nowRound,
         正文: 正文.slice(0, 300),
         图片: 图 ? [{ 相册id: '', 库id: '', 描述: 图.slice(0, 60) }] : [],
-        赞: Array.isArray(x.赞) ? x.赞.map((y) => String(y).trim()).filter(Boolean).slice(0, 5) : [],
+        赞: Array.isArray(x.赞) ? x.赞.map((y) => String(y).trim()).filter((y) => y && y !== me).slice(0, 5) : [],
         评论: Array.isArray(x.评论) ? x.评论.slice(0, 4).map((c) => ({
           谁: String((c && c.谁) || '好友').trim(),
           内容: String((c && c.内容) || '').trim().slice(0, 100),
-        })).filter((c) => c.内容) : [],
+        })).filter((c) => c.内容 && c.谁 !== me) : [],
       };
       arr.push(it);
       added.push(it);
