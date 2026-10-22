@@ -6498,8 +6498,9 @@ function phoneDoComment(id) {
               phoneApp('🖼️', '相册', () => { setPhoneView('album'); if (!phoneAlbumLoaded) phoneLoadAlbum(); }),
               phoneApp('📞', '电话', () => {}, true),
               phoneApp('💬', '微信', () => { setPhoneApp2('wechat'); setPhoneTab('chat'); setPhoneView('apphome'); phoneLoadThreads('wechat'); if (!phoneContacts) phoneLoadContacts('wechat'); }, !era.有微信),
-              phoneApp('🐧', 'QQ', () => { setPhoneApp2('qq'); setPhoneTab('chat'); setPhoneView('apphome'); phoneLoadThreads('qq'); if (!phoneContacts) phoneLoadContacts('qq'); }, !era.有QQ),
-              ),
+              // QQ 先不做 —— 它和微信共用同一套结构，做出来只是多一层皮（配色 + 底栏 + 顶栏）。
+              // 要恢复就把下一行开头的 // 去掉。
+              // phoneApp('🐧', 'QQ', () => { setPhoneApp2('qq'); setPhoneTab('chat'); setPhoneView('apphome'); phoneLoadThreads('qq'); if (!phoneContacts) phoneLoadContacts('qq'); }, !era.有QQ),
               // Dock：最常用的四个，毛玻璃条
               h('div', { className: 'sim-ph-dock' },
                 phoneApp('📞', '电话', () => {}, true),
@@ -6507,7 +6508,8 @@ function phoneDoComment(id) {
                 phoneApp('💬', '微信', () => { setPhoneApp2('wechat'); setPhoneTab('chat'); setPhoneView('apphome'); phoneLoadThreads('wechat'); if (!phoneContacts) phoneLoadContacts('wechat'); }, !era.有微信),
                 phoneApp('📸', '相机', () => {}, !era.有相机),
               )
-            );
+              ),
+              );
           }
           /** 浮窗实际用的定位样式：拖过就用 left/top，没拖过保持默认的右下角 */
           function asBoxStyle() {
