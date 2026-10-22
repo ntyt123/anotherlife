@@ -1051,12 +1051,12 @@ window.__ModuleLoader__.load({
       // 三列行是「名称 | 数值 | 说明」：名称自己伸缩（长了折行），数值固定宽度不被压，
       // 说明退回灰色小字 —— 否则两列都不收缩，中间那列会被挤成竖排。
       // 三列的表格行（项目单／榜单／名册／日程…uiList 那 9 种类型共用）：
-      // 第 2、3 列按比例分宽、各自允许换行。原来这套规则只挂在 .sim-ui-report 上，
+      // 第 1 列按内容宽度不收缩（日期/周次这类要整行才看得清），第 3 列同理但可收；
       // 其它类型吃不到，于是长内容会把一列压成零宽（字被挤成一列一个）。
       '.sim-ui-li-3{align-items:flex-start}',
-      '.sim-ui-li-3 .sim-ui-li-k{flex:0 1 auto;min-width:0;color:var(--sim-ac);font-weight:700;word-break:break-word}',
-      '.sim-ui-li-3 .sim-ui-li-v{flex:1 1 44%;min-width:0;font-weight:600;word-break:break-word}',
-      '.sim-ui-li-3 .sim-ui-li-n{flex:1 1 32%;min-width:0;color:var(--sim-t2);font-weight:400;font-size:var(--sim-fs-2);word-break:break-word}',
+'.sim-ui-li-3 .sim-ui-li-k{flex:0 0 auto;max-width:36%;color:var(--sim-ac);font-weight:700;overflow-wrap:break-word}',
+'.sim-ui-li-3 .sim-ui-li-v{flex:1 1 auto;min-width:0;font-weight:600;overflow-wrap:break-word}',
+'.sim-ui-li-3 .sim-ui-li-n{flex:0 1 auto;max-width:34%;color:var(--sim-t2);font-weight:400;font-size:var(--sim-fs-2);overflow-wrap:break-word;text-align:right}',
       '.sim-ui-bill{background:#fff;border:1px solid #e9ecef}',
       '.sim-ui-bill .sim-ui-h{background:#f7f8fa;border-bottom:1px solid #e9ecef;color:#333}',
       '.sim-ui-bill .sim-ui-li-n{font-variant-numeric:tabular-nums;font-weight:600;color:#555}',
