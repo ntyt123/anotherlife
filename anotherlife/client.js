@@ -363,7 +363,7 @@ window.__ModuleLoader__.load({
       '.sim-ph-app.off{opacity:.3;cursor:default}',
       '.sim-ph-app.off:active .ic{transform:none}',
       // Dock：底部毛玻璃条
-            '.sim-ph-dock{margin:auto 10px 14px;padding:10px 6px 8px;border-radius:30px;background:rgba(255,255,255,.15);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);display:grid;grid-template-columns:repeat(4,1fr);gap:4px;justify-items:center;box-shadow:inset 0 1px 0 rgba(255,255,255,.16)}',
+            '.sim-ph-dock{margin:0 10px 14px;flex:0 0 auto;padding:10px 6px 8px;border-radius:30px;background:rgba(255,255,255,.15);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);display:grid;grid-template-columns:repeat(4,1fr);gap:4px;justify-items:center;box-shadow:inset 0 1px 0 rgba(255,255,255,.16)}',
       '.sim-ph-dock .lbl{display:none}',
       // 会话行的删除按钮：hover 才出现，平时不占视觉
       '.sim-ph-thread-del{display:none;font-size:12px;color:#9a9a9a;padding:0 3px;cursor:pointer;line-height:1}',
@@ -6518,6 +6518,10 @@ function phoneDoComment(id) {
               // QQ 先不做 —— 它和微信共用同一套结构，做出来只是多一层皮（配色 + 底栏 + 顶栏）。
               // 要恢复就把下一行开头的 // 去掉。
               // phoneApp('🐧', 'QQ', () => { setPhoneApp2('qq'); setPhoneTab('chat'); setPhoneView('apphome'); phoneLoadThreads('qq'); if (!phoneContacts) phoneLoadContacts('qq'); }, !era.有QQ),
+              // 把 Dock 推到底的那个撑高块：
+              // .sim-ph-desk 是 overflow-y:auto 的 flex 容器，在这个上下文里 margin-top:auto 会塌成 0，
+              // 所以用一个 flex:1 的空 div 吃掉剩余高度（不可见、不可点）。
+              h('div', { style: { flex: '1 1 auto', minHeight: 0 }, key: 'spacer' }),
               // Dock：最常用的四个，毛玻璃条
               h('div', { className: 'sim-ph-dock' },
                 phoneApp('📞', '电话', () => {}, true),
