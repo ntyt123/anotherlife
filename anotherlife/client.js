@@ -6241,11 +6241,13 @@ function App({ gameId, close }) {
             if (phoneView === 'feed') {
               const items = phoneFeed || [];
               const meN = String((state && state.protagonist && state.protagonist.姓名) || '');
+              // 在看别人的朋友圈：这时候不能发帖，也不该有「我的 / 看全部」那个切换
+              const 看别人 = !!phoneFeedWho && phoneFeedWho !== meN;
               return h('div', { className: 'sim-ph-thread' },
                 // 顶部工具栏
                 h('div', { className: 'sim-ph-bar' },
                   h('span', { style: { flex: '1 1 auto', fontSize: 'var(--sim-fs-5)', fontWeight: 600 } }, phonePlatform),
-                  h('button', { className: 'sim-btn', title: '只看我自己发的', onClick: function () {
+                  看别人 ? null : h('button', { className: 'sim-btn', title: '只看我自己发的', onClick: function () {
                     const next = phoneFeedWho === meN ? '' : meN;
                     setPhoneFeedWho(next);
                     phoneLoadFeed(phonePlatform, next);
@@ -6291,7 +6293,7 @@ function App({ gameId, close }) {
                   : h('div', { className: 'sim-ph-empty' }, phoneGenBusy ? '正在刷新…' : '还没有动态，点「刷新」看看。')
                 ,
                 h('div', { className: 'sim-ph-bar' },
-                  h('button', { className: 'sim-btn primary', style: { flex: '1 1 auto' }, onClick: function () { setPhoneCompose({ 正文: '', 图: [] }); setPhoneView('compose'); if (!phoneAlbumLoaded) phoneLoadAlbum(); else phoneLoadAlbum(); } }, '发一条')
+                  看别人 ? null : h('button', { className: 'sim-btn primary', style: { flex: '1 1 auto' }, onClick: function () { setPhoneCompose({ 正文: '', 图: [] }); setPhoneView('compose'); if (!phoneAlbumLoaded) phoneLoadAlbum(); else phoneLoadAlbum(); } }, '发一条')
                 )
               );
             }
