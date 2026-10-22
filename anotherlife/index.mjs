@@ -9112,7 +9112,7 @@ const HUMAN_MSG = [
     return { ok: true };
   });
 
-  /** 点赞：纯显示，点了加一（同一个人只能点一次） */
+  /** 点赞：纯显示，点一下赞、再点一下取消 */
   /**
    * 刷一批新动态。
    *
@@ -9289,7 +9289,10 @@ const HUMAN_MSG = [
     if (!it) throw new Error('没找到这条');
     const me = String((s.protagonist || {}).姓名 || '我');
     it.赞 = Array.isArray(it.赞) ? it.赞 : [];
-    if (it.赞.indexOf(me) < 0) it.赞.push(me);
+    // 切换：已经赞过的再点一次就是取消（跟真实微信一致）
+    const at = it.赞.indexOf(me);
+    if (at >= 0) it.赞.splice(at, 1);
+    else it.赞.push(me);
     await saveState(s);
     return { ok: true, item: it };
   });
