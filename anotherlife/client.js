@@ -11260,7 +11260,6 @@ function toggleFans(npc) {
               ),
               h('div', { className: 'sim-hint' }, '0 = 跟着总结频率：总结覆盖到哪儿，正文就接到哪儿。'),
 
-              // 正文生成可查原文：前情只给最近 20 段，更早的让模型自己检索
               h(
                 'div',
                 { className: 'sim-field', style: { marginTop: 8 } },
@@ -11279,9 +11278,26 @@ function toggleFans(npc) {
                   h('span', { style: { flex: '1 1 auto', minWidth: 0 } }, '正文生成可查过往原文'),
                 ),
                 h('div', { className: 'sim-hint', style: { marginTop: 4 } },
-                  '打开后前情只给最近 20 段，更早的由模型按需检索（每轮最多查 2 次）。' +
+                  '打开后前情只给最近 N 段，更早的由模型按需检索（每轮最多查 2 次）。' +
                   '前情大小恒定，几万轮也不会撑爆上下文；代价是每轮可能多一两次模型调用。'
                 )
+              ),
+              h(
+                'div',
+                { className: 'sim-field', style: { marginTop: 8 } },
+                h('label', null, '前情保留段数'),
+                h('input', {
+                  type: 'number',
+                  defaultValue: String((dcfg && dcfg.storyOpts && dcfg.storyOpts.保留段) || 20),
+                  key: 'keepseg:' + String((dcfg && dcfg.storyOpts && dcfg.storyOpts.保留段) || 20),
+                  onBlur: (ev) => {
+                    const cfg = Object.assign({}, dcfg);
+                    cfg.storyOpts = Object.assign({}, (dcfg && dcfg.storyOpts) || {});
+                    cfg.storyOpts.保留段 = Math.max(1, Math.min(200, Math.floor(Number(ev.target.value) || 20)));
+                    upd({ config: cfg });
+                    run(call('saveConfig', { config: cfg }, gameId));
+                  },
+                }),
               ),
               h(
                 'div',

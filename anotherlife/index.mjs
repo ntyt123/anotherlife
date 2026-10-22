@@ -7233,7 +7233,11 @@ function seasonText(s) {
     // 检索模式（config.storyTools 打开时）：只给最近 N 段，
     // 更早的交给模型自己用 search_transcript / read_turns 去查。
     // 这样前情大小恒定，几万轮也不会撑爆上下文。
-    const 保留段 = 20;
+    // 前情给最近几段。config.storyOpts.保留段，没设就是 20。
+    const 保留段 = (function () {
+      const v = Number(s.config && s.config.storyOpts && s.config.storyOpts.保留段);
+      return isFinite(v) && v > 0 ? Math.min(200, Math.floor(v)) : 20;
+    })();
     if (storyToolsOn(s) && list.length > 保留段) {
       const keep = list.slice(-保留段);
       const 更早 = list.length - 保留段;
