@@ -6380,6 +6380,14 @@ let aiPickFail = '';
         return bi[f] == null ? '' : bi[f];
       };
       out[k] = { 物品: pick('物品'), 稀有度: pick('稀有度'), 状态: pick('状态'), 气味: pick('气味'), 简介: pick('简介') };
+      // 引擎算出来的字段（气味强度／穿着小时／材质／穿着时长／沾染）模型不写，
+      // 但整体替换穿着时必须原样带过来 —— 否则每轮都被抹掉，下一轮又从头补一遍，
+      // 界面上就是「强度永远回到 0、气味句子每轮换一句」。
+      ['气味强度', '穿着小时', '材质', '穿着时长', '沾染'].forEach((f) => {
+        const v = ii[f] !== undefined ? ii[f] : bi[f];
+        if (v === undefined) return;
+        out[k][f] = (v && typeof v === 'object') ? JSON.parse(JSON.stringify(v)) : v;
+      });
     });
     return out;
   }
