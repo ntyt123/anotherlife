@@ -5585,6 +5585,9 @@ function App({ gameId, close }) {
             const w = who === undefined ? phoneFeedWho : who;
             return run(call('feedList', { 平台: p, 谁的: w || '' }, gameId)).then(function (r) {
               if (r && r.ok) setPhoneFeed(Array.isArray(r.items) ? r.items : []);
+              // 刷新之后把「正在评论哪条」清掉 —— 否则那一段输入框会一直挂在列表里
+              setPhoneCmtFor('');
+              setPhoneCmtText('');
             });
           }
 
