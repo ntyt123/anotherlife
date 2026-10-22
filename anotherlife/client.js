@@ -11265,13 +11265,28 @@ function toggleFans(npc) {
         const p = 表[名字];
         if (!p) return;
         const cfg = Object.assign({}, dcfg);
-        cfg.summaryOpts = Object.assign({}, o, { every: p.every, 正文上限: p.上限 });
+        // mergeAt 也一起归位：三档都是「前情靠段数、不靠合并」，
+        // 否则同一个按钮的效果会随之前 mergeAt 设了多少而变。
+        cfg.summaryOpts = Object.assign({}, o, { every: p.every, 正文上限: p.上限, mergeAt: 2000 });
         cfg.recentRounds = p.recent;
         cfg.storyOpts = Object.assign({}, (dcfg && dcfg.storyOpts) || {}, { 保留段: p.保留段 });
         cfg.storyTools = p.检索;
         upd({ config: cfg });
         return run(call('saveConfig', { config: cfg }, gameId));
       };
+            // 当前配置对上哪一档（对不上就都不高亮 —— 说明调过细项）
+            const 当前档 = (function () {
+              const ev = Number(o.every);
+              const 上限 = Number(o.正文上限);
+              const rec = Number((dcfg && dcfg.recentRounds) || 0);
+              const 段 = Number((dcfg && dcfg.storyOpts && dcfg.storyOpts.保留段) || 20);
+              const 检 = !!(dcfg && dcfg.storyTools);
+              if (ev === 10 && 上限 === 0 && rec === 10 && 段 === 20 && 检) return '紧凑';
+              if (ev === 20 && 上限 === 6000 && rec === 0 && 段 === 20 && 检) return '均衡';
+              if (ev === 10 && 上限 === 0 && rec === 20 && 段 === 200 && !检) return '全量';
+              return '';
+            })();
+
             const num = (f, label, max) =>
               h(Field, {
                 key: f,
@@ -11285,9 +11300,9 @@ function toggleFans(npc) {
               h('div', { style: { fontWeight: 600, marginBottom: 4 } }, '剧情总结'),
               // 三档预设：先选一档，下面的细项再按需微调
               h('div', { className: 'sim-acts', style: { marginTop: 6, marginBottom: 8 }, key: 'presets' },
-                h(Btn, { onClick: () => applyPreset('紧凑') }, '紧凑'),
-                h(Btn, { onClick: () => applyPreset('均衡') }, '均衡'),
-                h(Btn, { onClick: () => applyPreset('全量') }, '全量'),
+                h(Btn, { primary: 当前档 === '紧凑', onClick: () => applyPreset('紧凑') }, '紧凑'),
+                h(Btn, { primary: 当前档 === '均衡', onClick: () => applyPreset('均衡') }, '均衡'),
+                h(Btn, { primary: 当前档 === '全量', onClick: () => applyPreset('全量') }, '全量'),
               ),
               // 下面四项只在「合并」时用到；开了检索之后段数到不了阈值，它们基本不会触发。
               h('details', { className: 'sim-fold', style: { marginTop: 4 } },
