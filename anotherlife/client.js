@@ -11293,12 +11293,22 @@ function toggleFans(npc) {
               h('details', { className: 'sim-fold', style: { marginTop: 4 } },
                 h('summary', null, '合并与段长'),
                 h('div', { className: 'sim-fold-body' },
-                  h('div', { className: 'sim-grid' }, num('every', '每几轮总结一次', 100), num('mergeAt', '小结超过几段就合并（大上限=几乎不合并）', 2000), num('keepTail', '合并时保留最近几段', 60), num('段句数', '每段小结最多几句', 30), num('合并比例', '合并时保留原文百分比', 90), h(Field, { key: '正文上限', label: '每轮正文最多取多少字（0=全部）', value: String(o.正文上限 == null ? 6000 : o.正文上限), onChange: (v) => set('正文上限', Math.max(0, Math.min(50000, Math.floor(Number(v) || 0)))) })),
+                  h('div', { className: 'sim-grid' }, num('mergeAt', '小结超过几段就合并', 2000), num('keepTail', '合并时保留最近几段', 60), num('段句数', '每段小结最多几句', 30), num('合并比例', '合并时保留原文百分比', 90)),
                   h('div', { className: 'sim-hint', style: { marginTop: 4 } },
                     '开了「正文生成可查过往原文」之后，合并基本不会发生 —— 段数到不了阈值。' +
                     '这几项只在关掉检索、想靠合并压缩前情时才用得上。'
                   ),
                 ),
+              ),
+              // 日常最常动的两个：总结频率、每轮喂多少正文
+              h('div', { className: 'sim-grid' },
+                num('every', '每几轮总结一次', 100),
+                h(Field, {
+                  key: '正文上限',
+                  label: '每轮正文最多取多少字（0=全部）',
+                  value: String(o.正文上限 == null ? 12000 : o.正文上限),
+                  onChange: (v) => set('正文上限', Math.max(0, Math.min(50000, Math.floor(Number(v) || 0)))),
+                }),
               ),
               // 附带最近几轮原文（补上总结还没覆盖的那一段）。0 = 跟着「每几轮总结一次」。
               h(
