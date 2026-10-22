@@ -875,6 +875,18 @@ window.__ModuleLoader__.load({
       '.sim-wx-foot{display:flex;align-items:center;gap:9px;padding:9px 12px;background:#f7f7f7;border-top:1px solid #dcdcdc;font-size:var(--sim-fs-6)}',
       '.sim-wx-input{flex:1 1 auto;height:32px;background:#fff;border-radius:5px}',
       '.sim-wx-ic{color:#5a5a5a;line-height:1}',
+      // ── 手机里的微信：把正文卡片的 .sim-wx 铺满整屏 ──
+      // 同一套结构复用（方头像 / 白绿气泡 / 居中时间 / 气泡外说话人），
+      // 只把「卡片」变成「整页」：去掉最大宽和圆角，让消息区自己滚。
+      '.sim-ph .sim-wx{max-width:none;width:100%;height:100%;border-radius:0;box-shadow:none;display:flex;flex-direction:column;background:var(--sim-bg2)}',
+      '.sim-ph .sim-wx-body{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-anchor:none}',
+      '.sim-ph .sim-wx-bub{max-width:100%}',
+      '.sim-ph .sim-wx-foot{flex:0 0 auto}',
+      // 气泡上的「重生成 / 重发 / 删」：沿用原来的 ops，但挂到气泡上
+      '.sim-ph .sim-wx-bub .ops{position:absolute;top:-9px;right:-6px;display:none;gap:3px}',
+      '.sim-ph .sim-wx-bub .ops.left{right:auto;left:-6px}',
+      '.sim-ph .sim-wx-row.me .sim-wx-bub .ops{right:auto;left:-6px}',
+      '.sim-ph .sim-wx-bub:hover .ops{display:flex}',
       // ── QQ ──
       '.sim-qq{display:block;max-width:392px;background:#f2f3f5;border-radius:8px;overflow:hidden;box-shadow:0 3px 16px rgba(0,0,0,.16);font-size:var(--sim-fs-4);line-height:1.55;color:#1a1a1a}',
       '.sim-qq-top{display:flex;align-items:center;gap:8px;padding:9px 12px;background:#fff;border-bottom:1px solid #e5e6e8}',
@@ -6048,87 +6060,96 @@ function App({ gameId, close }) {
             }
 
             if (phoneView === 'thread') {
-              const list = (phoneMsgs || []).map((m) =>
-                h('div', {
-                  className: 'sim-ph-msg ' + (m.方向 === 'out' ? 'out' : 'in') + (m.类型 === 'image' ? ' is-img' : ''),
-                  key: m.id,
-                },
-                  // 群聊每条带说话人；单聊没有这个字段就不显示
-                  m.谁 ? h('div', { className: 'sim-ph-who' }, String(m.谁)) : null,
-                  m.类型 === 'image'
-                    ? h('div', { className: 'sim-ph-img' },
-                        h('span', { className: 'ic' }, '🖼'),
-                        h('span', { className: 'dsc' }, String(m.描述 || '一张图片'))
+              const av = avatarsMap();
+              const 是群 = phoneThreadId.indexOf(':群:') >= 0;
+
+              // 时间戳按真实微信的做法：跟上一条隔 5 分钟以上才插一条，居中灰字
+              const 分钟数 = function (t) {
+                const m2 = String(t || '').match(/(\d{1,2}):(\d{2})/);
+                return m2 ? Number(m2[1]) * 60 + Number(m2[2]) : -1;
+              };
+              let 上一条 = -1;
+
+              const rows = (phoneMsgs || []).map(function (m) {
+                const me = m.方向 === 'out';
+                const 本 = 分钟数(m.时间);
+                const 显时间 = 本 >= 0 && (上一条 < 0 || 本 - 上一条 >= 5 || 本 < 上一条);
+                if (本 >= 0) 上一条 = 本;
+                return h('div', { key: 'g-' + m.id },
+                  显时间 ? h('div', { className: 'sim-wx-ts' }, phoneClock(m.时间)) : null,
+                  h('div', { className: 'sim-wx-row' + (me ? ' me' : ''), key: m.id },
+                    uiFace(me ? '我' : (m.谁 || phoneWho), 'sim-wx-av' + (me ? ' me' : ''), av, me),
+                    h('div', { className: 'sim-wx-col' },
+                      (!me && 是群 && m.谁) ? h('span', { className: 'sim-wx-who' }, String(m.谁)) : null,
+                      h('div', { className: 'sim-wx-bub' },
+                        m.类型 === 'image'
+                          ? h('div', { className: 'sim-wx-img' }, h('span', { className: 'ic' }, '🖼'), h('span', { className: 'dsc' }, String(m.描述 || '一张图片')))
+                          : String(m.内容 || ''),
+                        m.状态 === 'sending' ? null : h('span', { className: 'ops' + (me ? ' left' : '') },
+                          m.方向 === 'in'
+                          ? h('button', {
+                              onClick: () => {
+                                const arr = phoneMsgs || [];
+                                const at = arr.findIndex((x) => String(x.id) === String(m.id));
+                                if (at >= 0) setPhoneMsgs(arr.slice(0, at));
+                                setPhoneBusy(true);
+                                run(call('phoneRegen', { threadId: phoneThreadId, msgId: m.id }, gameId))
+                                  .then((r) => {
+                                    if (!r || !r.ok) { setPhoneBusy(false); phoneReloadThread(); return; }
+                                    const all = r.messages || [];
+                                    setPhoneCanUndo(true);
+                                    phoneReveal(all, phoneLastOut(all));
+                                  })
+                                  .catch(() => { setPhoneBusy(false); phoneReloadThread(); });
+                              },
+                            }, '重生成')
+                          : m.类型 === 'image' ? null : h('button', {
+                              onClick: () => {
+                                const arr = phoneMsgs || [];
+                                const at = arr.findIndex((x) => String(x.id) === String(m.id));
+                                if (at < 0) return;
+                                setPhoneMsgs(arr.slice(0, at + 1));
+                                setPhoneBusy(true);
+                                run(call('phoneResend', { threadId: phoneThreadId, msgId: m.id }, gameId))
+                                  .then((r) => {
+                                    if (!r || !r.ok) { setPhoneBusy(false); phoneReloadThread(); return; }
+                                    const all = r.messages || [];
+                                    setPhoneCanUndo(true);
+                                    phoneReveal(all, phoneLastOut(all));
+                                  })
+                                  .catch(() => { setPhoneBusy(false); phoneReloadThread(); });
+                              },
+                            }, '重发'),
+                          h('button', {
+                            onClick: () => run(call('phoneDelete', { threadId: phoneThreadId, msgId: m.id }, gameId))
+                              .then((r) => { if (r && r.ok) setPhoneMsgs(r.messages || []); }),
+                          }, '删'),
+                        ),
                       )
-                    : String(m.内容 || ''),
-                  h('span', { className: 'ts' }, phoneClock(m.时间)),
-                  m.状态 === 'sending' ? null :
-              h('span', { className: 'ops' + (m.方向 === 'out' ? ' left' : '') },
-                    m.方向 === 'in'
-                      ? h('button', {
-                          onClick: () => {
-                            // 先把这条从界面上拿掉（它要被重新生成），不等后端
-                            const arr = phoneMsgs || [];
-                            const at = arr.findIndex((x) => String(x.id) === String(m.id));
-                            if (at >= 0) setPhoneMsgs(arr.slice(0, at));
-                            setPhoneBusy(true);
-                            run(call('phoneRegen', { threadId: phoneThreadId, msgId: m.id }, gameId))
-                              .then((r) => {
-                                if (!r || !r.ok) { setPhoneBusy(false); phoneReloadThread(); return; }
-                                const all = r.messages || [];
-                                setPhoneCanUndo(true);   // 后端刚 push 过历史，现在一定能回退
-                                phoneReveal(all, phoneLastOut(all));
-                              })
-                              .catch(() => { setPhoneBusy(false); phoneReloadThread(); });
-                          },
-                        }, '重生成')
-                      : m.类型 === 'image' ? null : h('button', {
-                          onClick: () => {
-                            // 先把这条之后的全部从界面上切掉 —— 不等后端。
-                            // 它自己留着（马上要重发同一句，内容一样），只删掉后面那些。
-                            const arr = phoneMsgs || [];
-                            const at = arr.findIndex((x) => String(x.id) === String(m.id));
-                            if (at < 0) return;
-                            setPhoneMsgs(arr.slice(0, at + 1));
-                            setPhoneBusy(true);
-                            run(call('phoneResend', { threadId: phoneThreadId, msgId: m.id }, gameId))
-                              .then((r) => {
-                                if (!r || !r.ok) { setPhoneBusy(false); phoneReloadThread(); return; }
-                                const all = r.messages || [];
-                                setPhoneCanUndo(true);   // 后端刚 push 过历史，现在一定能回退
-                                phoneReveal(all, phoneLastOut(all));
-                              })
-                              .catch(() => { setPhoneBusy(false); phoneReloadThread(); });
-                          },
-                        }, '重发'),
-                    h('button', {
-                      onClick: () => run(call('phoneDelete', { threadId: phoneThreadId, msgId: m.id }, gameId))
-                        .then((r) => { if (r && r.ok) setPhoneMsgs(r.messages || []); }),
-                    }, '删'),
-                  ),
-                )
-              );
-              const empty = !list.length
-                ? h('div', { className: 'sim-ph-empty' }, '还没聊过。')
-                : null;
-              return h('div', { className: 'sim-ph-thread' },
-                h('div', { className: 'sim-ph-chat', ref: phoneChatRef, onScroll: function (ev) { const el = ev.currentTarget; phoneStickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 60; } }, empty, list,
-                  phoneBusy ? h('div', { className: 'sim-ph-typing' }, h('span', { key: 'd1' }), h('span', { key: 'd2' }), h('span', { key: 'd3' }), '对方正在输入') : null
+                    )
+                  )
+                );
+              });
+
+              return h('div', { className: 'sim-wx' },
+                h('div', { className: 'sim-wx-body', ref: phoneChatRef, onScroll: function (ev) {
+                  const el = ev.currentTarget;
+                  phoneStickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
+                } },
+                  rows.length ? rows : h('div', { className: 'sim-ph-empty' }, '还没聊过。'),
+                  phoneBusy ? h('div', { className: 'sim-ph-typing' }, h('span', { key: 'd1' }), h('span', { key: 'd2' }), h('span', { key: 'd3' })) : null
                 ),
-                h('div', { className: 'sim-ph-in' },
+                h('div', { className: 'sim-wx-foot' },
                   h('textarea', {
                     value: phoneIn,
-                    placeholder: phoneThreadId.indexOf('wechat:') === 0 ? '发消息…' : phoneThreadId.indexOf('qq:') === 0 ? '发消息…' : '发条短信…',
+                    placeholder: '发消息…',
                     onChange: (e) => setPhoneIn(e.target.value.slice(0, 200)),
                     onKeyDown: (e) => {
                       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); phoneSendNow(); }
                     },
+                    style: { flex: '1 1 auto', minHeight: '32px', maxHeight: '70px', resize: 'none', borderRadius: '5px', border: 'none', padding: '6px 9px', fontSize: 'var(--sim-fs-5)', background: '#fff', color: '#191919' },
                   }),
-                  h('button', {
-                    className: 'sim-btn' + (phoneBusy ? '' : ' primary'),
-                    disabled: phoneBusy,
-                    onClick: phoneSendNow,
-                  }, phoneBusy ? '…' : '发'),
+                  h('button', { className: 'sim-btn' + (phoneBusy ? '' : ' primary'), disabled: phoneBusy, onClick: phoneSendNow }, phoneBusy ? '…' : '发'),
                 )
               );
             }
