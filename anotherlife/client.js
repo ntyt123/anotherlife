@@ -312,6 +312,10 @@ window.__ModuleLoader__.load({
       // Dock：底部毛玻璃条
             '.sim-ph-dock{margin:auto 10px 14px;padding:10px 6px 8px;border-radius:30px;background:rgba(255,255,255,.15);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);display:grid;grid-template-columns:repeat(4,1fr);gap:4px;justify-items:center;box-shadow:inset 0 1px 0 rgba(255,255,255,.16)}',
       '.sim-ph-dock .lbl{display:none}',
+      // 会话行的删除按钮：hover 才出现，平时不占视觉
+      '.sim-ph-thread-del{display:none;font-size:12px;color:#9a9a9a;padding:0 3px;cursor:pointer;line-height:1}',
+      '.sim-ph-thread-del:hover{color:#e34d4d}',
+      '.sim-ph-row:hover .sim-ph-thread-del{display:block}',
       '.sim-ph-row{display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:1px solid var(--sim-bd);cursor:pointer}',
       '.sim-ph-row:hover{background:var(--sim-bg)}',
       '.sim-ph-dot{flex:0 0 auto;width:8px;height:8px;border-radius:50%;background:#0a84ff;margin-left:6px}',
@@ -5827,7 +5831,19 @@ function App({ gameId, close }) {
                     h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '8px' } },
                       h('div', { className: 'n', style: { flex: '1 1 auto', display: 'flex', alignItems: 'center' } },
                         String(t2.姓名 || ''), t2.未读 ? h('span', { className: 'sim-ph-dot' }) : null),
-                      h('div', { style: { fontSize: 'var(--sim-fs-6)', color: 'var(--sim-t2)', flex: '0 0 auto' } }, phoneClock(t2.时间))
+                      h('div', { style: { fontSize: 'var(--sim-fs-6)', color: 'var(--sim-t2)', flex: '0 0 auto', display: 'flex', alignItems: 'center', gap: '3px' } },
+                        phoneClock(t2.时间),
+                        h('span', { className: 'sim-ph-thread-del', title: '删除这个会话', onClick: function (ev) {
+                          ev.stopPropagation();
+                          ask('删除「' + String(t2.姓名 || '') + '」的聊天记录？删了就找不回来了。').then(function (ok) {
+                            if (!ok) return;
+                            const tid2 = (t2.是否群 ? 平台 + ':群:' : 平台 + ':') + t2.姓名;
+                            run(call('phoneDeleteThread', { threadId: tid2 }, gameId)).then(function (r) {
+                              if (r && r.ok) phoneLoadThreads(平台);
+                            });
+                          });
+                        } }, '✕'),
+                      ),
                     ),
                     h('div', { className: 'p' }, String(t2.最后 || ''))
                   )

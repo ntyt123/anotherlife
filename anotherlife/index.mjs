@@ -9499,6 +9499,27 @@ const HUMAN_MSG = [
   });
 
   /** 删一条（只影响手机） */
+  /**
+   * 删掉整个会话。
+   *
+   * 清掉三样：线程本身、已读记录、线程历史栈（回退用）。
+   * 群聊删的是「聊天记录」，群本身还在（跟真实微信一致 ——
+   * 删了会话，下次有人说话它又会出现）。真要解散群用 phoneGroupDelete。
+   */
+  reg('phoneDeleteThread', async ({ gameId, threadId }) => {
+    const s = await loadState(gameId);
+    const tid = String(threadId || '').trim();
+    if (!tid) throw new Error('没指明会话');
+    const s2 = s.手机 || {};
+    let 删了 = false;
+    if (s2.线程 && s2.线程[tid]) { delete s2.线程[tid]; 删了 = true; }
+    if (s2.已读) delete s2.已读[tid];
+    if (s2.线程历史) delete s2.线程历史[tid];
+    if (!删了) throw new Error('没有这个会话');
+    await saveState(s);
+    return { ok: true };
+  });
+
   reg('phoneDelete', async ({ gameId, threadId, msgId }) => {
     const s = await loadState(gameId);
     const tid = String(threadId || '').trim();
