@@ -3950,6 +3950,9 @@ function App({ gameId, close }) {
         const [phoneCmtText, setPhoneCmtText] = React.useState('');
         // 正在全屏看哪一段剧情总结（-1 = 没开）
         const [sumView, setSumView] = React.useState(-1);
+  // 临时：生图探测（验证 agy-gemini-3.1-flash-image 能不能吐图片块）
+  const [probeBusy, setProbeBusy] = React.useState(false);
+  const [probeOut, setProbeOut] = React.useState('');
 
         // 消息列表变化时贴底：只有本来就贴着底部才自动滚（用户翻历史时不打断）
         React.useEffect(function () {
@@ -11915,6 +11918,20 @@ function toggleFans(npc) {
                 upd({ config: cfg });
                 return run(call('saveReasoning', { reasoning: r }, gameId));
             }
+/** 临时：拿 summary 槽位的 provider 去试图像模型，结果原样摊在界面上 */
+function probeImageNow() {
+  if (probeBusy) return;
+  setProbeBusy(true);
+  setProbeOut('');
+  const prov = String((state.config && state.config.summary && state.config.summary.provider) || 'gg');
+  run(call('probeImage', { provider: prov, model: 'agy-gemini-3.1-flash-image' }, gameId))
+    .then(function (r) {
+      setProbeOut(JSON.stringify((r && r.摘要) || {}, null, 1) + '\n\n图块：\n' + JSON.stringify((r && r.图) || [], null, 1) + '\n\n文字：\n' + String((r && r.文字前200) || ''));
+    })
+    .catch(function (e) { setProbeOut('失败：' + String((e && e.message) || e)); })
+    .finally(function () { setProbeBusy(false); });
+}
+
             function applySlot() {
               setSlotBusy(slot);
               setSlotErr((o) => Object.assign({}, o, { [slot]: '' }));
@@ -12788,8 +12805,13 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
             ),
 
             h('div', { className: 'sim-acts', style: { marginTop: 14 } },
-              h(Btn, { primary: true, disabled: busy, onClick: () => run(call('saveConfig', { config: dcfg }, gameId)) }, '保存设定'))
-          );
+              h(Btn, { primary: true, disabled: busy, onClick: () => run(call('saveConfig', { config: dcfg }, gameId)) }, '保存设定'),
+              // 临时：生图探测按钮（验证能不能吐图片块，验完删）
+              h(Btn, { disabled: busy || probeBusy, onClick: probeImageNow }, probeBusy ? '探测中…' : '🧪 试生图'),
+          ),
+          // 临时：探测结果（验完删）
+          probeOut ? h('div', { className: 'sim-hint', style: { whiteSpace: 'pre-wrap', marginTop: 10, fontFamily: 'ui-monospace,Menlo,monospace', fontSize: 11, lineHeight: 1.6 } }, probeOut) : null,
+        );
 
           // ── 选页 ──
           let view = null;

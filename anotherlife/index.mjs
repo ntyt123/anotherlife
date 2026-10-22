@@ -4766,6 +4766,9 @@ function pickToolCall(r) {
 
     const texts = {};
     const toolCalls = {};
+    /** 图片块：图像模型会在对话里直接返回图片，不是走 /v1/images/generations。
+     *  这里原样收着（不做归一化），调用方自己决定怎么用。 */
+    const images = [];
     const reasonings = {};
     const seen = {};
     let finish = null;
@@ -4823,6 +4826,9 @@ function pickToolCall(r) {
       else if (c.type === 'block-end' && c.block) {
         if (c.block.type === 'text' && c.block.text != null) texts[idx] = c.block.text;
         else if (c.block.type === 'reasoning' && c.block.text != null) reasonings[idx] = c.block.text;
+        // 图片块：不同 provider 的结构不一样（{data,mimeType} / {source:{...}} / {url}），
+        // 原样存下来，让调用方自己认。
+        else if (c.block.type === 'image' || c.block.type === 'image-url') images.push(c.block);
       } else if (c.type === 'tool-call-delta') {
         // 同一个 index 的 delta 拼成完整的参数 JSON
         const cur = toolCalls[idx] || (toolCalls[idx] = { id: String(c.id || ''), name: '', args: '' });
@@ -4853,7 +4859,7 @@ function pickToolCall(r) {
       }
     }
     const reasoning = joinMap(reasonings);
-    if (!text && !reasoning && !callList.length) {
+    if (!text && !reasoning && !callList.length && !images.length) {
       const why = describeFinish(finish);
       await apiLog('[' + tag + '] ' + who + ' → 失败：' + (why || '没有返回内容（chunk 类型：' + Object.keys(seen).join(',') + '）'), t0);
       if (why) throw new Error('主模型没有返回正文：' + why);
@@ -4863,7 +4869,7 @@ function pickToolCall(r) {
     await apiLog('[' + tag + '] ' + who + ' → ' + text.length + ' 字' + (cut ? '（被 maxTokens 截断，只拿到了这些）' : '') + (callList && callList.length ? '（工具 ' + callList.length + ' 次）' : ''), t0);
     const stopped = !!(finish && String(finish.kind || '') === 'stopped');
     if (stopped) await apiLog('[' + tag + '] 玩家按了停止，已保留 ' + text.length + ' 字', t0);
-    return { text, reasoning, finish, toolCalls: callList, truncated: isTruncated(finish), stopped: stopped };
+    return { text, reasoning, finish, toolCalls: callList, truncated: isTruncated(finish), stopped: stopped, images: images, chunkTypes: Object.keys(seen) };
     } finally {
       try {
         if (it && typeof it.return === 'function') await it.return();
@@ -9517,6 +9523,46 @@ reg('feedDelComment', async ({ gameId, 平台, id, 索引 }) => {
     });
     await saveState(s);
     return { ok: true, 成员: g.成员 };
+  });
+
+  /**
+   * 探测：用指定的 provider / model 要一张图，把返回的块结构原样记进日志。
+   *
+   * 图像模型（Gemini 的 image 版这类）不是走 /v1/images/generations，
+   * 而是在对话回复里直接返回图片块。各家结构不一样，所以这里不做归一化 ——
+   * 先看清楚它到底长什么样，再决定后面怎么存、怎么嵌进界面。
+   */
+  reg('probeImage', async ({ gameId, provider, model, prompt }) => {
+    const prov = String(provider || '').trim();
+    const mdl = String(model || '').trim();
+    if (!prov || !mdl) throw new Error('要指定 provider 和 model');
+    const p = String(prompt || '一只橘猫坐在窗台上，暖色调，写实照片风格').trim();
+    const t0 = Date.now();
+    const r = await callMainModel(
+      [{ role: 'user', content: p }],
+      { provider: prov, model: mdl, maxTokens: 8000, purpose: '生图探测' }
+    );
+    const 摘要 = {
+      文字长度: String(r.text || '').length,
+      文字前80: String(r.text || '').slice(0, 80),
+      图片数: (r.images || []).length,
+      chunk类型: r.chunkTypes || [],
+      finish: r.finish,
+      耗时秒: Math.round((Date.now() - t0) / 100) / 10,
+    };
+    // 每张图只记结构，不记完整 base64（那会撑爆日志）
+    const 图 = (r.images || []).map((x, n) => {
+      const o = { i: n, 键: Object.keys(x) };
+      if (x.type) o.type = x.type;
+      if (x.mimeType) o.mimeType = x.mimeType;
+      if (x.mediaType) o.mediaType = x.mediaType;
+      if (x.url) o.url = String(x.url).slice(0, 120);
+      if (x.data) o.data长度 = String(x.data).length;
+      if (x.source) o.source = { type: x.source.type, mediaType: x.source.mediaType, data长度: String(x.source.data || '').length };
+      return o;
+    });
+    await turnLog('[生图探测] ' + prov + '/' + mdl + ' → ' + JSON.stringify(摘要) + ' 图=' + JSON.stringify(图));
+    return { ok: true, 摘要, 图, 文字前200: String(r.text || '').slice(0, 200) };
   });
 
   reg('phoneGet', async ({ gameId, 平台 }) => {
