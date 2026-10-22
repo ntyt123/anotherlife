@@ -3832,6 +3832,8 @@ function App({ gameId, close }) {
         const [phoneGroups, setPhoneGroups] = React.useState([]);
         const [phoneThreadList, setPhoneThreadList] = React.useState([]);  // 短信的会话列表
         const [phonePerson, setPhonePerson] = React.useState(null);  // 正在看的联系人（详情页）
+        // 进 thread / person 之前在哪一屏 —— 返回时优先回这里，而不是按平台猜
+        const [phoneBackTo, setPhoneBackTo] = React.useState('');
         const [phoneSearch, setPhoneSearch] = React.useState('');  // 联系人搜索词
         const [phoneGroupPick, setPhoneGroupPick] = React.useState(null);  // 建群：{成员:[], 群名:""}
         const [phoneCmtText, setPhoneCmtText] = React.useState('');
@@ -5454,6 +5456,7 @@ function App({ gameId, close }) {
             const tid = p + ':' + nm;
             setPhoneWho(nm);
             setPhoneThreadId(tid);
+            setPhoneBackTo(phoneView);   // 记下来处
             setPhoneView('thread');
             setPhoneMsgs([]);
             setPhoneIn('');
@@ -5937,6 +5940,7 @@ function App({ gameId, close }) {
                               onClick: function () {
                                 // 微信/QQ 里点人仍然是直接聊天
                                 if (phoneApp2) { phoneOpenThread(c.姓名); return; }
+                                setPhoneBackTo(phoneView);
                                 setPhonePerson(c);
                                 setPhoneView('person');
                               },
@@ -12782,13 +12786,15 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
                               let back = 'home';
                               if (phoneView === 'compose') back = 'feed';
                               else if (phoneView === 'thread') {
-                                // 群聊回群列表；微信/QQ 的单聊回那个 app 的首页；短信的单聊回会话列表
-                                if (isGroup) back = 'groups';
-                                else if (phoneApp2) back = 'apphome';
-                                else back = 'threads';
-                              }
+                                // 优先回进来之前的屏：从联系人详情发短信就回详情，从会话列表点人就回列表
+                                if (phoneBackTo) { back = phoneBackTo; }
+                                else if (isGroup) { back = 'groups'; }
+                                else if (phoneApp2) { back = 'apphome'; }
+                                else { back = 'threads'; }
+                                }
                               else if (phoneView === 'person') back = 'contacts';
                               else if (inApp) back = 'apphome';
+                              setPhoneBackTo('');
                               if (back === 'home') { setPhoneThreadId(''); setPhoneWho(''); setPhoneApp2(''); }
                               setPhoneView(back);
                             },
