@@ -3699,8 +3699,8 @@ function tickUnderScent(s, dh, body) {
   // 上一版补全时一律给 0，结果 29 个人全是「刚换上」，界面上一片同样的 0。
   // 这里只跑一次（story.underSeedV1 做标记），之后不再动已补过的值。
   const npcs0 = Array.isArray(s.npcs) ? s.npcs : [];
-  if (!s.story.underSeedV1) {
-    s.story.underSeedV1 = 1;
+  if (!s.story.underSeedV2) {
+    s.story.underSeedV2 = 1;
     npcs0.forEach((n, i) => {
       if (String(n && n.性别 || '').indexOf('男') >= 0) return;
       const w = n && n.穿着;
