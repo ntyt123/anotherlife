@@ -9298,11 +9298,11 @@ onDoubleClick: () => {
                     );
                   }
                   const tip = wearTip(slot, k, isMale, draft.protagonist);
-                  const lvl = k === '袜子' && !isMale ? scentLevel(slot) : -1;
+                  const lvl = ['袜子', '内衣', '内裤'].indexOf(k) >= 0 && !isMale ? scentLevel(slot) : -1;
                   return chip({
                     id: 'w-' + k,
                     title: slot.物品,
-                    // 状态与穿着时长都不贴在名字后面（会很长很挤），只在悬浮详情里看；袜子额外给一个浓度格
+                    // 状态与穿着时长都不贴在名字后面（会很长很挤），只在悬浮详情里看；袜子/内衣/内裤各给一个浓度环
                     badge: (function () {
                       if (lvl < 0) return '';
                       const v = Number(slot && slot.气味强度);
@@ -11088,11 +11088,11 @@ function toggleFans(npc) {
                             );
                           }
                           const tip = wearTip(slot, k, male2, npc);
-                          const lvl2 = k === '袜子' && !male2 ? scentLevel(slot) : -1;
+                          const lvl2 = ['袜子', '内衣', '内裤'].indexOf(k) >= 0 && !male2 ? scentLevel(slot) : -1;
                           return chip({
                             id: 'nw-' + npcOpen.i + '-' + k,
                             title: slot.物品,
-                            // 状态与穿着时长只在悬浮详情里看；袜子额外给一个浓度格
+                            // 状态与穿着时长只在悬浮详情里看；袜子/内衣/内裤各给一个浓度环
                             badge: (function () {
                               if (lvl2 < 0) return '';
                               const v = Number(slot && slot.气味强度);

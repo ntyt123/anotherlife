@@ -3659,6 +3659,25 @@ const UNDER_BRA_HOURS = { 棉: 60, 丝: 48, 蕾丝: 40, 莫代尔: 54, 冰丝: 4
 /** 内裤更短一档 */
 const UNDER_BRIEF_HOURS = { 棉: 48, 丝: 40, 蕾丝: 34, 莫代尔: 44, 冰丝: 38, 混纺: 42 };
 
+/**
+ * 老数据补全：8 部位扩过来之前建的条目，内衣内裤只有空槽位（物品是空串）。
+ * 这里按年龄给一个默认款 —— 只是让数据不空、让气味引擎能跑；
+ * 模型下次写这个角色时会用真实描述覆盖掉。
+ */
+function guessUnderSlot(owner, key) {
+  const 是内衣 = key === '内衣';
+  const 岁 = Number(owner && owner.年龄) || 0;
+  const 少女 = 岁 > 0 && 岁 < 18;
+  if (是内衣) {
+    return 少女
+      ? { 物品: '白色棉质少女文胸', 稀有度: 'N', 简介: '刚发育那年母亲买的，洗过很多次，布面已经软了。' }
+      : { 物品: '白色棉质文胸', 稀有度: 'N', 简介: '日常换洗的那几件之一，肩带松过一次又缝上了。' };
+  }
+  return 少女
+    ? { 物品: '白色纯棉平角内裤', 稀有度: 'N', 简介: '成套买的，料子薄，腰头不勒。' }
+    : { 物品: '白色纯棉三角内裤', 稀有度: 'N', 简介: '日常换洗的那几条之一，洗得发白了。' };
+}
+
 function tickUnderScent(s, dh, body) {
   const out = [];
   const bodyText = String(body || '');
@@ -3675,8 +3694,19 @@ function tickUnderScent(s, dh, body) {
     ['内衣', '内裤'].forEach((key) => {
       const slot = w[key];
       if (!slot || typeof slot !== 'object') return;
-      const nm = String(slot.物品 || '').trim();
-      if (!nm) return;
+      let nm = String(slot.物品 || '').trim();
+      // 老数据：8 部位扩过来之前建的条目，只有空槽位 —— 先补一个默认款，
+      // 否则气味引擎永远跳过她们（界面上就是「点开全是 0」）。
+      if (!nm) {
+        const g0 = guessUnderSlot(owner, key);
+        out.push(engineDiff(base.concat(['穿着', key, '物品']), undefined, g0.物品, 'underscent'));
+        out.push(engineDiff(base.concat(['穿着', key, '稀有度']), undefined, g0.稀有度, 'underscent'));
+        out.push(engineDiff(base.concat(['穿着', key, '简介']), undefined, g0.简介, 'underscent'));
+        slot.物品 = g0.物品;
+        slot.稀有度 = g0.稀有度;
+        slot.简介 = g0.简介;
+        nm = g0.物品;
+      }
       const mat = detectUnderMaterial(nm);
       const full = (key === '内衣' ? UNDER_BRA_HOURS : UNDER_BRIEF_HOURS)[mat] || 50;
 
