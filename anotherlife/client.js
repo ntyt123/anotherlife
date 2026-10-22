@@ -5961,60 +5961,50 @@ function App({ gameId, close }) {
             // person：联系人详情。号码 / 微信 / QQ / 关系都在这儿，操作按钮也在。
             if (phoneView === 'person' && phonePerson) {
               const p = phonePerson;
-              const npc = (Array.isArray(state && state.npcs) ? state.npcs : [])
-                .find(function (x) { return String(x && x.姓名 || '').trim() === String(p.姓名 || '').trim(); }) || {};
-              const rel = (Array.isArray(state && state.relationships) ? state.relationships : [])
-                .find(function (x) { return String(x && x.对象 || '').trim() === String(p.姓名 || '').trim(); }) || {};
-              const 行 = [];
-              if (String(p.电话 || '').trim()) 行.push(['电话', String(p.电话).trim()]);
-              if (String(p.微信 || '').trim()) 行.push(['微信', String(p.微信).trim()]);
-              if (String(p.QQ || '').trim()) 行.push(['QQ', String(p.QQ).trim()]);
-              if (String(npc.身份 || p.身份 || '').trim()) 行.push(['身份', String(npc.身份 || p.身份).trim()]);
-              if (String(rel.关系 || '').trim()) 行.push(['关系', String(rel.关系).trim()]);
-              return h('div', { className: 'sim-ph-thread', style: { overflowY: 'auto' } },
-                h('div', { style: { textAlign: 'center', padding: '26px 16px 18px' } },
-                  // 有头像图就用图，没有就用姓名首字
+              const av = avatarsMap();
+              const 微信号 = String(p.微信 || '').trim();
+
+              // 真实微信的个人资料页：头像 + 昵称 + 微信号，下面是朋友圈入口和「发消息」。
+              // 不放电话 / QQ / 身份 —— 那些是手机通讯录的事，微信里看不到。
+              return h('div', { className: 'sim-ph-thread', style: { overflowY: 'auto', background: '#ededed' } },
+                h('div', { style: { display: 'flex', gap: '14px', padding: '20px 16px', background: '#fff' } },
                   (function () {
-                    const src = String((avatarsMap() || {})['npc:' + String(p.姓名 || '')] || '').trim();
-                    const box = { width: '72px', height: '72px', borderRadius: '50%', fontSize: '30px', margin: '0 auto 10px', overflow: 'hidden' };
+                    const src = String((av || {})['npc:' + String(p.姓名 || '')] || '').trim();
+                    const box = { width: '56px', height: '56px', borderRadius: '5px', fontSize: '24px', flex: '0 0 auto', overflow: 'hidden' };
                     return src
-                      ? h('img', { className: 'sim-ph-av', src: src, alt: '', style: Object.assign({}, box, { display: 'block', objectFit: 'cover', borderRadius: '50%' }) })
+                      ? h('img', { className: 'sim-ph-av', src: src, alt: '', style: Object.assign({}, box, { display: 'block', objectFit: 'cover' }) })
                       : h('div', { className: 'sim-ph-av', style: box }, String(p.姓名 || '?').slice(0, 1));
                   })(),
-                  h('div', { style: { fontSize: 'var(--sim-fs-3)', fontWeight: 600 } }, String(p.姓名 || ''))
+                  h('div', { style: { flex: '1 1 auto', minWidth: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '5px' } },
+                    h('div', { style: { fontSize: 'var(--sim-fs-3)', fontWeight: 600, color: '#191919' } }, String(p.姓名 || '')),
+                    微信号 ? h('div', { style: { fontSize: 'var(--sim-fs-6)', color: '#9a9a9a' } }, '微信号：' + 微信号) : null
+                  )
                 ),
-                h('div', { style: { display: 'flex', gap: '8px', padding: '0 16px 16px' } },
-                  h('button', {
-                    className: 'sim-btn primary',
-                    style: { flex: '1 1 0' },
-                    onClick: function () { phoneOpenThread(p.姓名, 'sms'); },
-                  }, '发短信'),
-                  h('button', {
-                    className: 'sim-btn',
-                    style: { flex: '1 1 0' },
-                    onClick: function () { setPhoneWho(p.姓名); setPhoneView('call'); },
-                  }, '打电话'),
-                  String(p.微信 || '').trim()
-                    ? h('button', {
-                        className: 'sim-btn',
-                        style: { flex: '1 1 0' },
-                        onClick: function () { phoneOpenThread(p.姓名, 'wechat'); },
-                      }, '微信')
-                    : null
-                ),
-                h('div', { style: { padding: '0 16px 18px' } }, 行.map(function (r, i) {
-                  return h('div', {
-                    key: r[0] + i,
-                    style: {
-                      display: 'flex', justifyContent: 'space-between', gap: '14px',
-                      padding: '11px 0', borderTop: i ? '1px solid var(--sim-bd)' : 'none',
-                      fontSize: 'var(--sim-fs-5)',
+                // 朋友圈
+                h('div', { style: { marginTop: '8px', background: '#fff' } },
+                  h('div', {
+                    style: { padding: '14px 16px', fontSize: 'var(--sim-fs-5)', color: '#191919', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
+                    onClick: function () {
+                      setPhonePlatform('朋友圈');
+                      setPhoneFeedWho(String(p.姓名 || ''));
+                      setPhoneView('feed');
+                      phoneLoadFeed('朋友圈', String(p.姓名 || ''));
                     },
                   },
-                    h('span', { style: { color: 'var(--sim-t2)', flex: '0 0 auto' } }, r[0]),
-                    h('span', { style: { textAlign: 'right', wordBreak: 'break-all' } }, r[1])
-                  );
-                }))
+                    h('span', null, '朋友圈'),
+                    h('span', { style: { color: '#c8c8c8', fontSize: 'var(--sim-fs-4)' } }, '›')
+                  )
+                ),
+                // 发消息（只有填了微信号才能发）
+                h('div', { style: { marginTop: '24px', padding: '0 16px 24px' } },
+                  微信号
+                    ? h('button', {
+                        className: 'sim-btn primary',
+                        style: { width: '100%', padding: '11px 0', fontSize: 'var(--sim-fs-5)' },
+                        onClick: function () { phoneOpenThread(p.姓名, 'wechat'); },
+                      }, '发消息')
+                    : null
+                )
               );
             }
 
