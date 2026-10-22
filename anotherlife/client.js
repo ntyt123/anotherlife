@@ -3954,6 +3954,20 @@ function App({ gameId, close }) {
   const [probeBusy, setProbeBusy] = React.useState(false);
   const [probeOut, setProbeOut] = React.useState('');
 
+  /** 临时：拿 summary 槽位的 provider 去试图像模型，结果原样摊在界面上 */
+  function probeImageNow() {
+    if (probeBusy) return;
+    setProbeBusy(true);
+    setProbeOut('');
+    const prov = String((state.config && state.config.summary && state.config.summary.provider) || 'gg');
+    run(call('probeImage', { provider: prov, model: 'agy-gemini-3.1-flash-image' }, gameId))
+      .then(function (r) {
+        setProbeOut(JSON.stringify((r && r.摘要) || {}, null, 1) + '\n\n图块：\n' + JSON.stringify((r && r.图) || [], null, 1) + '\n\n文字：\n' + String((r && r.文字前200) || ''));
+      })
+      .catch(function (e) { setProbeOut('失败：' + String((e && e.message) || e)); })
+      .finally(function () { setProbeBusy(false); });
+  }
+
         // 消息列表变化时贴底：只有本来就贴着底部才自动滚（用户翻历史时不打断）
         React.useEffect(function () {
           const el = phoneChatRef.current;
@@ -11919,19 +11933,6 @@ function toggleFans(npc) {
                 return run(call('saveReasoning', { reasoning: r }, gameId));
             }
 
-            /** 临时：拿 summary 槽位的 provider 去试图像模型，结果原样摊在界面上 */
-            function probeImageNow() {
-              if (probeBusy) return;
-              setProbeBusy(true);
-              setProbeOut('');
-              const prov = String((state.config && state.config.summary && state.config.summary.provider) || 'gg');
-              run(call('probeImage', { provider: prov, model: 'agy-gemini-3.1-flash-image' }, gameId))
-                .then(function (r) {
-                  setProbeOut(JSON.stringify((r && r.摘要) || {}, null, 1) + '\n\n图块：\n' + JSON.stringify((r && r.图) || [], null, 1) + '\n\n文字：\n' + String((r && r.文字前200) || ''));
-                })
-                .catch(function (e) { setProbeOut('失败：' + String((e && e.message) || e)); })
-                .finally(function () { setProbeBusy(false); });
-            }
 
             function applySlot() {
               setSlotBusy(slot);
