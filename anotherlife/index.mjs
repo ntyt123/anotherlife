@@ -9281,6 +9281,25 @@ const HUMAN_MSG = [
     return { ok: true, item: it, 回复: reply };
   });
 
+/** 删掉自己发的一条评论（索引从 0 起，指 it.评论 里的位置） */
+reg('feedDelComment', async ({ gameId, 平台, id, 索引 }) => {
+  const s = await loadState(gameId);
+  const p = feedKey(平台);
+  const arr = s.手机.动态[p] || [];
+  const it = arr.find((x) => String(x.id) === String(id));
+  if (!it) throw new Error('没找到这条动态');
+  const list = Array.isArray(it.评论) ? it.评论 : [];
+  const at = Number(索引);
+  if (!Number.isInteger(at) || at < 0 || at >= list.length) throw new Error('没有这条评论');
+  const me = String((s.protagonist || {}).姓名 || '我');
+  // 只能删自己的 —— 别人的评论是模型写的，删了没处复原
+  if (String(list[at].谁 || '') !== me) throw new Error('只能删自己的评论');
+  list.splice(at, 1);
+  it.评论 = list;
+  await saveState(s);
+  return { ok: true, item: it };
+});
+
   reg('feedLike', async ({ gameId, 平台, id }) => {
     const s = await loadState(gameId);
     const p = feedKey(平台);

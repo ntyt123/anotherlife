@@ -281,6 +281,8 @@ window.__ModuleLoader__.load({
       '.sim-ph-cmts{margin-top:6px;background:var(--sim-bg);border-radius:7px;padding:6px 9px;display:flex;flex-direction:column;gap:4px}',
       '.sim-ph-cmt{font-size:var(--sim-fs-6);line-height:1.5;color:var(--sim-t);word-break:break-word}',
       '.sim-ph-cmt b{color:#576b95;font-weight:600}',
+      '.sim-ph-cmt.mine{user-select:none;-webkit-user-select:none;cursor:default}',
+      '.sim-ph-cmt.mine:active{background:rgba(0,0,0,.05);border-radius:4px}',
       // iOS 相册：3 列、gap 2px、无圆角，照片贴满整屏
       '.sim-ph-alb-sec{flex:0 0 auto}',
       '.sim-ph-alb-hd{padding:10px 14px 6px;font-size:13px;font-weight:600;color:#f2f2f7;background:#000}',
@@ -3893,6 +3895,8 @@ function App({ gameId, close }) {
         // 消息区：新消息进来时滚到底（用户自己往上翻过就不打扰）
         const phoneChatRef = React.useRef(null);
         const phoneStickRef = React.useRef(true);
+        // 评论长按计时器：按住 550ms 弹删除确认
+        const cmtPressRef = React.useRef(null);
         const [phoneGroups, setPhoneGroups] = React.useState([]);
         const [phoneThreadList, setPhoneThreadList] = React.useState([]);  // 短信的会话列表
         const [phonePerson, setPhonePerson] = React.useState(null);  // 正在看的联系人（详情页）
@@ -5619,6 +5623,16 @@ function App({ gameId, close }) {
           }
 
           /** 点赞 */
+/** 删掉自己发的一条评论（长按触发） */
+function phoneDelComment(postId, ci) {
+  phoneAsk('删除这条评论？', true).then(function (ok) {
+    if (!ok) return;
+    run(call('feedDelComment', { 平台: phonePlatform, id: postId, 索引: ci }, gameId))
+      .then(function (r) { if (r && r.ok) phoneLoadFeed(phonePlatform); })
+      .catch(function () {});
+  });
+}
+
           function phoneDoLike(id) {
             run(call('feedLike', { 平台: phonePlatform, id: id }, gameId)).then(function (r) {
               if (r && r.ok) phoneLoadFeed(phonePlatform);
@@ -6287,7 +6301,19 @@ function App({ gameId, close }) {
                               } }, '删') : null
                             ),
                             (it.评论 && it.评论.length) ? h('div', { className: 'sim-ph-cmts' }, it.评论.map(function (c, ci) {
-                              return h('div', { className: 'sim-ph-cmt', key: 'c' + ci }, h('b', null, String(c.谁 || '') + '：'), String(c.内容 || ''));
+                              // 自己发的评论可以长按删掉（别人的不行 —— 那是模型写的，删了没处复原）
+                              const 我的评论 = String(c.谁 || '') === meN;
+                              return h('div', {
+                                className: 'sim-ph-cmt' + (我的评论 ? ' mine' : ''),
+                                key: 'c' + ci,
+                                onPointerDown: 我的评论 ? function () {
+                                  clearTimeout(cmtPressRef.current);
+                                  cmtPressRef.current = setTimeout(function () { phoneDelComment(it.id, ci); }, 550);
+                                } : undefined,
+                                onPointerUp: 我的评论 ? function () { clearTimeout(cmtPressRef.current); } : undefined,
+                                onPointerLeave: 我的评论 ? function () { clearTimeout(cmtPressRef.current); } : undefined,
+                                onContextMenu: 我的评论 ? function (ev) { ev.preventDefault(); phoneDelComment(it.id, ci); } : undefined,
+                              }, h('b', null, String(c.谁 || '') + '：'), String(c.内容 || ''));
                             })) : null,
                             phoneCmtFor === it.id ? h('div', { className: 'sim-ph-in', style: { borderTop: 'none', background: 'transparent', paddingTop: '6px' } },
                               h('textarea', { value: phoneCmtText, placeholder: '回复 ' + String(it.作者 || ''), onChange: function (e) { setPhoneCmtText(e.target.value.slice(0, 100)); } }),
