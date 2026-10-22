@@ -272,8 +272,12 @@ window.__ModuleLoader__.load({
       '.sim-ph-post-nm{font-size:var(--sim-fs-5);color:#576b95;font-weight:600;line-height:1.3}',
       '.sim-ph-post-tm{font-size:10px;color:var(--sim-t2);line-height:1.3}',
       '.sim-ph-post-bd{font-size:var(--sim-fs-5);line-height:1.6;margin-top:4px;white-space:pre-wrap;word-break:break-word;color:var(--sim-t)}',
-      '.sim-ph-post-img{display:inline-flex;align-items:center;gap:6px;margin-top:7px;padding:8px 10px;border-radius:8px;border:1px dashed var(--sim-bd);background:var(--sim-bg);max-width:100%}',
-      '.sim-ph-post-img .d{font-size:var(--sim-fs-6);color:var(--sim-t2);line-height:1.4}',
+      // 朋友圈图片位：缩略图方块（单图大、多图并排），描述压在底部两行
+      '.sim-ph-post-imgs{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px;max-width:100%}',
+      '.sim-ph-post-img{position:relative;width:98px;height:98px;border-radius:6px;overflow:hidden;background:linear-gradient(135deg,#e9edf3,#d3d9e3);display:flex;align-items:flex-end;flex:0 0 auto}',
+      '.sim-ph-post-imgs.single .sim-ph-post-img{width:150px;height:150px}',
+      '.sim-ph-post-img .ic{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:30px;opacity:.22}',
+      '.sim-ph-post-img .d{position:relative;width:100%;padding:5px 7px;font-size:10px;line-height:1.35;color:#fff;background:linear-gradient(rgba(0,0,0,0),rgba(0,0,0,.66));display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}',
       '.sim-ph-post-act{display:flex;gap:14px;margin-top:7px;font-size:var(--sim-fs-6);color:var(--sim-t2)}',
       '.sim-ph-post-act .a{cursor:pointer;user-select:none}',
       '.sim-ph-post-act .a:hover{color:#576b95}',
@@ -6297,12 +6301,15 @@ function phoneDoComment(id) {
                             h('div', { className: 'sim-ph-post-nm' }, String(it.作者 || '')),
                             h('div', { className: 'sim-ph-post-tm' }, phoneClock(it.时间) || String(it.时间 || '').slice(0, 16)),
                             it.正文 ? h('div', { className: 'sim-ph-post-bd' }, String(it.正文)) : null,
-                            (it.图片 && it.图片.length) ? it.图片.map(function (p, pi) {
-                              return h('div', { className: 'sim-ph-post-img', key: 'p' + pi },
-                                h('span', null, '🖼'),
-                                h('span', { className: 'd' }, String(p.描述 || '一张图'))
-                              );
-                            }) : null,
+                            // 图片位：缩略图方块（没有真图时，把描述压在图底当一行小字）
+                            (it.图片 && it.图片.length) ? h('div', { className: 'sim-ph-post-imgs' + (it.图片.length === 1 ? ' single' : '') },
+                              it.图片.map(function (p, pi) {
+                                return h('div', { className: 'sim-ph-post-img', key: 'p' + pi },
+                                  h('span', { className: 'ic' }, '🖼'),
+                                  h('span', { className: 'd' }, String(p.描述 || '一张图'))
+                                );
+                              })
+                            ) : null,
                             h('div', { className: 'sim-ph-post-act' },
                               h('span', { className: 'a' + (liked ? ' on' : ''), onClick: function () { phoneDoLike(it.id); } },
                                 '♥ ' + (Array.isArray(it.赞) && it.赞.length ? it.赞.join('、') : '赞')),
