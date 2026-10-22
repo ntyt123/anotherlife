@@ -5797,6 +5797,7 @@ function App({ gameId, close }) {
             if (phoneView === 'newgroup' && phoneGroupPick) {
               const picked = Array.isArray(phoneGroupPick.成员) ? phoneGroupPick.成员 : [];
               const cs = phoneContacts || [];
+              const av = avatarsMap();
               return h('div', { className: 'sim-ph-thread' },
                 h('div', { style: { flex: '1 1 auto', minHeight: 0, overflowY: 'auto' } },
                   h('div', { style: { padding: '9px 12px', fontSize: 'var(--sim-fs-6)', color: 'var(--sim-t2)' } }, '选人（已选 ' + picked.length + '）'),
@@ -5846,7 +5847,10 @@ function App({ gameId, close }) {
 
               const 会话行 = function (t2) {
                 return h('div', { className: 'sim-ph-row', key: t2.姓名, onClick: function () { t2.是否群 ? phoneOpenGroup(t2.姓名) : phoneOpenThread(t2.姓名, 平台); } },
-                  h('div', { className: 'sim-ph-av' }, t2.是否群 ? '👥' : String(t2.姓名 || '?').slice(0, 1)),
+                  // 群聊用通用群图标；单聊走 uiFace（有头像图就用图，没有用姓名首字）
+                  t2.是否群
+                    ? h('span', { className: 'sim-wx-av', style: { fontSize: '18px' } }, '👥')
+                    : uiFace(t2.姓名, 'sim-wx-av', av, false),
                   h('div', { className: 'sim-ph-rc' },
                     h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '8px' } },
                       h('div', { className: 'n', style: { flex: '1 1 auto', display: 'flex', alignItems: 'center' } },
@@ -5872,7 +5876,7 @@ function App({ gameId, close }) {
 
               const 人群 = function (c2) {
                 return h('div', { className: 'sim-ph-row', key: c2.姓名, onClick: function () { setPhonePerson(c2); setPhoneView('person'); } },
-                  h('div', { className: 'sim-ph-av' }, String(c2.姓名 || '?').slice(0, 1)),
+                  uiFace(c2.姓名, 'sim-wx-av', av, false),
                   h('div', { className: 'sim-ph-rc' },
                     h('div', { className: 'n' }, String(c2.姓名 || '')),
                     h('div', { className: 'p' }, String(c2.微信号 || c2.微信 || ''))
@@ -5935,7 +5939,7 @@ function App({ gameId, close }) {
                     key: t2.姓名,
                     onClick: function () { phoneOpenThread(t2.姓名, phoneApp2 === 'qq' ? 'qq' : phoneApp2 === 'wechat' ? 'wechat' : 'sms'); },
                   },
-                    h('div', { className: 'sim-ph-av' }, String(t2.姓名 || '?').slice(0, 1)),
+                    uiFace(t2.姓名, 'sim-wx-av', avatarsMap(), false),
                     h('div', { className: 'sim-ph-rc' },
                       h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '8px' } },
                         h('div', { className: 'n', style: { flex: '1 1 auto', display: 'flex', alignItems: 'center', gap: '0' } },
@@ -5969,10 +5973,14 @@ function App({ gameId, close }) {
               if (String(rel.关系 || '').trim()) 行.push(['关系', String(rel.关系).trim()]);
               return h('div', { className: 'sim-ph-thread', style: { overflowY: 'auto' } },
                 h('div', { style: { textAlign: 'center', padding: '26px 16px 18px' } },
-                  h('div', {
-                    className: 'sim-ph-av',
-                    style: { width: '72px', height: '72px', borderRadius: '50%', fontSize: '30px', margin: '0 auto 10px' },
-                  }, String(p.姓名 || '?').slice(0, 1)),
+                  // 有头像图就用图，没有就用姓名首字
+                  (function () {
+                    const src = String((avatarsMap() || {})['npc:' + String(p.姓名 || '')] || '').trim();
+                    const box = { width: '72px', height: '72px', borderRadius: '50%', fontSize: '30px', margin: '0 auto 10px', overflow: 'hidden' };
+                    return src
+                      ? h('img', { className: 'sim-ph-av', src: src, alt: '', style: Object.assign({}, box, { display: 'block', objectFit: 'cover', borderRadius: '50%' }) })
+                      : h('div', { className: 'sim-ph-av', style: box }, String(p.姓名 || '?').slice(0, 1));
+                  })(),
                   h('div', { style: { fontSize: 'var(--sim-fs-3)', fontWeight: 600 } }, String(p.姓名 || ''))
                 ),
                 h('div', { style: { display: 'flex', gap: '8px', padding: '0 16px 16px' } },
@@ -6074,7 +6082,7 @@ function App({ gameId, close }) {
                                 setPhoneView('person');
                               },
                             },
-                              h('div', { className: 'sim-ph-av' }, String(c.姓名 || '?').slice(0, 1)),
+                              uiFace(c.姓名, 'sim-wx-av', avatarsMap(), false),
                               h('div', { className: 'sim-ph-rc' },
                                 h('div', { className: 'n' }, c.姓名),
                                 String(c.身份 || '').trim() ? h('div', { className: 'p' }, String(c.身份)) : null
