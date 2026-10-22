@@ -256,6 +256,24 @@ window.__ModuleLoader__.load({
       '.sim-ph[data-app="qq"] .sim-wx-ts{color:#9aa5b1}',
       '.sim-ph[data-app="qq"] .sim-wx-foot{background:#fff;border-top:1px solid #e5e7eb}',
       '.sim-ph[data-app="qq"] .sim-wx-send{background:#12b7f5}',
+
+      // 会话列表：QQ 的行更高、头像是圆的且更大、名字不带边框、未读是右上角红点
+      '.sim-ph[data-app="qq"] .sim-ph-list{background:#fff}',
+      '.sim-ph[data-app="qq"] .sim-ph-row{padding:12px 14px;border-bottom:1px solid #f0f1f3;gap:12px}',
+      '.sim-ph[data-app="qq"] .sim-ph-row:active{background:#f2f3f5}',
+      '.sim-ph[data-app="qq"] .sim-ph-av{width:48px;height:48px;border-radius:50%;border:none;font-size:20px}',
+      '.sim-ph[data-app="qq"] .sim-ph-rc .n{font-size:15px;font-weight:400;color:#191919}',
+      '.sim-ph[data-app="qq"] .sim-ph-rc .p{font-size:13px;color:#9aa5b1;margin-top:3px}',
+      '.sim-ph[data-app="qq"] .sim-ph-dot{width:9px;height:9px;background:#f5222d;margin-left:6px}',
+      '.sim-ph[data-app="qq"] .sim-ph-thread{background:#f2f3f5}',
+      '.sim-ph[data-app="qq"] .sim-ph-empty{color:#9aa5b1}',
+      // QQ 底栏的单格：图标在上、文字在下，选中变蓝
+      '.sim-ph-tabbtn{flex:1 1 0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;border:none;background:none;padding:6px 0;cursor:pointer;font-family:inherit;color:#9aa5b1}',
+      '.sim-ph-tabbtn .ic{font-size:19px;line-height:1;opacity:.75}',
+      '.sim-ph-tabbtn .lb{font-size:10px;line-height:1.2}',
+      '.sim-ph-tabbtn.on{color:#12b7f5}',
+      '.sim-ph-tabbtn.on .ic{opacity:1}',
+      '.sim-ph[data-app="qq"] .sim-ph-bar{padding:2px 6px 0;background:#fff;border-top:1px solid #e5e7eb}',
       '.sim-ph-alert{position:absolute;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:20}',
       '.sim-ph-alert-c{width:74%;max-width:270px;background:rgba(250,250,250,.97);border-radius:14px;overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.28)}',
       '.sim-ph-alert-t{padding:18px 16px 16px;font-size:var(--sim-fs-4);line-height:1.45;text-align:center;color:#191919;white-space:pre-wrap}',
@@ -5964,9 +5982,21 @@ function phoneDoComment(id) {
                     ]
                 ),
                 h('div', { className: 'sim-ph-bar' },
-                  h('button', { className: 'sim-btn' + (tab === 'chat' ? ' primary' : ''), style: { flex: '1 1 auto' }, onClick: function () { setPhoneTab('chat'); } }, '聊天'),
-                  h('button', { className: 'sim-btn' + (tab === 'book' ? ' primary' : ''), style: { flex: '1 1 auto' }, onClick: function () { setPhoneTab('book'); phoneLoadContacts(平台); } }, '通讯录'),
-                  h('button', { className: 'sim-btn' + (tab === 'find' ? ' primary' : ''), style: { flex: '1 1 auto' }, onClick: function () { setPhoneTab('find'); } }, '发现')
+                  // QQ 的底栏是「图标 + 文字」三格（消息/联系人/动态），微信是三个文字按钮
+                  isWx
+                    ? [
+                        h('button', { key: 'c', className: 'sim-btn' + (tab === 'chat' ? ' primary' : ''), style: { flex: '1 1 auto' }, onClick: function () { setPhoneTab('chat'); } }, '聊天'),
+                        h('button', { key: 'b', className: 'sim-btn' + (tab === 'book' ? ' primary' : ''), style: { flex: '1 1 auto' }, onClick: function () { setPhoneTab('book'); phoneLoadContacts(平台); } }, '通讯录'),
+                        h('button', { key: 'f', className: 'sim-btn' + (tab === 'find' ? ' primary' : ''), style: { flex: '1 1 auto' }, onClick: function () { setPhoneTab('find'); } }, '发现'),
+                      ]
+                    : [
+                        h('button', { key: 'c', className: 'sim-ph-tabbtn' + (tab === 'chat' ? ' on' : ''), onClick: function () { setPhoneTab('chat'); } },
+                          h('span', { className: 'ic' }, '💬'), h('span', { className: 'lb' }, '消息')),
+                        h('button', { key: 'b', className: 'sim-ph-tabbtn' + (tab === 'book' ? ' on' : ''), onClick: function () { setPhoneTab('book'); phoneLoadContacts(平台); } },
+                          h('span', { className: 'ic' }, '👥'), h('span', { className: 'lb' }, '联系人')),
+                        h('button', { key: 'f', className: 'sim-ph-tabbtn' + (tab === 'find' ? ' on' : ''), onClick: function () { setPhoneTab('find'); } },
+                          h('span', { className: 'ic' }, '🌐'), h('span', { className: 'lb' }, '动态')),
+                      ],
                 )
               );
             }
