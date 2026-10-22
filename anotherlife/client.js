@@ -11230,6 +11230,30 @@ function toggleFans(npc) {
               upd({ config: cfg });
               return run(call('saveConfig', { config: cfg }, gameId));
             };
+
+      /**
+       * 三档预设：一键把下面五个值填好。填完仍然可以单独微调。
+       *
+       *   紧凑  前情 20 段 + 最近 10 轮原文 + 开检索    ≈ 17 万字注入
+       *   均衡  前情 20 段 + 最近正文跟总结频率 + 开检索  ≈ 12 万字
+       *   全量  前情 200 段 + 最近 20 轮原文 + 关检索     ≈ 30 万字
+       */
+      const applyPreset = (名字) => {
+        const 表 = {
+          紧凑: { every: 10, 上限: 0, recent: 10, 保留段: 20, 检索: true },
+          均衡: { every: 20, 上限: 6000, recent: 0, 保留段: 20, 检索: true },
+          全量: { every: 10, 上限: 0, recent: 20, 保留段: 200, 检索: false },
+        };
+        const p = 表[名字];
+        if (!p) return;
+        const cfg = Object.assign({}, dcfg);
+        cfg.summaryOpts = Object.assign({}, o, { every: p.every, 正文上限: p.上限 });
+        cfg.recentRounds = p.recent;
+        cfg.storyOpts = Object.assign({}, (dcfg && dcfg.storyOpts) || {}, { 保留段: p.保留段 });
+        cfg.storyTools = p.检索;
+        upd({ config: cfg });
+        return run(call('saveConfig', { config: cfg }, gameId));
+      };
             const num = (f, label, max) =>
               h(Field, {
                 key: f,
@@ -11241,7 +11265,23 @@ function toggleFans(npc) {
               'div',
               { className: 'sim-card' },
               h('div', { style: { fontWeight: 600, marginBottom: 4 } }, '剧情总结'),
-              h('div', { className: 'sim-grid' }, num('every', '每几轮总结一次', 100), num('mergeAt', '小结超过几段就合并（大上限=几乎不合并）', 2000), num('keepTail', '合并时保留最近几段', 60), num('段句数', '每段小结最多几句', 30), num('合并比例', '合并时保留原文百分比', 90), h(Field, { key: '正文上限', label: '每轮正文最多取多少字（0=全部）', value: String(o.正文上限 == null ? 6000 : o.正文上限), onChange: (v) => set('正文上限', Math.max(0, Math.min(50000, Math.floor(Number(v) || 0)))) })),
+              // 三档预设：先选一档，下面的细项再按需微调
+              h('div', { className: 'sim-acts', style: { marginTop: 6, marginBottom: 8 }, key: 'presets' },
+                h(Btn, { onClick: () => applyPreset('紧凑') }, '紧凑'),
+                h(Btn, { onClick: () => applyPreset('均衡') }, '均衡'),
+                h(Btn, { onClick: () => applyPreset('全量') }, '全量'),
+              ),
+              // 下面四项只在「合并」时用到；开了检索之后段数到不了阈值，它们基本不会触发。
+              h('details', { className: 'sim-fold', style: { marginTop: 4 } },
+                h('summary', null, '合并与段长'),
+                h('div', { className: 'sim-fold-body' },
+                  h('div', { className: 'sim-grid' }, num('every', '每几轮总结一次', 100), num('mergeAt', '小结超过几段就合并（大上限=几乎不合并）', 2000), num('keepTail', '合并时保留最近几段', 60), num('段句数', '每段小结最多几句', 30), num('合并比例', '合并时保留原文百分比', 90), h(Field, { key: '正文上限', label: '每轮正文最多取多少字（0=全部）', value: String(o.正文上限 == null ? 6000 : o.正文上限), onChange: (v) => set('正文上限', Math.max(0, Math.min(50000, Math.floor(Number(v) || 0)))) })),
+                  h('div', { className: 'sim-hint', style: { marginTop: 4 } },
+                    '开了「正文生成可查过往原文」之后，合并基本不会发生 —— 段数到不了阈值。' +
+                    '这几项只在关掉检索、想靠合并压缩前情时才用得上。'
+                  ),
+                ),
+              ),
               // 附带最近几轮原文（补上总结还没覆盖的那一段）。0 = 跟着「每几轮总结一次」。
               h(
                 'div',
