@@ -5640,17 +5640,28 @@ function phoneDelComment(postId, ci) {
           }
 
           /** 发评论（会带回一条回复） */
-          function phoneDoComment(id) {
-            const t = String(phoneCmtText || '').trim();
-            if (!t) return;
-            run(call('feedComment', { 平台: phonePlatform, id: id, 内容: t }, gameId)).then(function (r) {
-              if (r && r.ok) {
-                setPhoneCmtText('');
-                setPhoneCmtFor('');
-                phoneLoadFeed(phonePlatform);
-              }
-            });
-          }
+function phoneDoComment(id) {
+  const t = String(phoneCmtText || '').trim();
+  if (!t) return;
+  const meN = String((state && state.protagonist && state.protagonist.姓名) || '');
+  // 先把自己这条挂上去 —— 生成回复要一两秒，等的话输入框会顿在那儿
+  setPhoneFeed(function (prev) {
+    return (prev || []).map(function (it) {
+      if (String(it.id) !== String(id)) return it;
+      const 评 = Array.isArray(it.评论) ? it.评论.slice() : [];
+      评.push({ 谁: meN, 内容: t.slice(0, 100) });
+      return Object.assign({}, it, { 评论: 评 });
+    });
+  });
+  setPhoneCmtText('');
+  setPhoneCmtFor('');
+  run(call('feedComment', { 平台: phonePlatform, id: id, 内容: t }, gameId))
+    .then(function (r) {
+      // 服务端那份带着 AI 的回复，回来之后整体覆盖（多出来的那条就是对方的回话）
+      if (r && r.ok) phoneLoadFeed(phonePlatform);
+    })
+    .catch(function () {});
+}
 
           /** 动态里的头像字（没有真头像，用姓名的第一个字） */
           /** 联系人副标题：优先电话，退到微信/QQ。带个前缀，一眼看出是哪种号 */
