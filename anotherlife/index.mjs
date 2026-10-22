@@ -6978,7 +6978,12 @@ function seasonText(s) {
       合并比例: num(o.合并比例, 60, 90),
       // 每轮正文最多取多少字（0 = 不截断）。实测单轮平均 8000 字、最长 19000，
       // 全带上会撑爆小模型；6000 能保住七成内容。
-      正文上限: Math.max(0, Math.min(50000, Math.floor(Number(o.正文上限)))) || 6000,
+      // 别用 `x || 6000` —— 用户设 0（不截断）时 0 是 falsy，会被吃成 6000。
+      正文上限: (function () {
+        const v = Number(o.正文上限);
+        if (!isFinite(v) || v < 0) return 12000;
+        return Math.min(50000, Math.floor(v));
+      })(),
       // 没设过就用默认破限词；显式存成空串表示「不要破限词」
       jailbreak: String(o.jailbreak == null ? SUMMARY_JAILBREAK : o.jailbreak).trim(),
     };
@@ -7081,7 +7086,7 @@ function seasonText(s) {
    */
   function summarySource(s, from, to, 每轮上限) {
     const 上限 = Number(每轮上限);
-    const 限 = isFinite(上限) && 上限 >= 0 ? Math.floor(上限) : 6000;
+    const 限 = isFinite(上限) && 上限 >= 0 ? Math.floor(上限) : 12000;
     const parts = [];
     (s.transcript || []).forEach(function (t) {
       if (t.seq < from || t.seq > to) return;
@@ -7090,16 +7095,12 @@ function seasonText(s) {
         return;
       }
       const 正文 = String(t.body || '').trim();
-      const 小结 = String(t.summary || '').trim();
       const 段 = [];
       段.push('【第 ' + t.seq + ' 轮 · 正文】');
       if (正文) {
         段.push(限 > 0 && 正文.length > 限 ? 正文.slice(0, 限) + '…（后略）' : 正文);
       } else {
         段.push('（这一轮没有正文）');
-      }
-      if (小结) {
-        段.push('【第 ' + t.seq + ' 轮 · 小结 · 只作时间与要点索引，不要照抄】' + 小结);
       }
       // 该轮的时间藏在 diffs 里（world.当前日期时间 的那条）
       const 时 = (t.diffs || []).find(function (x) {
