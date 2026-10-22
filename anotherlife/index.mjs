@@ -3668,14 +3668,24 @@ function guessUnderSlot(owner, key) {
   const 是内衣 = key === '内衣';
   const 岁 = Number(owner && owner.年龄) || 0;
   const 少女 = 岁 > 0 && 岁 < 18;
-  if (是内衣) {
-    return 少女
-      ? { 物品: '白色棉质少女文胸', 稀有度: 'N', 简介: '刚发育那年母亲买的，洗过很多次，布面已经软了。' }
-      : { 物品: '白色棉质文胸', 稀有度: 'N', 简介: '日常换洗的那几件之一，肩带松过一次又缝上了。' };
-  }
-  return 少女
-    ? { 物品: '白色纯棉平角内裤', 稀有度: 'N', 简介: '成套买的，料子薄，腰头不勒。' }
-    : { 物品: '白色纯棉三角内裤', 稀有度: 'N', 简介: '日常换洗的那几条之一，洗得发白了。' };
+
+  // 稳定 hash：同一个角色每次都算出同一组值 —— 重算 / 刷新 / 删轮重来都不会跳。
+  const 名 = String((owner && owner.姓名) || '') + '|' + key;
+  let seed = 0;
+  for (let i = 0; i < 名.length; i++) seed = (seed * 131 + 名.charCodeAt(i)) | 0;
+  seed = Math.abs(seed);
+  // 五分之一的人取「刚换上」，其余给 1~24 小时（半日到整日之间）
+  const 刚换 = seed % 5 === 0;
+  const 小时 = 刚换 ? 0 : Math.round((((seed % 24) + 1)) * 10) / 10;
+  const 满 = 是内衣 ? 60 : 48;
+  const 强度 = Math.round(小时 * (100 / 满) * 10) / 10;
+
+  const 底 = 是内衣
+    ? (少女 ? { 物品: '白色棉质少女文胸', 稀有度: 'N', 简介: '刚发育那年母亲买的，洗过很多次，布面已经软了。' }
+            : { 物品: '白色棉质文胸', 稀有度: 'N', 简介: '日常换洗的那几件之一，肩带松过一次又缝上了。' })
+    : (少女 ? { 物品: '白色纯棉平角内裤', 稀有度: 'N', 简介: '成套买的，料子薄，腰头不勒。' }
+            : { 物品: '白色纯棉三角内裤', 稀有度: 'N', 简介: '日常换洗的那几条之一，洗得发白了。' });
+  return Object.assign(底, { 强度: 强度, 小时: 小时 });
 }
 
 function tickUnderScent(s, dh, body) {
@@ -3684,6 +3694,37 @@ function tickUnderScent(s, dh, body) {
   const list = [];
   list.push({ owner: s.protagonist, base: [] });
   (Array.isArray(s.npcs) ? s.npcs : []).forEach((n, i) => list.push({ owner: n, base: ['npcs', i] }));
+
+  // ── 一次性迁移：把上一版补的「0 / 刚换上」换成按角色哈希出来的初值 ──
+  // 上一版补全时一律给 0，结果 29 个人全是「刚换上」，界面上一片同样的 0。
+  // 这里只跑一次（story.underSeedV1 做标记），之后不再动已补过的值。
+  const npcs0 = Array.isArray(s.npcs) ? s.npcs : [];
+  if (!s.story.underSeedV1) {
+    s.story.underSeedV1 = 1;
+    npcs0.forEach((n, i) => {
+      if (String(n && n.性别 || '').indexOf('男') >= 0) return;
+      const w = n && n.穿着;
+      if (!w || typeof w !== 'object') return;
+      ['内衣', '内裤'].forEach((key) => {
+        const slot = w[key];
+        if (!slot || typeof slot !== 'object') return;
+        if (!String(slot.物品 || '').trim()) return;
+        if (Number(slot.气味强度) !== 0) return;
+        if (String(slot.穿着时长 || '') !== '刚换上') return;
+        const g = guessUnderSlot(n, key);
+        if (!(g.小时 > 0)) return;
+        const t = scentTextOf(scentLevel(g.强度), detectUnderMaterial(slot.物品), slot.物品, String(n.姓名 || ''), 'under', key);
+        out.push(engineDiff(['npcs', i, '穿着', key, '气味强度'], 0, g.强度, 'underscent'));
+        out.push(engineDiff(['npcs', i, '穿着', key, '穿着小时'], 0, g.小时, 'underscent'));
+        out.push(engineDiff(['npcs', i, '穿着', key, '气味'], String(slot.气味 || ''), t, 'underscent'));
+        out.push(engineDiff(['npcs', i, '穿着', key, '穿着时长'], '刚换上', humanSockHours(g.小时), 'underscent'));
+        slot.气味强度 = g.强度;
+        slot.穿着小时 = g.小时;
+        slot.气味 = t;
+        slot.穿着时长 = humanSockHours(g.小时);
+      });
+    });
+  }
 
   list.forEach(({ owner, base }) => {
     if (!owner || typeof owner !== 'object') return;
@@ -3697,6 +3738,7 @@ function tickUnderScent(s, dh, body) {
       let nm = String(slot.物品 || '').trim();
       // 老数据：8 部位扩过来之前建的条目，只有空槽位 —— 先补一个默认款，
       // 否则气味引擎永远跳过她们（界面上就是「点开全是 0」）。
+      let 初值 = null;   // 刚补过物品的话，把算好的初值带下去
       if (!nm) {
         const g0 = guessUnderSlot(owner, key);
         out.push(engineDiff(base.concat(['穿着', key, '物品']), undefined, g0.物品, 'underscent'));
@@ -3706,6 +3748,7 @@ function tickUnderScent(s, dh, body) {
         slot.稀有度 = g0.稀有度;
         slot.简介 = g0.简介;
         nm = g0.物品;
+        初值 = g0;
       }
       const mat = detectUnderMaterial(nm);
       const full = (key === '内衣' ? UNDER_BRA_HOURS : UNDER_BRIEF_HOURS)[mat] || 50;
@@ -3713,17 +3756,19 @@ function tickUnderScent(s, dh, body) {
       // ⓪ 老数据：没有强度就补一个初始值（默认刚换上，因为它本来就该一天一换）
       const hasInten = slot.气味强度 != null && slot.气味强度 !== '' && Number.isFinite(Number(slot.气味强度));
       if (!hasInten) {
-        const t0 = scentTextOf(0, mat, nm, String(owner.姓名 || ''), 'under', key);
-        out.push(engineDiff(base.concat(['穿着', key, '气味强度']), undefined, 0, 'underscent'));
-        out.push(engineDiff(base.concat(['穿着', key, '穿着小时']), undefined, 0, 'underscent'));
+        const sv0 = 初值 ? 初值.强度 : 0;
+        const hv0 = 初值 ? 初值.小时 : 0;
+        const t0 = scentTextOf(scentLevel(sv0), mat, nm, String(owner.姓名 || ''), 'under', key);
+        out.push(engineDiff(base.concat(['穿着', key, '气味强度']), undefined, sv0, 'underscent'));
+        out.push(engineDiff(base.concat(['穿着', key, '穿着小时']), undefined, hv0, 'underscent'));
         out.push(engineDiff(base.concat(['穿着', key, '材质']), undefined, mat, 'underscent'));
         out.push(engineDiff(base.concat(['穿着', key, '气味']), String(slot.气味 || ''), t0, 'underscent'));
-        out.push(engineDiff(base.concat(['穿着', key, '穿着时长']), String(slot.穿着时长 || ''), '刚换上', 'underscent'));
-        slot.气味强度 = 0;
-        slot.穿着小时 = 0;
+        out.push(engineDiff(base.concat(['穿着', key, '穿着时长']), String(slot.穿着时长 || ''), hv0 > 0 ? humanSockHours(hv0) : '刚换上', 'underscent'));
+        slot.气味强度 = sv0;
+        slot.穿着小时 = hv0;
         slot.材质 = mat;
         slot.气味 = t0;
-        slot.穿着时长 = '刚换上';
+        slot.穿着时长 = hv0 > 0 ? humanSockHours(hv0) : '刚换上';
         return;
       }
 
