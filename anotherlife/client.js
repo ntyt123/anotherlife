@@ -241,6 +241,15 @@ window.__ModuleLoader__.load({
       '.sim-ph-island{position:absolute;top:9px;left:50%;transform:translateX(-50%);width:112px;height:31px;border-radius:17px;background:#000;z-index:30;pointer-events:none;box-shadow:inset 0 0 0 1px rgba(255,255,255,.07),0 1px 3px rgba(0,0,0,.5)}',
       '.sim-ph-island::after{content:"";position:absolute;right:9px;top:50%;transform:translateY(-50%);width:7px;height:7px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#2c3e50,#08080c 70%);box-shadow:0 0 0 1px rgba(80,120,160,.35)}',
       // Home 指示条：底部居中的横线
+      // 手机自己的确认框（iOS 风格）：不借用全屏的 .sim-mask，免得盖在手机上很突兀
+      '.sim-ph-alert{position:absolute;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:20}',
+      '.sim-ph-alert-c{width:74%;max-width:270px;background:rgba(250,250,250,.97);border-radius:14px;overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.28)}',
+      '.sim-ph-alert-t{padding:18px 16px 16px;font-size:var(--sim-fs-4);line-height:1.45;text-align:center;color:#191919;white-space:pre-wrap}',
+      '.sim-ph-alert-b{display:flex;border-top:1px solid rgba(0,0,0,.12)}',
+      '.sim-ph-alert-b button{flex:1 1 0;border:none;background:none;padding:12px 0;font-size:var(--sim-fs-5);font-family:inherit;color:#007aff;cursor:pointer}',
+      '.sim-ph-alert-b button+button{border-left:1px solid rgba(0,0,0,.12)}',
+      '.sim-ph-alert-b button.primary{font-weight:600}',
+      '.sim-ph-alert-b button.danger{font-weight:600;color:#e34d4d}',
       '.sim-ph-homebar{position:absolute;bottom:7px;left:50%;transform:translateX(-50%);width:132px;height:5px;border-radius:3px;background:rgba(0,0,0,.34);z-index:30;pointer-events:none}',
       // 标题栏：半透明深色 + 毛玻璃，压在壁纸上才像 iPhone 的导航栏
       '.sim-ph .sim-ph-hd{padding-top:22px;background:rgba(20,22,30,.55);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-bottom:1px solid rgba(255,255,255,.08)}',
@@ -3868,6 +3877,17 @@ function App({ gameId, close }) {
         const [phoneApp2, setPhoneApp2] = React.useState('');  // '' | 'wechat' | 'qq' —— 当前在哪个 app 里
         // 微信/QQ 里的底部页签：'chat' 会话 / 'book' 通讯录 / 'find' 发现
         const [phoneTab, setPhoneTab] = React.useState('chat');
+
+        // 手机自己的确认框：{ text, resolve, danger } —— 不用全局 ask（那是全屏的，盖在手机上很突兀）
+        const [phoneAskState, setPhoneAskState] = React.useState(null);
+        const phoneAsk = (text, danger) => new Promise((resolve) => {
+          setPhoneAskState({ text: String(text || ''), resolve: resolve, danger: !!danger });
+        });
+        const phoneAnswerAsk = (ok) => {
+          const s0 = phoneAskState;
+          setPhoneAskState(null);
+          if (s0 && typeof s0.resolve === 'function') s0.resolve(!!ok);
+        };
         // 消息区：新消息进来时滚到底（用户自己往上翻过就不打扰）
         const phoneChatRef = React.useRef(null);
         const phoneStickRef = React.useRef(true);
@@ -5835,7 +5855,7 @@ function App({ gameId, close }) {
                         phoneClock(t2.时间),
                         h('span', { className: 'sim-ph-thread-del', title: '删除这个会话', onClick: function (ev) {
                           ev.stopPropagation();
-                          ask('删除「' + String(t2.姓名 || '') + '」的聊天记录？删了就找不回来了。').then(function (ok) {
+                          phoneAsk('删除「' + String(t2.姓名 || '') + '」的聊天记录？删了就找不回来了。', true).then(function (ok) {
                             if (!ok) return;
                             const tid2 = (t2.是否群 ? 平台 + ':群:' : 平台 + ':') + t2.姓名;
                             run(call('phoneDeleteThread', { threadId: tid2 }, gameId)).then(function (r) {
@@ -13164,6 +13184,18 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
                         )
                       )
                     : null),
+                  // 手机自己的确认框（iOS 风格）
+                  phoneAskState
+                    ? h('div', { className: 'sim-ph-alert' },
+                        h('div', { className: 'sim-ph-alert-c' },
+                          h('div', { className: 'sim-ph-alert-t' }, phoneAskState.text),
+                          h('div', { className: 'sim-ph-alert-b' },
+                            h('button', { onClick: function () { phoneAnswerAsk(false); } }, '取消'),
+                            h('button', { className: phoneAskState.danger ? 'primary danger' : 'primary', onClick: function () { phoneAnswerAsk(true); } }, '确定')
+                          )
+                        )
+                      )
+                    : null,
                   h('div', { className: 'sim-ph-homebar' }),
                 )
               : null,
