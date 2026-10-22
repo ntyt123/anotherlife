@@ -7461,6 +7461,24 @@ onDoubleClick: () => {
                 h('span', { className: 'ic' }, '🖼️'),
                 h('span', { className: 'lb' }, '图库')
               ),
+              // 手机：跟神谕一样不切页面，只开关浮窗（它要盖在任意页上面用）
+              h(
+                'button',
+                {
+                  key: 'phone',
+                  className: 'sim-rail-tab' + (phoneOpen ? ' on' : ''),
+                  title: '手机',
+                  onClick: () => {
+                    const next = !phoneOpen;
+                    setPhoneOpen(next);
+                    if (next && !phoneContacts) {
+                      phoneLoadContacts();
+                    }
+                  },
+                },
+                h('span', { className: 'ic' }, '📱'),
+                h('span', { className: 'lb' }, '手机')
+              ),
               // 笔记：这一局的记录，每局各自一份
               h(
                 'button',
@@ -12921,17 +12939,6 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
              */
             // ── 手机：悬浮按钮 + 浮窗 ──
             // 手机是正文之外的平行世界：消息有自己的版本线，正文一概不知道。
-            h('div', {
-              className: 'sim-ph-btn',
-              title: phoneOpen ? '收起手机' : '手机',
-              onClick: () => {
-                const next = !phoneOpen;
-                setPhoneOpen(next);
-                if (next && !phoneContacts) {
-                  phoneLoadContacts();
-                }
-              },
-            }, '📱'),
             phoneOpen
               ? h(
                   'div',
