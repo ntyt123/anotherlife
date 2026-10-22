@@ -4831,6 +4831,24 @@ function tokOf(s, key) {
 }
 
   /**
+   * 按「输入多少字」给输出额度。
+   *
+   * 起因：summaryMerge 写死 6000 token（≈4000 中文字），而 mergeAt 可以调到 20 ——
+   * 那一合并就是 16 段、三万五千字进来，却只允许出四千字，模型被硬截断，
+   * 压缩比从 40%~60% 掉到 11%，十几段的事当场丢掉。
+   *
+   * 规则：中文 1 字 ≈ 1.5 token；输出按输入的 60% 估；再留 20% 余量。
+   * 取「设定页的值」和「算出来的值」里大的那个 —— 用户设得更大时听用户的。
+   */
+  function tokensForOutput(输入字数, 设定值) {
+    const n = Number(输入字数);
+    const 估 = isFinite(n) && n > 0 ? Math.ceil(n * 0.6 * 1.5 * 1.2) : 0;
+    const 用户设 = Number(设定值);
+    const 取 = Math.max(isFinite(用户设) && 用户设 > 0 ? 用户设 : 0, 估);
+    return Math.max(1000, Math.min(65536, 取));
+  }
+
+  /**
    * 每个槽位自己的「思考强度」。存在 config.reasoning 里（和模型槽位同处，换模型时
    * 能一起调整），空串 = 不传，让模型用它自己的默认值。
    * 注意：DSH 的 reasoningEffort 是模型自己声明的枚举（ReasoningEffortId），
@@ -7022,7 +7040,7 @@ function seasonText(s) {
         { role: 'system', content: [so.jailbreak, summaryRules(so)].filter(Boolean).join('\n\n') },
         { role: 'user', content: '需要记录的正文（第 ' + from + '~' + to + ' 轮）：\n' + src },
       ],
-      { maxTokens: tokOf(s, 'summary'), temperature: 0.3, timeoutMs: 240000, tag: '总结' }
+      { maxTokens: tokensForOutput(src.length, tokOf(s, 'summary')), temperature: 0.3, timeoutMs: 240000, tag: '总结' }
     );
     const clean = String(text == null ? '' : text).trim();
     if (!clean) throw new Error('总结模型没有返回内容');
@@ -7077,7 +7095,7 @@ function seasonText(s) {
         { role: 'system', content: [so.jailbreak, megaRules(so)].filter(Boolean).join('\n\n') },
         { role: 'user', content: '需要合并的多段剧情记录：\n' + head.map((x) => x.content || '').join('\n\n---\n\n') },
       ],
-      { maxTokens: tokOf(s, 'summaryMerge'), temperature: 0.3, timeoutMs: 240000, tag: '总结·合并' }
+      { maxTokens: tokensForOutput(head.reduce(function (a, x) { return a + String(x.content || '').length; }, 0), tokOf(s, 'summaryMerge')), temperature: 0.3, timeoutMs: 240000, tag: '总结·合并' }
     );
     const clean = String(text == null ? '' : text).trim();
     if (!clean) throw new Error('总结模型没有返回内容');
