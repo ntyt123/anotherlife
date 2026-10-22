@@ -9443,7 +9443,9 @@ const HUMAN_MSG = [
     const list = [];
     Object.keys(线程).forEach(function (tid) {
       if (tid.indexOf(p + ':') !== 0) return;
-      if (tid.indexOf('群:') >= 0) return;
+      // 群聊也算会话 —— 微信里群和单聊混在同一个列表里，
+      // 只是点进去要走 phoneOpenGroup 而不是 phoneOpenThread。
+      const 是群 = tid.indexOf('群:') >= 0;
       const arr = 线程[tid];
       if (!Array.isArray(arr) || !arr.length) return;
       const last = arr[arr.length - 1];
@@ -9452,7 +9454,8 @@ const HUMAN_MSG = [
       const 读过 = Number((s.手机.已读 || {})[tid] || 0);
       const 有未读 = arr.length > 读过 && String(last.方向 || '') === 'in';
       list.push({
-        姓名: tid.slice(p.length + 1),
+      是否群: 是群,
+        姓名: 是群 ? tid.slice((p + ':群:').length) : tid.slice(p.length + 1),
         最后: String(last.内容 || (last.类型 === 'image' ? '[图片]' : '')),
         时间: String(last.时间 || ''),
         方向: String(last.方向 || ''),

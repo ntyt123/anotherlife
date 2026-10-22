@@ -320,7 +320,11 @@ window.__ModuleLoader__.load({
       '.sim-ph-rc .n{font-size:var(--sim-fs-5);color:var(--sim-t)}',
       '.sim-ph-rc .p{font-size:var(--sim-fs-6);color:var(--sim-t2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
       '.sim-ph-thread{flex:1 1 auto;min-height:0;display:flex;flex-direction:column}',
-      '.sim-ph-thread .sim-ph-chat{flex:1 1 auto;min-height:0;overflow-y:auto;justify-content:flex-end;display:flex;flex-direction:column;gap:8px;padding:12px}',
+      '.sim-ph-thread .sim-ph-chat{flex:1 1 auto;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:12px}',
+      // 内容不满时贴底、超出时能正常往上滚。
+      // 不能用 justify-content:flex-end —— 它溢出时会把多出来的部分挤到上方，
+      // 而 scrollTop 到不了负值，最上面的消息永远看不到。
+      '.sim-ph-thread .sim-ph-chat::before{content:"";margin-top:auto}',
       '.sim-ph-chat{display:flex;flex-direction:column;gap:8px;padding:12px}',
       '.sim-ph-msg{max-width:78%;padding:7px 11px;border-radius:12px;font-size:var(--sim-fs-5);line-height:1.55;word-break:break-word;position:relative}',
       '.sim-ph-msg.out{align-self:flex-end;background:var(--sim-say, #3d6bb3);color:#fff}',
@@ -3842,6 +3846,9 @@ function App({ gameId, close }) {
         const [phoneApp2, setPhoneApp2] = React.useState('');  // '' | 'wechat' | 'qq' —— 当前在哪个 app 里
         // 微信/QQ 里的底部页签：'chat' 会话 / 'book' 通讯录 / 'find' 发现
         const [phoneTab, setPhoneTab] = React.useState('chat');
+        // 消息区：新消息进来时滚到底（用户自己往上翻过就不打扰）
+        const phoneChatRef = React.useRef(null);
+        const phoneStickRef = React.useRef(true);
         const [phoneGroups, setPhoneGroups] = React.useState([]);
         const [phoneThreadList, setPhoneThreadList] = React.useState([]);  // 短信的会话列表
         const [phonePerson, setPhonePerson] = React.useState(null);  // 正在看的联系人（详情页）
@@ -3851,6 +3858,13 @@ function App({ gameId, close }) {
         const [phonePhoto, setPhonePhoto] = React.useState(null);  // 全屏看的那张
         const [phoneGroupPick, setPhoneGroupPick] = React.useState(null);  // 建群：{成员:[], 群名:""}
         const [phoneCmtText, setPhoneCmtText] = React.useState('');
+
+        // 消息列表变化时贴底：只有本来就贴着底部才自动滚（用户翻历史时不打断）
+        React.useEffect(function () {
+          const el = phoneChatRef.current;
+          if (!el || !phoneStickRef.current) return;
+          el.scrollTop = el.scrollHeight;
+        }, [phoneMsgs.length, phoneThreadId, phoneView, phoneBusy]);
           // 缩放手柄的尺寸与最小可用尺寸
           const AS_MIN_W = 300;
           const AS_MIN_H = 260;
@@ -5781,7 +5795,7 @@ function App({ gameId, close }) {
 
               const 会话行 = function (t2) {
                 return h('div', { className: 'sim-ph-row', key: t2.姓名, onClick: function () { phoneOpenThread(t2.姓名, 平台); } },
-                  h('div', { className: 'sim-ph-av' }, String(t2.姓名 || '?').slice(0, 1)),
+                  h('div', { className: 'sim-ph-av' }, t2.是否群 ? '👥' : String(t2.姓名 || '?').slice(0, 1)),
                   h('div', { className: 'sim-ph-rc' },
                     h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '8px' } },
                       h('div', { className: 'n', style: { flex: '1 1 auto', display: 'flex', alignItems: 'center' } },
@@ -6089,7 +6103,7 @@ function App({ gameId, close }) {
                 ? h('div', { className: 'sim-ph-empty' }, '还没聊过。')
                 : null;
               return h('div', { className: 'sim-ph-thread' },
-                h('div', { className: 'sim-ph-chat' }, empty, list,
+                h('div', { className: 'sim-ph-chat', ref: phoneChatRef, onScroll: function (ev) { const el = ev.currentTarget; phoneStickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 60; } }, empty, list,
                   phoneBusy ? h('div', { className: 'sim-ph-typing' }, h('span', { key: 'd1' }), h('span', { key: 'd2' }), h('span', { key: 'd3' }), '对方正在输入') : null
                 ),
                 // 回退：把这一版撤掉，回到上一次操作之前（跟「删」不同 —— 删是丢掉一条消息，回退是整版回滚）
