@@ -6883,7 +6883,7 @@ function seasonText(s) {
     };
     return {
       every: num(o.every, SUMMARY_EVERY),
-      mergeAt: num(o.mergeAt, SUMMARY_MERGE_AT),
+      mergeAt: num(o.mergeAt, SUMMARY_MERGE_AT, 2000),
       keepTail: num(o.keepTail, SUMMARY_KEEP_TAIL),
       // 每段小结的句数上限（2~N 句）与合并时保留原文的百分比
       段句数: num(o.段句数, 10),
