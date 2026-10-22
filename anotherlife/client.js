@@ -5447,6 +5447,7 @@ function App({ gameId, close }) {
           function phoneOpenGroup(群名) {
             const p = phoneApp2 === 'qq' ? 'qq' : 'wechat';
             const tid = p + ':群:' + 群名;
+            setPhoneBackTo(phoneView);   // 记下来处，返回时回它
             setPhoneWho(群名);
             setPhoneThreadId(tid);
             setPhoneView('thread');
@@ -13054,7 +13055,7 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
                               else if (phoneView === 'thread') {
                                 // 优先回进来之前的屏：从联系人详情发短信就回详情，从会话列表点人就回列表
                                 if (phoneBackTo) { back = phoneBackTo; }
-                                else if (isGroup) { back = 'groups'; }
+                                else if (isGroup) { back = phoneApp2 ? 'apphome' : 'groups'; }
                                 else if (phoneApp2) { back = 'apphome'; }
                                 else { back = 'threads'; }
                                 }
