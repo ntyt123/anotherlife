@@ -878,6 +878,8 @@ window.__ModuleLoader__.load({
       '.sim-wx-av.me{background:linear-gradient(135deg,#4bd07f,#22a860)}',
       '.sim-wx-av.has-img,.sim-qq-av.has-img{background:none;padding:0;overflow:hidden}',
       '.sim-wx-av img,.sim-qq-av img{width:100%;height:100%;object-fit:cover;display:block}',
+      '.sim-ph-post-av.has-img{background:none;padding:0;border:none;overflow:hidden}',
+      '.sim-ph-post-av img{width:100%;height:100%;object-fit:cover;display:block}',
       '.sim-wx-col{display:flex;flex-direction:column;gap:3px;max-width:74%;min-width:0}',
       '.sim-wx-row.me .sim-wx-col{align-items:flex-end}',
       '.sim-wx-who{font-size:var(--sim-fs-2);color:#8d8d8d;padding:0 2px}',
@@ -6265,7 +6267,7 @@ function App({ gameId, close }) {
                       const liked = Array.isArray(it.赞) && it.赞.indexOf(meN) >= 0;
                       return h('div', { className: 'sim-ph-post', key: it.id },
                         h('div', { className: 'sim-ph-post-hd' },
-                          h('div', { className: 'sim-ph-post-av' }, feedAv(it.作者)),
+                          uiFace(it.作者, 'sim-ph-post-av', avatarsMap(), /^(我|自己|主角)$/.test(String(it.作者 || ''))),
                           h('div', { style: { flex: '1 1 auto', minWidth: 0 } },
                             h('div', { className: 'sim-ph-post-nm' }, String(it.作者 || '')),
                             h('div', { className: 'sim-ph-post-tm' }, phoneClock(it.时间) || String(it.时间 || '').slice(0, 16)),
