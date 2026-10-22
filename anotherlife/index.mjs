@@ -4900,7 +4900,9 @@ function tokOf(s, key) {
     let 次 = 0;
     let 字 = 0;
     const 带工具 = Object.assign({}, opts, { tools: STORY_TOOLS, wantTools: true });
+    await turnLog('[正文·工具] 已挂载 ' + STORY_TOOLS.length + ' 个工具（' + STORY_TOOLS.map(function (t) { return t.name; }).join(', ') + '），开始请求');
     let r = await callMainModel(messages, 带工具);
+    await turnLog('[正文·工具] 首次返回：工具调用 ' + ((r && Array.isArray(r.toolCalls)) ? r.toolCalls.length : -1) + ' 个 / 正文 ' + String((r && r.text) || '').length + ' 字 / finish=' + JSON.stringify((r && r.finish) || null).slice(0, 80));
     for (;;) {
       const calls = (r && Array.isArray(r.toolCalls)) ? r.toolCalls : [];
       if (!calls.length) return r;
