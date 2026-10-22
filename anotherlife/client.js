@@ -878,7 +878,13 @@ window.__ModuleLoader__.load({
       // ── 手机里的微信：把正文卡片的 .sim-wx 铺满整屏 ──
       // 同一套结构复用（方头像 / 白绿气泡 / 居中时间 / 气泡外说话人），
       // 只把「卡片」变成「整页」：去掉最大宽和圆角，让消息区自己滚。
-      '.sim-ph .sim-wx{max-width:none;width:100%;height:100%;border-radius:0;box-shadow:none;display:flex;flex-direction:column;background:var(--sim-bg2)}',
+      '.sim-ph .sim-wx{max-width:none;width:100%;height:100%;border-radius:0;box-shadow:none;display:flex;flex-direction:column;background:#ededed}',
+      // 真实微信：聊天背景 #ededed，输入栏是「🎙 + 输入框 + 😊 + ＋」
+      '.sim-ph .sim-wx .sim-wx-body{background:#ededed}',
+      '.sim-ph .sim-wx .sim-wx-foot{background:#f7f7f7;padding:8px 10px;gap:8px}',
+      '.sim-ph .sim-wx .sim-wx-ic{font-size:20px;line-height:1;color:#5a5a5a;flex:0 0 auto;cursor:pointer}',
+      '.sim-ph .sim-wx .sim-wx-send{flex:0 0 auto;border:none;border-radius:4px;padding:7px 14px;font-size:var(--sim-fs-5);font-family:inherit;background:#07c160;color:#fff;cursor:pointer}',
+      '.sim-ph .sim-wx .sim-wx-send:disabled{background:#e3e3e3;color:#a8a8a8;cursor:default}',
       '.sim-ph .sim-wx-body{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-anchor:none}',
       '.sim-ph .sim-wx-bub{max-width:100%}',
       '.sim-ph .sim-wx-foot{flex:0 0 auto}',
@@ -6140,16 +6146,20 @@ function App({ gameId, close }) {
                   phoneBusy ? h('div', { className: 'sim-ph-typing' }, h('span', { key: 'd1' }), h('span', { key: 'd2' }), h('span', { key: 'd3' })) : null
                 ),
                 h('div', { className: 'sim-wx-foot' },
+                  h('span', { className: 'sim-wx-ic' }, '🎙'),
                   h('textarea', {
                     value: phoneIn,
-                    placeholder: '发消息…',
+                    placeholder: '',
                     onChange: (e) => setPhoneIn(e.target.value.slice(0, 200)),
                     onKeyDown: (e) => {
                       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); phoneSendNow(); }
                     },
-                    style: { flex: '1 1 auto', minHeight: '32px', maxHeight: '70px', resize: 'none', borderRadius: '5px', border: 'none', padding: '6px 9px', fontSize: 'var(--sim-fs-5)', background: '#fff', color: '#191919' },
+                    style: { flex: '1 1 auto', minHeight: '34px', maxHeight: '72px', resize: 'none', borderRadius: '4px', border: 'none', padding: '7px 10px', fontSize: 'var(--sim-fs-5)', background: '#fff', color: '#191919', fontFamily: 'inherit' },
                   }),
-                  h('button', { className: 'sim-btn' + (phoneBusy ? '' : ' primary'), disabled: phoneBusy, onClick: phoneSendNow }, phoneBusy ? '…' : '发'),
+                  h('span', { className: 'sim-wx-ic' }, '😊'),
+                  String(phoneIn || '').trim()
+                    ? h('button', { className: 'sim-wx-send', disabled: phoneBusy, onClick: phoneSendNow }, '发送')
+                    : h('span', { className: 'sim-wx-ic' }, '＋'),
                 )
               );
             }
