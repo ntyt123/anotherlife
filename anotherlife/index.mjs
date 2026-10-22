@@ -6995,6 +6995,19 @@ function seasonText(s) {
     );
     const clean = String(text == null ? '' : text).trim();
     if (!clean) throw new Error('总结模型没有返回内容');
+    // callSlot 有个兜底：正文为空但有 reasoning 时，会把「（这一轮模型只输出了思考过程…）
+    // + 整段思维链」当作结果返回。对正文那是「至少不丢」，对总结是灾难 ——
+    // 曾经存进过一段 44505 字的思维链（里面还带着「让我写出来。好的，我现在就写。」循环几十遍）。
+    // 这里直接判死，宁可这一次总结失败，也不把垃圾写进长期记忆。
+    if (/^（这一轮模型只输出了思考过程/.test(clean)) {
+      throw new Error('总结模型只输出了思考过程，没有给出记录 —— 换模型或把「每轮正文最多取多少字」调小再试');
+    }
+    // 另一层保险：整段里反复出现同一句，说明模型陷入复读（实测有这种）
+    if (clean.length > 4000) {
+      const 头 = clean.slice(0, 200);
+      const 出现 = clean.split(头).length - 1;
+      if (出现 > 3) throw new Error('总结出现了复读（同一段重复 ' + 出现 + ' 次），已丢弃');
+    }
     s.summaries = Array.isArray(s.summaries) ? s.summaries : [];
     const 新段 = { name: '第' + from + '-' + to + '轮', content: clean, start: from, end: to, ts: Date.now(), kind: 'block' };
     if (replace) {
@@ -7037,6 +7050,9 @@ function seasonText(s) {
     );
     const clean = String(text == null ? '' : text).trim();
     if (!clean) throw new Error('总结模型没有返回内容');
+    if (/^（这一轮模型只输出了思考过程/.test(clean)) {
+      throw new Error('合并时模型只输出了思考过程，没有给出记录');
+    }
     const from = Number(head[0].start);
     const to = Number(head[head.length - 1].end);
     s.summaries = [
@@ -10845,6 +10861,30 @@ reg('importCommit', async ({ gameId }) => {
    * 内部走 runSummary 的同一套逻辑，只是把 replace 打开 ——
    * 旧的同范围段会被替换掉，不会越点越长。
    */
+  /**
+   * 删掉某一段总结。
+   *
+   * 用途：某段是脏数据（模型只输出了思维链被存下来），重生成又一直失败时，
+   * 得能把它扔掉 —— 否则它会一直夹在前情里被注入正文。
+   * 删完重算 summarised_through，不然那一段会被当成「已经总结过」。
+   */
+  reg('summaryDelete', async ({ gameId, index }) => {
+    const s = await loadState(gameId);
+    const list = Array.isArray(s.summaries) ? s.summaries.slice() : [];
+    const i2 = Number(index);
+    if (!isFinite(i2) || i2 < 0 || i2 >= list.length) throw new Error('没有这一段');
+    const 删的 = list[i2];
+    list.splice(i2, 1);
+    s.summaries = list;
+    s.story.summarised_through = list.reduce(function (m, x) {
+      const v = Number(x.end);
+      return isFinite(v) && v > m ? v : m;
+    }, -1);
+    appendLog('summary', 'delete', '删掉 ' + String((删的 && 删的.name) || '') + '（' + String((删的 && 删的.content) || '').length + ' 字）');
+    await saveState(s);
+    return withKeyStatus(s);
+  });
+
   reg('summaryRedo', async ({ gameId, index }) => {
     const s0 = await loadState(gameId);
     const list = Array.isArray(s0.summaries) ? s0.summaries : [];

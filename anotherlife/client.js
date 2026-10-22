@@ -8317,6 +8317,19 @@ onDoubleClick: () => {
                               disabled: busy,
                               onClick: function (e) { e.stopPropagation(); run(call('summaryRedo', { index: i }, gameId)); },
                             }, '↻'),
+                            h('button', {
+                              className: 'sim-btn',
+                              style: { flex: '0 0 auto', fontSize: '11px', padding: '2px 7px' },
+                              title: '删掉这一段（重生成一直失败时用它清脏数据）',
+                              disabled: busy,
+                              onClick: function (e) {
+                                e.stopPropagation();
+                                ask('删掉「' + String(x.name || '') + '」这一段？删了得重新整理那些轮次。').then(function (ok) {
+                                  if (!ok) return;
+                                  run(call('summaryDelete', { index: i }, gameId));
+                                });
+                              },
+                            }, '✕'),
                           h('div', { className: 'sim-sum-b' }, String(x.content || ''))
                         )
                       )
