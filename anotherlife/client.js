@@ -11264,9 +11264,10 @@ function toggleFans(npc) {
               h(
                 'div',
                 { className: 'sim-field', style: { marginTop: 8 } },
-                h('label', { style: { display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' } },
+                h('label', { style: { display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', width: 'auto', flex: '0 0 auto' } },
                   h('input', {
                     type: 'checkbox',
+                    style: { flex: '0 0 auto', width: '15px', minWidth: '0', height: '15px', margin: 0, padding: 0, accentColor: 'var(--sim-ac)' },
                     checked: !!(dcfg && dcfg.storyTools),
                     onChange: (e) => {
                       const cfg = Object.assign({}, dcfg);
@@ -11275,7 +11276,7 @@ function toggleFans(npc) {
                       run(call('saveConfig', { config: cfg }, gameId));
                     },
                   }),
-                  h('span', null, '正文生成可查过往原文'),
+                  h('span', { style: { flex: '1 1 auto', minWidth: 0 } }, '正文生成可查过往原文'),
                 ),
                 h('div', { className: 'sim-hint', style: { marginTop: 4 } },
                   '打开后前情只给最近 20 段，更早的由模型按需检索（每轮最多查 2 次）。' +
