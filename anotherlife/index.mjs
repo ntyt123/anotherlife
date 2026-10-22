@@ -6870,6 +6870,9 @@ function seasonText(s) {
       // 每段小结的句数上限（2~N 句）与合并时保留原文的百分比
       段句数: num(o.段句数, 10),
       合并比例: num(o.合并比例, 60, 90),
+      // 每轮正文最多取多少字（0 = 不截断）。实测单轮平均 8000 字、最长 19000，
+      // 全带上会撑爆小模型；6000 能保住七成内容。
+      正文上限: Math.max(0, Math.min(50000, Math.floor(Number(o.正文上限)))) || 6000,
       // 没设过就用默认破限词；显式存成空串表示「不要破限词」
       jailbreak: String(o.jailbreak == null ? SUMMARY_JAILBREAK : o.jailbreak).trim(),
     };
@@ -6929,21 +6932,48 @@ function seasonText(s) {
   }
 
   /** 这一段（from~to）拿来总结的素材：优先用每轮的小结，没有小结就用正文 */
-  function summarySource(s, from, to) {
+  /**
+   * 这一段（from~to）拿来总结的素材。
+   *
+   * 早先是「优先用小总结」—— 每轮结算会写一句 100 字左右的小总结，
+   * 于是 10 轮的输入只有 1000 字。源头就那么粗，提示词写得再细也出不来细节。
+   *
+   * 现在反过来：**正文是主料**（每轮按 正文上限 截断，默认 6000 字），
+   * 小总结只当索引附在后面 —— 它带着这一轮的时间与要点，能防止模型在长正文里迷路，
+   * 但不能让它顶替正文。
+   */
+  function summarySource(s, from, to, 每轮上限) {
+    const 上限 = Number(每轮上限);
+    const 限 = isFinite(上限) && 上限 >= 0 ? Math.floor(上限) : 6000;
     const parts = [];
-    (s.transcript || []).forEach((t) => {
+    (s.transcript || []).forEach(function (t) {
       if (t.seq < from || t.seq > to) return;
       if (t.role === 'user') {
-        parts.push('玩家行动：' + String(t.body || '').trim());
+        parts.push('【第 ' + t.seq + ' 轮 · 玩家行动】' + String(t.body || '').trim());
         return;
       }
-      const brief = String(t.summary || '').trim();
-      const time = String((s.world || {})['当前日期时间'] || '').trim();
-      if (brief) parts.push('剧情：' + brief);
-      else parts.push('剧情：' + String(t.body || '').trim());
-      if (time) parts.push('（该轮时间：' + time + '）');
+      const 正文 = String(t.body || '').trim();
+      const 小结 = String(t.summary || '').trim();
+      const 段 = [];
+      段.push('【第 ' + t.seq + ' 轮 · 正文】');
+      if (正文) {
+        段.push(限 > 0 && 正文.length > 限 ? 正文.slice(0, 限) + '…（后略）' : 正文);
+      } else {
+        段.push('（这一轮没有正文）');
+      }
+      if (小结) {
+        段.push('【第 ' + t.seq + ' 轮 · 小结 · 只作时间与要点索引，不要照抄】' + 小结);
+      }
+      // 该轮的时间藏在 diffs 里（world.当前日期时间 的那条）
+      const 时 = (t.diffs || []).find(function (x) {
+        const p = Array.isArray(x.path) ? x.path : [];
+        return p[0] === 'world' && p[1] === '当前日期时间';
+      });
+      const 时间 = 时 ? String(时.to || 时._prev || '').trim() : '';
+      if (时间) 段.push('（该轮结束时：' + 时间 + '）');
+      parts.push(段.join('\n'));
     });
-    return parts.filter(Boolean).join('\n');
+    return parts.filter(Boolean).join('\n\n');
   }
 
   async function makeSummary(s, from, to, replace) {
@@ -6951,9 +6981,9 @@ function seasonText(s) {
     // 判据只留 model：现在走 DSH 凭据那套（只填服务 + 模型），baseURL 本来就是空的。
     // 早先「必须有 baseURL」的写法会让切好的模型永远被判成「未配置」（踩过）。
     if (!cfg.model) throw new Error('请先在设定页配置总结模型');
-    const src = summarySource(s, from, to);
-    if (!src.trim()) throw new Error('该范围内没有内容');
     const so = summaryOpts(s);
+    const src = summarySource(s, from, to, so.正文上限);
+    if (!src.trim()) throw new Error('该范围内没有内容');
     const text = await callSlot(
       s,
       'summary',
