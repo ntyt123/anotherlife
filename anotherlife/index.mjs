@@ -9532,37 +9532,69 @@ reg('feedDelComment', async ({ gameId, 平台, id, 索引 }) => {
    * 而是在对话回复里直接返回图片块。各家结构不一样，所以这里不做归一化 ——
    * 先看清楚它到底长什么样，再决定后面怎么存、怎么嵌进界面。
    */
+  /**
+   * 探测：把候选模型和几种 prompt 全跑一遍，chunk 结构原样记进日志。
+   *
+   * 图像模型在对话回复里返回图片块，但聚合服务未必转成 DSH 认的 chunk，
+   * 所以穷举：换模型变体 + 换 prompt 措辞，看哪种组合真能吐东西。
+   */
   reg('probeImage', async ({ gameId, provider, model, prompt }) => {
     const prov = String(provider || '').trim();
-    const mdl = String(model || '').trim();
-    if (!prov || !mdl) throw new Error('要指定 provider 和 model');
-    const p = String(prompt || '一只橘猫坐在窗台上，暖色调，写实照片风格').trim();
+    if (!prov) throw new Error('要指定 provider');
+  
+    const 模型们 = model
+      ? [String(model)]
+      : [
+          'agy-gemini-3.1-flash-image',
+          '假流式-agy-gemini-3.1-flash-image',
+        ];
+  
+    const 提示们 = prompt
+      ? [String(prompt)]
+      : [
+          '画一张图：一只橘猫坐在窗台上，暖色调，写实照片风格',
+          '请生成一张图片。内容：一只橘猫坐在窗台上。',
+        ];
+  
+    const 结果 = [];
     const t0 = Date.now();
-    const r = await callMainModel(
-      [{ role: 'user', content: p }],
-      { provider: prov, model: mdl, maxTokens: 8000, purpose: '生图探测' }
-    );
-    const 摘要 = {
-      文字长度: String(r.text || '').length,
-      文字前80: String(r.text || '').slice(0, 80),
-      图片数: (r.images || []).length,
-      chunk类型: r.chunkTypes || [],
-      finish: r.finish,
-      耗时秒: Math.round((Date.now() - t0) / 100) / 10,
+  
+    for (const mdl of 模型们) {
+      for (const p of 提示们) {
+        const 一条 = { 模型: mdl, 提示: p.slice(0, 22) };
+        try {
+          const r = await callMainModel([{ role: 'user', content: p }], {
+            provider: prov, model: mdl, maxTokens: 8000, purpose: '生图探测',
+          });
+          一条.文字长度 = String(r.text || '').length;
+          一条.文字前60 = String(r.text || '').slice(0, 60);
+          一条.图片数 = (r.images || []).length;
+          一条.chunk类型 = r.chunkTypes || [];
+          一条.finish = r.finish;
+          一条.图块 = (r.images || []).map((x) => {
+            const o = { 键: Object.keys(x) };
+            if (x.type) o.type = x.type;
+            if (x.attachment) o.attachment = x.attachment;
+            if (x.data) o.data长度 = String(x.data).length;
+            if (x.url) o.url = String(x.url).slice(0, 100);
+            return o;
+          });
+          一条.结果 = (一条.图片数 > 0) ? '✓ 出图' : (一条.文字长度 > 0 ? '只有文字' : '空');
+        } catch (err) {
+          一条.结果 = '失败：' + String((err && err.message) || err).slice(0, 110);
+        }
+        结果.push(一条);
+        await turnLog('[生图探测] ' + JSON.stringify(一条));
+      }
+    }
+  
+    const 汇总 = {
+      总耗时秒: Math.round((Date.now() - t0) / 100) / 10,
+      试了几组: 结果.length,
+      出图数: 结果.filter(function (x) { return x.图片数 > 0; }).length,
     };
-    // 每张图只记结构，不记完整 base64（那会撑爆日志）
-    const 图 = (r.images || []).map((x, n) => {
-      const o = { i: n, 键: Object.keys(x) };
-      if (x.type) o.type = x.type;
-      if (x.mimeType) o.mimeType = x.mimeType;
-      if (x.mediaType) o.mediaType = x.mediaType;
-      if (x.url) o.url = String(x.url).slice(0, 120);
-      if (x.data) o.data长度 = String(x.data).length;
-      if (x.source) o.source = { type: x.source.type, mediaType: x.source.mediaType, data长度: String(x.source.data || '').length };
-      return o;
-    });
-    await turnLog('[生图探测] ' + prov + '/' + mdl + ' → ' + JSON.stringify(摘要) + ' 图=' + JSON.stringify(图));
-    return { ok: true, 摘要, 图, 文字前200: String(r.text || '').slice(0, 200) };
+    await turnLog('[生图探测] 汇总 ' + JSON.stringify(汇总));
+    return { ok: true, 汇总, 结果 };
   });
 
   reg('phoneGet', async ({ gameId, 平台 }) => {

@@ -3960,9 +3960,9 @@ function App({ gameId, close }) {
     setProbeBusy(true);
     setProbeOut('');
     const prov = String((state.config && state.config.summary && state.config.summary.provider) || 'gg');
-    run(call('probeImage', { provider: prov, model: 'agy-gemini-3.1-flash-image' }, gameId))
+    run(call('probeImage', { provider: prov }, gameId))
       .then(function (r) {
-        setProbeOut(JSON.stringify((r && r.摘要) || {}, null, 1) + '\n\n图块：\n' + JSON.stringify((r && r.图) || [], null, 1) + '\n\n文字：\n' + String((r && r.文字前200) || ''));
+        setProbeOut(JSON.stringify((r && r.汇总) || {}, null, 1) + '\n\n' + ((r && r.结果) || []).map(function (x) { return JSON.stringify(x, null, 1); }).join('\n---\n'));
       })
       .catch(function (e) { setProbeOut('失败：' + String((e && e.message) || e)); })
       .finally(function () { setProbeBusy(false); });
