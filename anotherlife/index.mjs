@@ -4896,7 +4896,7 @@ function tokOf(s, key) {
   async function callStoryModel(s, gid, messages, opts) {
     if (!storyToolsOn(s)) return await callMainModel(messages, opts);
     const 上限次 = 2;
-    const 上限字 = 8000;
+    const 上限字 = 20000;
     let 次 = 0;
     let 字 = 0;
     const 带工具 = Object.assign({}, opts, { tools: STORY_TOOLS, wantTools: true });
@@ -4929,9 +4929,9 @@ function tokOf(s, key) {
         // 记一笔：哪一轮、调了哪个工具、什么参数、回来多少字。
         // 正文生成是黑盒，不加这个看不出它到底有没有真去查。
         await turnLog('[正文·工具] ' + tc.name + '(' + JSON.stringify(callArgs).slice(0, 80) + ') → ' + String(out).length + ' 字' + (String(out).length > 3000 ? '（回填截到 3000）' : ''));
-        const body = String(out).length > 3000
-          ? String(out).slice(0, 3000) + '\n（共 ' + String(out).length + ' 字，已截断）'
-          : String(out);
+        // 不再二次截断 —— read_turns 一轮就截到 4000，search 最多约 800 字，
+        // 工具侧已经保证体积。原来这里再砍到 3000，等于把刚读到的正文又切掉一截。
+        const body = String(out);
         messages.push({ role: 'tool', toolCallId: tc.id, content: body });
       }
       r = await callMainModel(messages, 带工具);
