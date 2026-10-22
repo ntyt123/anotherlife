@@ -274,6 +274,12 @@ window.__ModuleLoader__.load({
       '.sim-ph-tabbtn.on{color:#12b7f5}',
       '.sim-ph-tabbtn.on .ic{opacity:1}',
       '.sim-ph[data-app="qq"] .sim-ph-bar{padding:2px 6px 0;background:#fff;border-top:1px solid #e5e7eb}',
+      // 顶栏：QQ 是白底黑字（微信那边是深色玻璃），按钮换成 QQ 蓝
+      '.sim-ph[data-app="qq"] .sim-ph-hd{background:#fff;backdrop-filter:none;-webkit-backdrop-filter:none;border-bottom:1px solid #e5e7eb}',
+      '.sim-ph[data-app="qq"] .sim-ph-hd .t{color:#191919;font-weight:600}',
+      '.sim-ph[data-app="qq"] .sim-ph-hd .tm{color:#9aa5b1}',
+      '.sim-ph[data-app="qq"] .sim-ph-hd-btn{color:#12b7f5;border-color:#e5e7eb;background:#fff}',
+      '.sim-ph[data-app="qq"] .sim-ph-hd-btn:hover{background:#f2f3f5}',
       '.sim-ph-alert{position:absolute;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:20}',
       '.sim-ph-alert-c{width:74%;max-width:270px;background:rgba(250,250,250,.97);border-radius:14px;overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.28)}',
       '.sim-ph-alert-t{padding:18px 16px 16px;font-size:var(--sim-fs-4);line-height:1.45;text-align:center;color:#191919;white-space:pre-wrap}',
