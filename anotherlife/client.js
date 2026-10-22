@@ -11259,6 +11259,29 @@ function toggleFans(npc) {
                 })
               ),
               h('div', { className: 'sim-hint' }, '0 = 跟着总结频率：总结覆盖到哪儿，正文就接到哪儿。'),
+
+              // 正文生成可查原文：前情只给最近 20 段，更早的让模型自己检索
+              h(
+                'div',
+                { className: 'sim-field', style: { marginTop: 8 } },
+                h('label', { style: { display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' } },
+                  h('input', {
+                    type: 'checkbox',
+                    checked: !!(dcfg && dcfg.storyTools),
+                    onChange: (e) => {
+                      const cfg = Object.assign({}, dcfg);
+                      cfg.storyTools = !!e.target.checked;
+                      upd({ config: cfg });
+                      run(call('saveConfig', { config: cfg }, gameId));
+                    },
+                  }),
+                  h('span', null, '正文生成可查过往原文'),
+                ),
+                h('div', { className: 'sim-hint', style: { marginTop: 4 } },
+                  '打开后前情只给最近 20 段，更早的由模型按需检索（每轮最多查 2 次）。' +
+                  '前情大小恒定，几万轮也不会撑爆上下文；代价是每轮可能多一两次模型调用。'
+                )
+              ),
               h(
                 'div',
                 { className: 'sim-field' },

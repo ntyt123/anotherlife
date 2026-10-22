@@ -4849,6 +4849,91 @@ function tokOf(s, key) {
   }
 
   /**
+   * 正文生成可用的只读检索工具。
+   *
+   * 只有两个 —— 别把神谕那一整套挂过来：查角色、查变量、查笔记，
+   * 正文模型不需要，多一个工具就多一次被乱调的机会。
+   *
+   * 用途：前情压到很小（几万轮之后），久远的细节让它自己回去翻原文。
+   */
+  const STORY_TOOLS = [
+    {
+      name: 'search_transcript',
+      description: '在过往正文里按关键词搜索，返回命中的轮次与前后片段。想确认很久以前发生过什么、某人说过什么、某样东西从哪来，用它。一次最多 8 条。',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: '要搜的词。一到三个字效果最好（人名、地名、物件）。' },
+        },
+        required: ['query'],
+      },
+    },
+    {
+      name: 'read_turns',
+      description: '读指定轮次的正文全文。一次最多 2 轮；单轮超过 4000 字会被截断。',
+      parameters: {
+        type: 'object',
+        properties: {
+          from: { type: 'number', description: '起始轮次（含）' },
+          to: { type: 'number', description: '结束轮次（含），最多 from+1' },
+        },
+        required: ['from', 'to'],
+      },
+    },
+  ];
+
+  /** 这一局有没有打开「正文生成可查原文」 */
+  function storyToolsOn(s) {
+    return !!(s && s.config && s.config.storyTools);
+  }
+
+  /**
+   * 正文生成入口。关着就走原来的单次调用，一行都不多花。
+   *
+   * 开着时最多让它查 2 次、回填 8000 字 —— 硬闸，不靠提示词自觉。
+   * 到上限就直接把工具摘掉再请求一次，逼它用现有材料写完。
+   */
+  async function callStoryModel(s, gid, messages, opts) {
+    if (!storyToolsOn(s)) return await callMainModel(messages, opts);
+    const 上限次 = 2;
+    const 上限字 = 8000;
+    let 次 = 0;
+    let 字 = 0;
+    const 带工具 = Object.assign({}, opts, { tools: STORY_TOOLS, wantTools: true });
+    let r = await callMainModel(messages, 带工具);
+    for (;;) {
+      const calls = (r && Array.isArray(r.toolCalls)) ? r.toolCalls : [];
+      if (!calls.length) return r;
+      if (次 >= 上限次 || 字 >= 上限字) {
+        // 预算用完：把工具摘掉、补一句说明，让它现在就把正文写出来
+        messages.push({ role: 'assistant', content: String(r.text || ''), toolCalls: calls });
+        for (const tc of calls) {
+          messages.push({ role: 'tool', toolCallId: tc.id, content: '（检索预算已用完，请用现有材料直接写正文）' });
+        }
+        return await callMainModel(messages, opts);
+      }
+      messages.push({ role: 'assistant', content: String(r.text || ''), toolCalls: calls });
+      for (const tc of calls) {
+        if (次 >= 上限次) break;
+        次++;
+        const callArgs = parseToolArgs(tc.args);
+        let out = "";
+        try {
+          out = await runOracleTool(s, tc.name, callArgs, gid);
+        } catch (e) {
+          out = '（这个工具出错了：' + ((e && e.message) || e) + '）';
+        }
+        字 += String(out).length;
+        const body = String(out).length > 3000
+          ? String(out).slice(0, 3000) + '\n（共 ' + String(out).length + ' 字，已截断）'
+          : String(out);
+        messages.push({ role: 'tool', toolCallId: tc.id, content: body });
+      }
+      r = await callMainModel(messages, 带工具);
+    }
+  }
+
+  /**
    * 每个槽位自己的「思考强度」。存在 config.reasoning 里（和模型槽位同处，换模型时
    * 能一起调整），空串 = 不传，让模型用它自己的默认值。
    * 注意：DSH 的 reasoningEffort 是模型自己声明的枚举（ReasoningEffortId），
@@ -6631,7 +6716,7 @@ function seasonText(s) {
         const bodyEffort = await reasoningOf(s, 'body');
 
         if (bodyEffort) storyOpts.reasoningEffort = bodyEffort;
-    let r = await callMainModel([{ role: 'system', content: sys }, { role: 'user', content: userContent }], storyOpts);
+    let r = await callStoryModel(s, gid, [{ role: 'system', content: sys }, { role: 'user', content: userContent }], storyOpts);
     // 被 maxTokens 截断：不当中断处理，已经吐出来的照样用（半篇总比空白强），
     // 只在日志和 issues 里留一句，让玩家知道这轮为什么戛然而止。
     const cutStory = !!(r && r.truncated);
@@ -6644,7 +6729,7 @@ function seasonText(s) {
     if (!String(r.text || '').trim()) {
       setProg(gid, 'story', '这一轮没拿到正文，正在重试一次');
       try {
-        const r2 = await callMainModel([{ role: 'system', content: sys }, { role: 'user', content: userContent }], storyOpts);
+        const r2 = await callStoryModel(s, gid, [{ role: 'system', content: sys }, { role: 'user', content: userContent }], storyOpts);
         if (String(r2.text || '').trim()) r = r2;
         else r = { text: '', reasoning: [r.reasoning, r2.reasoning].filter(Boolean).join('\n\n--- 重试 ---\n\n'), finish: r2.finish };
         sp = splitStory(r.text);
@@ -7140,6 +7225,23 @@ function seasonText(s) {
   function summarySection(s) {
     const list = Array.isArray(s.summaries) ? s.summaries : [];
     if (!list.length) return '';
+  
+    // 检索模式（config.storyTools 打开时）：只给最近 N 段，
+    // 更早的交给模型自己用 search_transcript / read_turns 去查。
+    // 这样前情大小恒定，几万轮也不会撑爆上下文。
+    const 保留段 = 20;
+    if (storyToolsOn(s) && list.length > 保留段) {
+      const keep = list.slice(-保留段);
+      const 更早 = list.length - 保留段;
+      return (
+        '【前情总结】下面是最近 ' + 保留段 + ' 段的记录（按时间顺序）。\n' +
+        '更早的 ' + 更早 + ' 段没有列出 —— 需要时用 search_transcript 按关键词查，' +
+        '或用 read_turns 读指定轮次（每条记录开头的「第A-B轮」就是轮次范围）。\n\n' +
+        keep.map((x) => '◆ ' + String(x.name || '') + '\n' + String(x.content || '')).join('\n\n')
+      );
+    }
+  
+    // 全量模式（默认，跟原来完全一样）
     const lastMega = (function () {
       for (let i = list.length - 1; i >= 0; i--) if (list[i].kind === 'mega') return i;
       return -1;
