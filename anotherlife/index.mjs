@@ -9018,12 +9018,28 @@ const HUMAN_MSG = [
 
     let parsed = null;
     try { parsed = JSON.parse(repairJson(extractJson(raw2))); } catch (err) { parsed = null; }
-    const replies = parsed && Array.isArray(parsed.reply) ? parsed.reply : [];
-    const facts = parsed && Array.isArray(parsed.事实) ? parsed.事实 : [];
+    // 模型经常不老实：把数组整个塞进字符串里 ——
+    //   {"reply": "[\"还在片场\",\"大概十一点多\",\"你先睡\"]"}
+    // 直接取 parsed.reply 会得到一个字符串，Array.isArray 为假，
+    // 于是一整段 JSON 原文被当成一条消息显示在聊天里（踩过）。
+    // 所以这里做三层兜底：真数组 / 字符串里再 parse / 整段本身就是数组。
+    function 取回数组(v) {
+      if (Array.isArray(v)) return v;
+      if (typeof v === 'string') {
+        const t = v.trim();
+        if (t[0] === '[') { try { const x = JSON.parse(t); if (Array.isArray(x)) return x; } catch (e) {} }
+      }
+      return null;
+    }
+    const replies = 取回数组(parsed && parsed.reply) || [];
+    const facts = Array.isArray(parsed && parsed.事实) ? parsed.事实 : [];
     if (!replies.length) {
-      // 模型没按 JSON 回：整段当一条，别把玩家的话吞掉
+      // 模型没按 JSON 回：先看看整段是不是一个裸数组，能展开就展开，
+      // 展开不了才把整段当一条 —— 别把玩家的对话吞掉。
       const fb = String(raw2 || '').replace(/```[\s\S]*?```/g, '').trim();
-      if (fb) replies.push(fb.slice(0, 300));
+      const 裸 = 取回数组(fb) || 取回数组((parsed && parsed.reply) || null);
+      if (裸) replies.push.apply(replies, 裸);
+      else if (fb) replies.push(fb.slice(0, 300));
     }
     replies.slice(0, 4).forEach((r) => {
       if (r && typeof r === "object") {
