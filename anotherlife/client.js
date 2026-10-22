@@ -303,6 +303,7 @@ window.__ModuleLoader__.load({
       '.sim-ph-dock .lbl{display:none}',
       '.sim-ph-row{display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:1px solid var(--sim-bd);cursor:pointer}',
       '.sim-ph-row:hover{background:var(--sim-bg)}',
+      '.sim-ph-dot{flex:0 0 auto;width:8px;height:8px;border-radius:50%;background:#0a84ff;margin-left:6px}',
       '.sim-ph-av{flex:0 0 auto;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--sim-bg);border:1px solid var(--sim-bd);font-size:var(--sim-fs-5)}',
       '.sim-ph-rc{flex:1 1 auto;min-width:0}',
       '.sim-ph-rc .n{font-size:var(--sim-fs-5);color:var(--sim-t)}',
@@ -3831,6 +3832,7 @@ function App({ gameId, close }) {
         const [phoneGroups, setPhoneGroups] = React.useState([]);
         const [phoneThreadList, setPhoneThreadList] = React.useState([]);  // 短信的会话列表
         const [phonePerson, setPhonePerson] = React.useState(null);  // 正在看的联系人（详情页）
+        const [phoneSearch, setPhoneSearch] = React.useState('');  // 联系人搜索词
         const [phoneGroupPick, setPhoneGroupPick] = React.useState(null);  // 建群：{成员:[], 群名:""}
         const [phoneCmtText, setPhoneCmtText] = React.useState('');
           // 缩放手柄的尺寸与最小可用尺寸
@@ -5460,6 +5462,12 @@ function App({ gameId, close }) {
               setPhoneMsgs(r.messages || []);
               setPhoneCanUndo(!!r.canUndo);
             });
+          // 打开就算读过：记下目前有多少条
+          run(call('phoneMarkRead', { threadId: tid }, gameId)).then(function (r) {
+            if (r && r.ok) setPhoneThreadList(function (xs) {
+              return (xs || []).map(function (x) { return x.姓名 === nm ? Object.assign({}, x, { 未读: false }) : x; });
+            });
+          });
           }
 
           /** 发一条 */
@@ -5550,6 +5558,49 @@ function App({ gameId, close }) {
            *   QQ（qq）           QQ 号
            * 拿不到就空着 —— 列表本来就已经按平台筛过，不会出现「什么都没有」的人。
            */
+          /**
+           * 中文首字 → 拼音首字母，用来按 A-Z 分组。
+           *
+           * 不引入拼音库（几万字的表太重），只覆盖常见姓氏和名字首字 ——
+           * 够用了。查不到的一律归到「#」组，不会丢人。
+           */
+          const PY = {
+  安:'A',艾:'A',敖:'A',白:'B',包:'B',鲍:'B',毕:'B',边:'B',卞:'B',别:'B',薄:'B',柏:'B',班:'B',
+  蔡:'C',曹:'C',岑:'C',柴:'C',昌:'C',常:'C',车:'C',陈:'C',成:'C',程:'C',池:'C',褚:'C',楚:'C',崔:'C',丛:'C',
+  戴:'D',单:'D',党:'D',邓:'D',狄:'D',刁:'D',丁:'D',董:'D',窦:'D',杜:'D',段:'D',端:'D',
+  鄂:'E',
+  范:'F',方:'F',房:'F',费:'F',丰:'F',封:'F',冯:'F',凤:'F',伏:'F',符:'F',傅:'F',付:'F',
+  甘:'G',高:'G',郜:'G',戈:'G',葛:'G',耿:'G',弓:'G',公:'G',宫:'G',龚:'G',巩:'G',勾:'G',古:'G',谷:'G',顾:'G',关:'G',管:'G',桂:'G',郭:'G',国:'G',
+  哈:'H',海:'H',韩:'H',杭:'H',郝:'H',何:'H',和:'H',贺:'H',赫:'H',衡:'H',洪:'H',侯:'H',胡:'H',花:'H',华:'H',怀:'H',黄:'H',惠:'H',霍:'H',
+  姬:'J',吉:'J',纪:'J',季:'J',贾:'J',简:'J',江:'J',姜:'J',蒋:'J',焦:'J',金:'J',晋:'J',靳:'J',荆:'J',井:'J',景:'J',居:'J',鞠:'J',
+  康:'K',柯:'K',孔:'K',寇:'K',匡:'K',邝:'K',
+  赖:'L',蓝:'L',郎:'L',劳:'L',乐:'L',雷:'L',冷:'L',黎:'L',李:'L',厉:'L',连:'L',廉:'L',练:'L',梁:'L',廖:'L',林:'L',蔺:'L',凌:'L',刘:'L',柳:'L',龙:'L',楼:'L',卢:'L',鲁:'L',陆:'L',路:'L',吕:'L',罗:'L',骆:'L',
+  马:'M',麦:'M',满:'M',毛:'M',茅:'M',梅:'M',孟:'M',米:'M',苗:'M',闵:'M',明:'M',莫:'M',牟:'M',穆:'M',慕:'M',
+  倪:'N',聂:'N',宁:'N',牛:'N',农:'N',
+  欧:'O',
+  潘:'P',庞:'P',裴:'P',彭:'P',皮:'P',平:'P',蒲:'P',濮:'P',
+  戚:'Q',祁:'Q',齐:'Q',钱:'Q',强:'Q',乔:'Q',秦:'Q',邱:'Q',裘:'Q',曲:'Q',屈:'Q',瞿:'Q',全:'Q',权:'Q',
+  冉:'R',饶:'R',任:'R',荣:'R',容:'R',阮:'R',芮:'R',
+  萨:'S',桑:'S',沙:'S',山:'S',单:'S',商:'S',尚:'S',邵:'S',佘:'S',申:'S',沈:'S',盛:'S',施:'S',石:'S',时:'S',史:'S',寿:'S',舒:'S',帅:'S',双:'S',水:'S',司:'S',松:'S',宋:'S',苏:'S',宿:'S',隋:'S',孙:'S',索:'S',
+  谈:'T',覃:'T',谭:'T',汤:'T',唐:'T',陶:'T',滕:'T',田:'T',佟:'T',童:'T',涂:'T',屠:'T',
+  万:'W',汪:'W',王:'W',危:'W',韦:'W',卫:'W',魏:'W',温:'W',文:'W',闻:'W',翁:'W',巫:'W',邬:'W',吴:'W',伍:'W',武:'W',
+  奚:'X',郗:'X',席:'X',夏:'X',鲜:'X',项:'X',向:'X',萧:'X',谢:'X',辛:'X',邢:'X',幸:'X',熊:'X',徐:'X',许:'X',宣:'X',薛:'X',荀:'X',
+  严:'Y',言:'Y',阎:'Y',颜:'Y',晏:'Y',燕:'Y',杨:'Y',阳:'Y',仰:'Y',姚:'Y',叶:'Y',易:'Y',殷:'Y',尹:'Y',应:'Y',尤:'Y',游:'Y',于:'Y',余:'Y',俞:'Y',虞:'Y',禹:'Y',喻:'Y',郁:'Y',元:'Y',袁:'Y',岳:'Y',云:'Y',恽:'Y',
+  臧:'Z',翟:'Z',詹:'Z',湛:'Z',张:'Z',章:'Z',赵:'Z',甄:'Z',郑:'Z',支:'Z',钟:'Z',周:'Z',朱:'Z',诸:'Z',祝:'Z',庄:'Z',卓:'Z',宗:'Z',邹:'Z',祖:'Z',左:'Z',
+          };
+          function pinyinInitial(name) {
+            const s = String(name || '').trim();
+            if (!s) return '#';
+            // 「老陈」「小周」「阿明」这种：头一个字是称呼前缀，不是姓 ——
+            // 分组要看后面那个字，否则一堆人都掉进 # 组。
+            const 前缀 = '老小阿大';
+            let i = 0;
+            while (i < s.length - 1 && 前缀.indexOf(s[i]) >= 0) i++;
+            const ch = s[i];
+            if (/[A-Za-z]/.test(ch)) return ch.toUpperCase();
+            return PY[ch] || '#';
+          }
+
           function phoneNumberText(c) {
             const obj = c || {};
             if (phoneApp2 === 'wechat') return String(obj.微信 || '').trim();
@@ -5755,7 +5806,10 @@ function App({ gameId, close }) {
                     h('div', { className: 'sim-ph-av' }, String(t2.姓名 || '?').slice(0, 1)),
                     h('div', { className: 'sim-ph-rc' },
                       h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '8px' } },
-                        h('div', { className: 'n', style: { flex: '1 1 auto' } }, t2.姓名),
+                        h('div', { className: 'n', style: { flex: '1 1 auto', display: 'flex', alignItems: 'center', gap: '0' } },
+                          String(t2.姓名),
+                          t2.未读 ? h('span', { className: 'sim-ph-dot' }) : null
+                        ),
                         h('div', { style: { fontSize: 'var(--sim-fs-6)', color: 'var(--sim-t2)', flex: '0 0 auto' } }, phoneClock(t2.时间))
                       ),
                       h('div', { className: 'p' }, String(t2.最后 || ''))
@@ -5824,29 +5878,80 @@ function App({ gameId, close }) {
               );
             }
 
+            // contacts：按拼音首字母分组 + 顶部搜索。点一条进详情页。
             if (phoneView === 'contacts') {
-              const cs = phoneContacts || [];
-              if (!cs.length) {
-                return h('div', { className: 'sim-ph-empty' }, '还没有人把电话给你。');
-              }
-              return h('div', { className: 'sim-ph-list' }, cs.map((c) =>
-                h('div', {
-                  className: 'sim-ph-row',
-                  key: c.姓名,
-                  onClick: () => {
-                    // 点联系人 = 看详情（微信/QQ 里仍然是直接聊天，那边有自己的一套）
-                    if (phoneApp2) { phoneOpenThread(c.姓名); return; }
-                    setPhonePerson(c);
-                    setPhoneView('person');
-                  },
-                },
-                  h('div', { className: 'sim-ph-av' }, String(c.姓名 || '?').slice(0, 1)),
-                  h('div', { className: 'sim-ph-rc' },
-                    h('div', { className: 'n' }, c.姓名),
-                    h('div', { className: 'p' }, String(c.身份 || ''))
-                  )
-                )
-              ));
+              const 全部 = phoneContacts || [];
+              const kw = String(phoneSearch || '').trim().toLowerCase();
+              const cs = kw
+                ? 全部.filter(function (c) {
+                    return String(c.姓名 || '').toLowerCase().indexOf(kw) >= 0
+                      || String(c.电话 || '').indexOf(kw) >= 0
+                      || String(c.微信 || '').toLowerCase().indexOf(kw) >= 0;
+                  })
+                : 全部;
+            
+              // 分组：键是拼音首字母，# 放最后
+              const 组 = {};
+              cs.forEach(function (c) {
+                const k = pinyinInitial(c.姓名);
+                (组[k] = 组[k] || []).push(c);
+              });
+              const 键 = Object.keys(组).sort(function (x, y) {
+                if (x === '#' && y !== '#') return 1;
+                if (y === '#' && x !== '#') return -1;
+                return x < y ? -1 : x > y ? 1 : 0;
+              });
+            
+              return h('div', { className: 'sim-ph-thread' },
+                h('div', { style: { padding: '10px 12px 6px', flex: '0 0 auto' } },
+                  h('input', {
+                    type: 'text',
+                    value: phoneSearch,
+                    placeholder: '搜索',
+                    onChange: function (ev) { setPhoneSearch(ev.target.value); },
+                    style: {
+                      width: '100%', boxSizing: 'border-box', padding: '8px 12px',
+                      borderRadius: '10px', border: '1px solid var(--sim-bd)',
+                      background: 'var(--sim-bg)', color: 'var(--sim-t)',
+                      fontSize: 'var(--sim-fs-5)', outline: 'none',
+                    },
+                  })
+                ),
+                !键.length
+                  ? h('div', { className: 'sim-ph-empty' }, kw ? '没找到这个人。' : '还没有人把电话给你。')
+                  : h('div', { style: { flex: '1 1 auto', minHeight: 0, overflowY: 'auto' } },
+                      键.map(function (k) {
+                        return h('div', { key: k },
+                          // 分组标题
+                          h('div', {
+                            style: {
+                              padding: '6px 14px 4px', fontSize: '11px', fontWeight: 600,
+                              color: 'var(--sim-t2)', background: 'var(--sim-bg)',
+                              position: 'sticky', top: 0, zIndex: 1,
+                            },
+                          }, k),
+                          组[k].map(function (c) {
+                            return h('div', {
+                              className: 'sim-ph-row',
+                              key: c.姓名,
+                              onClick: function () {
+                                // 微信/QQ 里点人仍然是直接聊天
+                                if (phoneApp2) { phoneOpenThread(c.姓名); return; }
+                                setPhonePerson(c);
+                                setPhoneView('person');
+                              },
+                            },
+                              h('div', { className: 'sim-ph-av' }, String(c.姓名 || '?').slice(0, 1)),
+                              h('div', { className: 'sim-ph-rc' },
+                                h('div', { className: 'n' }, c.姓名),
+                                String(c.身份 || '').trim() ? h('div', { className: 'p' }, String(c.身份)) : null
+                              )
+                            );
+                          })
+                        );
+                      })
+                     )
+              );
             }
 
             // call：只有壳 —— 通话本身要语音/生图，都还没接

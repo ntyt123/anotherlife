@@ -295,6 +295,7 @@ const WEAR_KEYS = ['头部', '上衣', '内衣', '内裤', '下衣', '袜子', '
       线程历史: {},  // 线程ID → [ 上一版数组快照, … ]，最多留 8 步
       草稿: {},      // 线程ID → 没发出去的半句话
       群: {},        // 群名 → { 成员: [姓名…], 建群时间 }
+      已读: {},   // tid → 已读到的消息条数
       相册: [],      // [{ id, 描述, 时间, 轮次, 图 }] —— 描述是给「发圈时生成评论」用的
       // 两个平台各自独立，结构相同：{ id, 作者, 时间, 轮次, 正文, 图片:[{相册id,描述}], 赞:[名字], 评论:[{谁,内容}] }
       动态: { 朋友圈: [], 说说: [] },
@@ -9157,6 +9158,17 @@ const HUMAN_MSG = [
    * 短信 App 打开第一屏就是这个 —— 不是联系人列表。
    * 只列真有消息的线程；群聊不走这里（它们有自己的列表）。
    */
+  /** 把某个线程标为已读：记住「读到这里」，而不是记个布尔 */
+  reg('phoneMarkRead', async ({ gameId, threadId }) => {
+    const s = await loadState(gameId);
+    const tid = String(threadId || '').trim();
+    if (!tid) return { ok: false };
+    s.手机.已读 = Object.assign({}, s.手机.已读 || {});
+    s.手机.已读[tid] = (Array.isArray(s.手机.线程[tid]) ? s.手机.线程[tid].length : 0);
+    await saveState(s);
+    return { ok: true };
+  });
+
   reg('phoneThreads', async ({ gameId, 平台 }) => {
     const s = await loadState(gameId);
     const p = String(平台 || 'sms').trim();
@@ -9168,12 +9180,17 @@ const HUMAN_MSG = [
       const arr = 线程[tid];
       if (!Array.isArray(arr) || !arr.length) return;
       const last = arr[arr.length - 1];
+      // 未读 = 存档是否为空 且 最后一条是对方发的
+      // （读过就把线程长度记进 已读[tid]，比较即可）
+      const 读过 = Number((s.手机.已读 || {})[tid] || 0);
+      const 有未读 = arr.length > 读过 && String(last.方向 || '') === 'in';
       list.push({
         姓名: tid.slice(p.length + 1),
         最后: String(last.内容 || (last.类型 === 'image' ? '[图片]' : '')),
         时间: String(last.时间 || ''),
         方向: String(last.方向 || ''),
         条数: arr.length,
+        未读: 有未读,
       });
     });
     list.sort(function (a, b) { return String(b.时间).localeCompare(String(a.时间)); });
