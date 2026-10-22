@@ -8382,7 +8382,7 @@ onDoubleClick: () => {
               const pending = Math.max(0, latest - covered);
               return [h(
                 'details',
-                ),
+                { className: 'sim-fold', style: { marginTop: 8 } },
                 h('summary', null, '📚 剧情总结（' + list.length + ' 段' + (pending > 0 ? ' · 还有 ' + pending + ' 轮没整理' : '') + '）'),
                 h(
                   'div',
@@ -8446,7 +8446,8 @@ onDoubleClick: () => {
                       },
                     }, '↻ 全部重生成'),
                   )
-                ),
+              )
+            ),
               // 点开某一段：全屏看全文
               sumView >= 0 && list[sumView]
                 ? h('div', { className: 'sim-mask', style: { zIndex: 94 }, onClick: function () { setSumView(-1); } },
