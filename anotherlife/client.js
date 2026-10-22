@@ -12670,8 +12670,20 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
                             className: 'sim-ph-hd-btn',
                             title: '返回',
                             onClick: () => {
+                              // 返回目标按层级算：聊天 → 它所属的列表；详情 → 联系人；其余按 app 内/外分
+                              const tid = String(phoneThreadId || '');
+                              const isGroup = tid.indexOf('群:') >= 0;
                               const inApp = !!phoneApp2 && (phoneView === 'feed' || phoneView === 'contacts' || phoneView === 'groups' || phoneView === 'newgroup');
-                              const back = phoneView === 'compose' ? 'feed' : (inApp ? 'apphome' : 'home');
+                              let back = 'home';
+                              if (phoneView === 'compose') back = 'feed';
+                              else if (phoneView === 'thread') {
+                                // 群聊回群列表；微信/QQ 的单聊回那个 app 的首页；短信的单聊回会话列表
+                                if (isGroup) back = 'groups';
+                                else if (phoneApp2) back = 'apphome';
+                                else back = 'threads';
+                              }
+                              else if (phoneView === 'person') back = 'contacts';
+                              else if (inApp) back = 'apphome';
                               if (back === 'home') { setPhoneThreadId(''); setPhoneWho(''); setPhoneApp2(''); }
                               setPhoneView(back);
                             },
