@@ -4785,7 +4785,7 @@ function pickToolCall(r) {
       throw new Error('主模型没有返回内容（chunk 类型：' + Object.keys(seen).join(',') + '）');
     }
     const cut = isTruncated(finish);
-    await apiLog('[' + tag + '] ' + who + ' → ' + text.length + ' 字' + (cut ? '（被 maxTokens 截断，只拿到了这些）' : ''), t0);
+    await apiLog('[' + tag + '] ' + who + ' → ' + text.length + ' 字' + (cut ? '（被 maxTokens 截断，只拿到了这些）' : '') + (callList && callList.length ? '（工具 ' + callList.length + ' 次）' : ''), t0);
     const stopped = !!(finish && String(finish.kind || '') === 'stopped');
     if (stopped) await apiLog('[' + tag + '] 玩家按了停止，已保留 ' + text.length + ' 字', t0);
     return { text, reasoning, finish, toolCalls: callList, truncated: isTruncated(finish), stopped: stopped };
