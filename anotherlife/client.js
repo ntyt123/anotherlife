@@ -2691,7 +2691,7 @@ const WARN_FALLBACK = {
                 'span',
                 null,
                 ks.map((k) => k + '：' + String(v[k] == null ? '' : v[k])).join('\n')
-              );
+            );
             }
             return h('span', { className: 'mono' }, JSON.stringify(v, null, 1));
           }
@@ -3858,6 +3858,8 @@ function App({ gameId, close }) {
         const [phonePhoto, setPhonePhoto] = React.useState(null);  // 全屏看的那张
         const [phoneGroupPick, setPhoneGroupPick] = React.useState(null);  // 建群：{成员:[], 群名:""}
         const [phoneCmtText, setPhoneCmtText] = React.useState('');
+        // 正在全屏看哪一段剧情总结（-1 = 没开）
+        const [sumView, setSumView] = React.useState(-1);
 
         // 消息列表变化时贴底：只有本来就贴着底部才自动滚（用户翻历史时不打断）
         React.useEffect(function () {
@@ -8367,9 +8369,9 @@ onDoubleClick: () => {
               const covered = Number(state.story && state.story.summarised_through != null ? state.story.summarised_through : -1);
               const latest = Number(state.story && state.story.current_message_index ? state.story.current_message_index - 1 : 0);
               const pending = Math.max(0, latest - covered);
-              return h(
+              return [h(
                 'details',
-                { className: 'sim-fold', style: { marginTop: 8 } },
+                ),
                 h('summary', null, '📚 剧情总结（' + list.length + ' 段' + (pending > 0 ? ' · 还有 ' + pending + ' 轮没整理' : '') + '）'),
                 h(
                   'div',
@@ -8378,7 +8380,7 @@ onDoubleClick: () => {
                     ? list.map((x, i) =>
                         h(
                           'div',
-                          { className: 'sim-sum', key: i },
+                          { className: 'sim-sum', key: i, style: { cursor: 'pointer' }, onClick: function () { setSumView(i); } },
                           h('div', { className: 'sim-sum-h', style: { display: 'flex', alignItems: 'center', gap: '6px' } },
                             h('span', { style: { flex: '1 1 auto' } }, String(x.name || '') + (x.kind === 'mega' ? '（长期记忆）' : '')),
                             h('button', {
@@ -8401,7 +8403,7 @@ onDoubleClick: () => {
                                 });
                               },
                             }, '✕'),
-                          h('div', { className: 'sim-sum-b' }, String(x.content || ''))
+                          h('div', { className: 'sim-sum-b sim-sum-preview' }, (function (t) { const s2 = String(t || '').replace(/\s+/g, ' ').trim(); return s2.length > 160 ? s2.slice(0, 160) + '…' : s2; })(x.content))
                         )
                       )
                       )
@@ -8433,8 +8435,22 @@ onDoubleClick: () => {
                       },
                     }, '↻ 全部重生成'),
                   )
-                )
-              );
+                ),
+              // 点开某一段：全屏看全文
+              sumView >= 0 && list[sumView]
+                ? h('div', { className: 'sim-mask', style: { zIndex: 94 }, onClick: function () { setSumView(-1); } },
+                    h('div', { className: 'sim-modal', style: { maxWidth: 760 }, onClick: function (e) { e.stopPropagation(); } },
+                      h('div', { className: 'sim-modal-h' },
+                        h('div', { className: 'who' }, h('div', { className: 'nm' }, String(list[sumView].name || '剧情总结'))),
+                        h('button', { className: 'sim-modal-x', onClick: function () { setSumView(-1); } }, '✕')
+                      ),
+                      h('div', { className: 'sim-modal-b' },
+                        h('div', { className: 'sim-sum-b' }, String(list[sumView].content || ''))
+                      )
+                    )
+                  )
+                : null,
+              ];
             })(),
             // 进度条已移到输入框上方 —— 生成时不用翻到正文末尾去看
           );
