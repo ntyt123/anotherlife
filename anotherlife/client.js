@@ -5797,7 +5797,6 @@ function App({ gameId, close }) {
             if (phoneView === 'newgroup' && phoneGroupPick) {
               const picked = Array.isArray(phoneGroupPick.成员) ? phoneGroupPick.成员 : [];
               const cs = phoneContacts || [];
-              const av = avatarsMap();
               return h('div', { className: 'sim-ph-thread' },
                 h('div', { style: { flex: '1 1 auto', minHeight: 0, overflowY: 'auto' } },
                   h('div', { style: { padding: '9px 12px', fontSize: 'var(--sim-fs-6)', color: 'var(--sim-t2)' } }, '选人（已选 ' + picked.length + '）'),
@@ -5844,6 +5843,7 @@ function App({ gameId, close }) {
               const tab = phoneTab || 'chat';
               const ts = phoneThreadList || [];
               const cs = phoneContacts || [];
+              const av = avatarsMap();   // 会话行 / 通讯录的头像
 
               const 会话行 = function (t2) {
                 return h('div', { className: 'sim-ph-row', key: t2.姓名, onClick: function () { t2.是否群 ? phoneOpenGroup(t2.姓名) : phoneOpenThread(t2.姓名, 平台); } },
