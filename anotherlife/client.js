@@ -5592,10 +5592,12 @@ function App({ gameId, close }) {
           function phoneDoGen() {
             if (phoneGenBusy) return;
             setPhoneGenBusy(true);
-            run(call('feedGen', { 平台: phonePlatform }, gameId))
+            // 在看某个人的朋友圈时，要按作者生成 —— 不然生成的动态过滤后一条都看不到
+            run(call('feedGen', { 平台: phonePlatform, 谁的: phoneFeedWho || '' }, gameId))
               .then(function (r) {
                 if (r && r.ok) phoneLoadFeed(phonePlatform);
               })
+              .catch(function () { /* run 内部已经 setErr 了，这里只挡未处理的 rejection */ })
               .finally(function () { setPhoneGenBusy(false); });
           }
 
