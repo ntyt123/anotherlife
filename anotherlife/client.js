@@ -8308,9 +8308,18 @@ onDoubleClick: () => {
                         h(
                           'div',
                           { className: 'sim-sum', key: i },
-                          h('div', { className: 'sim-sum-h' }, String(x.name || '') + (x.kind === 'mega' ? '（长期记忆）' : '')),
+                          h('div', { className: 'sim-sum-h', style: { display: 'flex', alignItems: 'center', gap: '6px' } },
+                            h('span', { style: { flex: '1 1 auto' } }, String(x.name || '') + (x.kind === 'mega' ? '（长期记忆）' : '')),
+                            h('button', {
+                              className: 'sim-btn',
+                              style: { flex: '0 0 auto', fontSize: '11px', padding: '2px 7px' },
+                              title: '按当前规则重新生成这一段',
+                              disabled: busy,
+                              onClick: function (e) { e.stopPropagation(); run(call('summaryRedo', { index: i }, gameId)); },
+                            }, '↻'),
                           h('div', { className: 'sim-sum-b' }, String(x.content || ''))
                         )
+                      )
                       )
                     : h('div', { className: 'sim-hint' }, '还没有总结。'),
                   h(
@@ -8321,7 +8330,24 @@ onDoubleClick: () => {
                       { disabled: busy || !pending, onClick: () => run(call('runSummary', {}, gameId)) },
                       pending > 0 ? '整理这 ' + pending + ' 轮' : '没有待整理的'
                     ),
-                    h(Btn, { disabled: busy || list.length <= 2, onClick: () => run(call('mergeSummaries', {}, gameId)) }, '合并成长期记忆')
+                    h(Btn, { disabled: busy || list.length <= 2, onClick: () => run(call('mergeSummaries', {}, gameId)) }, '合并成长期记忆'),
+                    // 全部按当前规则重生成：改了提示词之后用它把旧总结刷新一遍
+                    h(Btn, {
+                      disabled: busy || !list.length,
+                      onClick: function () {
+                        ask('把 ' + list.length + ' 段总结都按当前规则重生成？会花一些时间。').then(function (ok) {
+                          if (!ok) return;
+                          // 从后往前跑：重生成会替换数组里的段，倒序才不会错位
+                          let q = Promise.resolve();
+                          for (let k = list.length - 1; k >= 0; k--) {
+                            (function (kk) {
+                              q = q.then(function () { return run(call('summaryRedo', { index: kk }, gameId)); });
+                            })(k);
+                          }
+                          return q;
+                        });
+                      },
+                    }, '↻ 全部重生成'),
                   )
                 )
               );

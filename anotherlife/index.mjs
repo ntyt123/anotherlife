@@ -6946,7 +6946,7 @@ function seasonText(s) {
     return parts.filter(Boolean).join('\n');
   }
 
-  async function makeSummary(s, from, to) {
+  async function makeSummary(s, from, to, replace) {
     const cfg = (s.config && s.config.summary) || {};
     // 判据只留 model：现在走 DSH 凭据那套（只填服务 + 模型），baseURL 本来就是空的。
     // 早先「必须有 baseURL」的写法会让切好的模型永远被判成「未配置」（踩过）。
@@ -6966,8 +6966,21 @@ function seasonText(s) {
     const clean = String(text == null ? '' : text).trim();
     if (!clean) throw new Error('总结模型没有返回内容');
     s.summaries = Array.isArray(s.summaries) ? s.summaries : [];
-    s.summaries.push({ name: '第' + from + '-' + to + '轮', content: clean, start: from, end: to, ts: Date.now(), kind: 'block' });
-    s.story.summarised_through = Math.max(Number(s.story.summarised_through == null ? -1 : s.story.summarised_through), to);
+    const 新段 = { name: '第' + from + '-' + to + '轮', content: clean, start: from, end: to, ts: Date.now(), kind: 'block' };
+    if (replace) {
+      // 重生成：先把范围重叠的旧段扔掉（含被它包含的大总结）
+      s.summaries = s.summaries.filter(function (x) {
+        return !(Number(x.end) >= from && Number(x.start) <= to);
+      });
+    }
+    s.summaries.push(新段);
+    // 按轮次排好，界面和合并都依赖顺序
+    s.summaries.sort(function (a, b) { return Number(a.start) - Number(b.start); });
+    // summarised_through 直接取所有段的最大 end —— 替换后可能变小，不能只取 Math.max(old, to)
+    s.story.summarised_through = s.summaries.reduce(function (m, x) {
+      const v = Number(x.end);
+      return isFinite(v) && v > m ? v : m;
+    }, -1);
     appendLog('summary', 'block', '第' + from + '-' + to + '轮 → ' + clean.length + ' 字');
     return clean;
   }
@@ -10795,7 +10808,33 @@ reg('importCommit', async ({ gameId }) => {
     return { ok: true, delta, money: next, months: 1 };
   });
 
-  reg('runSummary', async ({ gameId, start, end }) => {
+  /**
+   * 按段序号重新生成某一段总结（用当前规则、当前配置）。
+   *
+   * 主要用途：改了总结提示词之后，把旧存档里的总结重跑一遍。
+   * 内部走 runSummary 的同一套逻辑，只是把 replace 打开 ——
+   * 旧的同范围段会被替换掉，不会越点越长。
+   */
+  reg('summaryRedo', async ({ gameId, index }) => {
+    const s0 = await loadState(gameId);
+    const list = Array.isArray(s0.summaries) ? s0.summaries : [];
+    const i2 = Number(index);
+    if (!isFinite(i2) || i2 < 0 || i2 >= list.length) throw new Error('没有这一段');
+    const seg = list[i2];
+    const from = Number(seg.start);
+    const to = Number(seg.end);
+    if (!isFinite(from) || !isFinite(to)) throw new Error('这一段没有记录轮次范围，无法重生成');
+    const cfg = (s0.config && s0.config.summary) || {};
+    if (!cfg.model) throw new Error('请先在设定页配置总结模型');
+    resetProg(gameId);
+    setProg(gameId, 'summary', '重生成第 ' + from + '-' + to + ' 轮');
+    await makeSummary(s0, from, to, true);
+    setProg(gameId, 'save', '写回存档');
+    await saveState(s0);
+    return withKeyStatus(s0);
+  });
+
+  reg('runSummary', async ({ gameId, start, end, replace }) => {
     const s = await loadState(gameId);
     const cfg = (s.config && s.config.summary) || {};
     // 判据只留 model：现在走 DSH 凭据那套（只填服务 + 模型），baseURL 本来就是空的。
@@ -10809,7 +10848,7 @@ reg('importCommit', async ({ gameId }) => {
     // 上报进度：不然点了按钮界面不动，像没点上
     resetProg(gameId);
     setProg(gameId, 'summary', '整理剧情总结（第 ' + from + '-' + to + ' 轮）');
-    await makeSummary(s, from, to);
+    await makeSummary(s, from, to, !!replace);
     setProg(gameId, 'save', '写回存档');
     await saveState(s);
     return withKeyStatus(s);
