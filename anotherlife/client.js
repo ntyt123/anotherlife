@@ -5360,7 +5360,7 @@ function App({ gameId, close }) {
 
           /** 标题栏上写什么 */
           function phoneHeadTitle() {
-            if (phoneView === 'contacts') return '联系人';
+            if (phoneView === 'contacts') return phoneApp2 ? '通讯录' : '联系人';
             if (phoneView === 'thread') return phoneWho || '短信';
             if (phoneView === 'person' && phonePerson) return String(phonePerson.姓名 || '联系人');
             if (phoneView === 'threads') return phoneApp2 === 'qq' ? 'QQ' : phoneApp2 === 'wechat' ? '微信' : '短信';
@@ -5915,7 +5915,7 @@ function App({ gameId, close }) {
                 ),
                 h('div', { className: 'sim-ph-bar' },
                   h('button', { className: 'sim-btn' + (tab === 'chat' ? ' primary' : ''), style: { flex: '1 1 auto' }, onClick: function () { setPhoneTab('chat'); } }, '聊天'),
-                  h('button', { className: 'sim-btn' + (tab === 'book' ? ' primary' : ''), style: { flex: '1 1 auto' }, onClick: function () { setPhoneTab('book'); if (!phoneContacts) phoneLoadContacts(平台); } }, '通讯录'),
+                  h('button', { className: 'sim-btn' + (tab === 'book' ? ' primary' : ''), style: { flex: '1 1 auto' }, onClick: function () { setPhoneTab('book'); phoneLoadContacts(平台); } }, '通讯录'),
                   h('button', { className: 'sim-btn' + (tab === 'find' ? ' primary' : ''), style: { flex: '1 1 auto' }, onClick: function () { setPhoneTab('find'); } }, '发现')
                 )
               );
@@ -6058,7 +6058,7 @@ function App({ gameId, close }) {
                   })
                 ),
                 !键.length
-                  ? h('div', { className: 'sim-ph-empty' }, kw ? '没找到这个人。' : '还没有人把电话给你。')
+                  ? h('div', { className: 'sim-ph-empty' }, kw ? '没找到这个人。' : phoneApp2 ? '还没有人加你。' : '还没有人把电话给你。')
                   : h('div', { style: { flex: '1 1 auto', minHeight: 0, overflowY: 'auto' } },
                       键.map(function (k) {
                         return h('div', { key: k },
@@ -6395,10 +6395,11 @@ function App({ gameId, close }) {
               h('div', { className: 'sim-ph-grid' },
               phoneApp('✉️', '短信', () => { setPhoneView('threads'); phoneLoadThreads(); }, false),
               phoneApp('👥', '联系人', () => {
+                // 桌面这个永远是「手机通讯录」（按电话号码），不是微信通讯录。
+                // 不传参的话 phoneLoadContacts 会按 phoneApp2 走 —— 刚进过微信就会拉来微信那批人。
+                setPhoneApp2('');
                 setPhoneView('contacts');
-                if (!phoneContacts) {
-                  phoneLoadContacts();
-                }
+                phoneLoadContacts('sms');
               }),
               phoneApp('📸', '相机', () => {}, !era.有相机),
               phoneApp('🖼️', '相册', () => { setPhoneView('album'); if (!phoneAlbumLoaded) phoneLoadAlbum(); }),
@@ -7592,7 +7593,7 @@ onDoubleClick: () => {
                     const next = !phoneOpen;
                     setPhoneOpen(next);
                     if (next && !phoneContacts) {
-                      phoneLoadContacts();
+                      phoneLoadContacts('sms');   // 手机通讯录，跟 app 无关
                     }
                   },
                 },
