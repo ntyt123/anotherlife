@@ -9886,7 +9886,18 @@ function fanBlock(obj) {
             const tip = [['部位', k], ['衣物', slot.物品], ['稀有度', rarityOf(slot.稀有度) || slot.稀有度 || 'N']];
             if (String(slot.简介 || '').trim()) tip.push(['简介', String(slot.简介).trim()]);
             if (!isMundane(slot.状态)) tip.push(['状态', String(slot.状态).trim()]);
-            if (String(slot.穿着时长 || '').trim()) tip.push(['穿着', String(slot.穿着时长).trim()]);
+            if (String(slot.穿着时长 || '').trim()) {
+              let 时长文 = String(slot.穿着时长).trim();
+              // 穿着小时 是「她出场的累计时长」，不是真实经过的日历天数 ——
+              // 不在场的那几轮不算。按一天在外十二个小时折算，给个能跟日历对上、
+              // 也不至于让人以为她连续穿了三天三夜的说法。
+              const hv = Number(slot.穿着小时);
+              if (Number.isFinite(hv) && hv > 0) {
+                const 天 = hv / 12;
+                时长文 += '（约 ' + (天 < 1 ? '不到一天' : Math.round(天) + ' 天') + '）';
+              }
+              tip.push(['穿着', 时长文]);
+            }
             // 袜子、内衣、内裤都有气味（只有女性）。浓度条 0~100：圆点只有四档，看不出 12 和 39 的差别
             const SCENT_PARTS = ['袜子', '内衣', '内裤'];
             if (SCENT_PARTS.indexOf(k) >= 0 && !male) {
