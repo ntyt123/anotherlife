@@ -12136,7 +12136,7 @@ function toggleFans(npc) {
           }
 
           // 设定页的展开态记忆：刷新后保持（只记在这台机器上）
-          const SET_OPEN_DEFAULT = { look: true, body: true, model: false, ctx: false, local: false, dev: false };
+          const SET_OPEN_DEFAULT = { look: true, body: true, scent: true, model: false, ctx: false, local: false, dev: false };
           const setOpen = (k, v) => writeUiPref('setopen-' + k, v ? '1' : '0');
           const isOpen = (k) => {
             const v = readUiPref('setopen-' + k, '');
