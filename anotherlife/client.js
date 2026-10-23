@@ -12281,29 +12281,28 @@ function toggleFans(npc) {
                 h('div', { className: 'sim-hint' }, '最少字数是硬要求，写不够算不合格；最多字数填 0 表示不设上限。段落数按字数自动换算。')
               ),
               h(SoundCfg, { key: 'sound' })
-              ,
-              // 气味文本归谁写：默认引擎（整句库），可切给结算模型
-              group(
-                'scent',
-                '气味',
-                (dcfg && dcfg.scentByAI) ? 'AI 写' : '引擎',
-                h('div', { className: 'sim-card' },
-                  h('div', { style: { fontWeight: 600, marginBottom: 4 } }, '气味由谁写'),
-                  h('div', { className: 'sim-hint' }, '关着用整句库，开着让结算模型自己写。浓度、材质、穿了多久两种都归后台算。'),
-                  h('div', { className: 'sim-acts', style: { marginTop: 8 } },
-                    h(Btn, {
-                      primary: !!(dcfg && dcfg.scentByAI),
-                      onClick: function () {
-                        const c = Object.assign({}, dcfg);
-                        c.scentByAI = !c.scentByAI;
-                        upd({ config: c });
-                        run(call('saveConfig', { config: c }, gameId));
-                      },
-                    }, (dcfg && dcfg.scentByAI) ? '🤖 AI 写' : '📚 引擎')
-                  )
-                )
-              )
             ),
+                // 气味文本归谁写：默认引擎（整句库），可切给结算模型
+                group(
+                  'scent',
+                  '气味',
+                  (dcfg && dcfg.scentByAI) ? 'AI 写' : '引擎',
+                  h('div', { className: 'sim-card' },
+                    h('div', { style: { fontWeight: 600, marginBottom: 4 } }, '气味由谁写'),
+                    h('div', { className: 'sim-hint' }, '关着用整句库，开着让结算模型自己写。浓度、材质、穿了多久两种都归后台算。'),
+                    h('div', { className: 'sim-acts', style: { marginTop: 8 } },
+                      h(Btn, {
+                        primary: !!(dcfg && dcfg.scentByAI),
+                        onClick: function () {
+                          const c = Object.assign({}, dcfg);
+                          c.scentByAI = !c.scentByAI;
+                          upd({ config: c });
+                          run(call('saveConfig', { config: c }, gameId));
+                        },
+                      }, (dcfg && dcfg.scentByAI) ? '🤖 AI 写' : '📚 引擎')
+                    )
+                  )
+                ),
 
             /* ── 长期偏好 ── */
             group(
@@ -13010,8 +13009,7 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
                   );
                 })
               ),
-              h('span', { className: 'sim-stage-txt' }, (stage && stage.text) || '')
-              ,
+              h('span', { className: 'sim-stage-txt' }, (stage && stage.text) || ''),
               // 降级/失败的原因：光有 ⚠ 看不出发生了什么
               warnSteps.length
                 ? h(
