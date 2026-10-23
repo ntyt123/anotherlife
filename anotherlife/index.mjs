@@ -3226,6 +3226,7 @@ function purgeOldScent(s) {
     if (s.story.scentPurgeV1) return out;
     // 气味交给 AI 结算时不干预 —— 玩家就是要模型自己写的句子
     if (s.config && s.config.scentByAI) return out;
+    const byAI = false;   // 上面那句已经把「开着」的分支 return 掉了
     const 多句 = (t) => (String(t || '').match(/[。]/g) || []).length > 1;
     const npcs = Array.isArray(s.npcs) ? s.npcs : [];
     npcs.forEach((n, i) => {
@@ -3423,6 +3424,7 @@ function ensureWear(s) {
  * 返回改了几条，调用方据此决定要不要落盘。
  */
 function migrateScentText(s) {
+  const byAI = !!(s && s.config && s.config.scentByAI);
   let changed = 0;
   (Array.isArray(s && s.npcs) ? s.npcs : []).forEach(function (n) {
     const w = n && n.穿着 && n.穿着.袜子;
