@@ -3224,6 +3224,8 @@ function purgeOldScent(s) {
   try {
     s.story = s.story || {};
     if (s.story.scentPurgeV1) return out;
+    // 气味交给 AI 结算时不干预 —— 玩家就是要模型自己写的句子
+    if (s.config && s.config.scentByAI) return out;
     const 多句 = (t) => (String(t || '').match(/[。]/g) || []).length > 1;
     const npcs = Array.isArray(s.npcs) ? s.npcs : [];
     npcs.forEach((n, i) => {
@@ -3236,7 +3238,7 @@ function purgeOldScent(s) {
         const mat = sk.材质 || detectSockMaterial(sk.物品);
         const t = scentTextOf(scentLevel(Number(sk.气味强度) || 0), mat, sk.物品, String(n.姓名 || ''));
         if (t) {
-          out.push(engineDiff(['npcs', i, '穿着', '袜子', '气味'], String(sk.气味 || ''), t, 'scentpurge'));
+          if (!byAI) out.push(engineDiff(['npcs', i, '穿着', '袜子', '气味'], String(sk.气味 || ''), t, 'scentpurge'));
           sk.气味 = t;
         }
       }
@@ -3247,7 +3249,7 @@ function purgeOldScent(s) {
         const mat = slot.材质 || detectUnderMaterial(slot.物品);
         const t = scentTextOf(scentLevel(Number(slot.气味强度) || 0), mat, slot.物品, String(n.姓名 || ''), 'under', key);
         if (t) {
-          out.push(engineDiff(['npcs', i, '穿着', key, '气味'], String(slot.气味 || ''), t, 'scentpurge'));
+          if (!byAI) out.push(engineDiff(['npcs', i, '穿着', key, '气味'], String(slot.气味 || ''), t, 'scentpurge'));
           slot.气味 = t;
         }
       });
@@ -3430,7 +3432,7 @@ function migrateScentText(s) {
     const sv = Number(w.气味强度);
     if (!Number.isFinite(sv)) return;        // 没强度的留给 tickSockScent 补
     const mat = w.材质 || detectSockMaterial(w.物品);
-    w.气味 = scentTextOf(scentLevel(sv), mat, w.物品, String(n.姓名 || ''));
+    if (!byAI) w.气味 = scentTextOf(scentLevel(sv), mat, w.物品, String(n.姓名 || ''));
     changed++;
   });
   return changed;
@@ -3740,6 +3742,8 @@ function guessUnderSlot(owner, key) {
 }
 
 function tickUnderScent(s, dh, body) {
+  // 气味文本归谁写：默认引擎（scE-lines 整句库），开了开关就交给模型
+  const byAI = !!(s.config && s.config.scentByAI);
   const out = [];
   const bodyText = String(body || '');
   const list = [];
@@ -3767,11 +3771,11 @@ function tickUnderScent(s, dh, body) {
         const t = scentTextOf(scentLevel(g.强度), detectUnderMaterial(slot.物品), slot.物品, String(n.姓名 || ''), 'under', key);
         out.push(engineDiff(['npcs', i, '穿着', key, '气味强度'], 0, g.强度, 'underscent'));
         out.push(engineDiff(['npcs', i, '穿着', key, '穿着小时'], 0, g.小时, 'underscent'));
-        out.push(engineDiff(['npcs', i, '穿着', key, '气味'], String(slot.气味 || ''), t, 'underscent'));
+        if (!byAI) out.push(engineDiff(['npcs', i, '穿着', key, '气味'], String(slot.气味 || ''), t, 'underscent'));
         out.push(engineDiff(['npcs', i, '穿着', key, '穿着时长'], '刚换上', humanSockHours(g.小时), 'underscent'));
         slot.气味强度 = g.强度;
         slot.穿着小时 = g.小时;
-        slot.气味 = t;
+        if (!byAI) slot.气味 = t;
         slot.穿着时长 = humanSockHours(g.小时);
       });
     });
@@ -3813,12 +3817,12 @@ function tickUnderScent(s, dh, body) {
         out.push(engineDiff(base.concat(['穿着', key, '气味强度']), undefined, sv0, 'underscent'));
         out.push(engineDiff(base.concat(['穿着', key, '穿着小时']), undefined, hv0, 'underscent'));
         out.push(engineDiff(base.concat(['穿着', key, '材质']), undefined, mat, 'underscent'));
-        out.push(engineDiff(base.concat(['穿着', key, '气味']), String(slot.气味 || ''), t0, 'underscent'));
+        if (!byAI) out.push(engineDiff(base.concat(['穿着', key, '气味']), String(slot.气味 || ''), t0, 'underscent'));
         out.push(engineDiff(base.concat(['穿着', key, '穿着时长']), String(slot.穿着时长 || ''), hv0 > 0 ? humanSockHours(hv0) : '刚换上', 'underscent'));
         slot.气味强度 = sv0;
         slot.穿着小时 = hv0;
         slot.材质 = mat;
-        slot.气味 = t0;
+        if (!byAI) slot.气味 = t0;
         slot.穿着时长 = hv0 > 0 ? humanSockHours(hv0) : '刚换上';
         return;
       }
@@ -3827,8 +3831,10 @@ function tickUnderScent(s, dh, body) {
       const txt = String(slot.气味 || '').trim();
       const t2 = scentTextOf(scentLevel(Number(slot.气味强度)), mat, nm, String(owner.姓名 || ''), 'under', key);
       if (txt && t2 && txt !== t2) {
-        out.push(engineDiff(base.concat(['穿着', key, '气味']), txt, t2, 'underscent'));
-        slot.气味 = t2;
+        if (!byAI) {
+          out.push(engineDiff(base.concat(['穿着', key, '气味']), txt, t2, 'underscent'));
+          slot.气味 = t2;
+        }
       }
 
       // ① 累加：只在时间推进时
@@ -3852,8 +3858,10 @@ function tickUnderScent(s, dh, body) {
       }
       const newText = scentTextOf(scentLevel(after), mat, nm, who, 'under', key);
       if (newText && newText !== txt) {
-        out.push(engineDiff(base.concat(['穿着', key, '气味']), txt, newText, 'underscent'));
-        slot.气味 = newText;
+        if (!byAI) {
+          out.push(engineDiff(base.concat(['穿着', key, '气味']), txt, newText, 'underscent'));
+          slot.气味 = newText;
+        }
       }
       const newDur = humanSockHours(afterH);
       if (newDur !== String(slot.穿着时长 || '')) {
@@ -4145,6 +4153,8 @@ function tickBodyState(s, dh) {
 }
 
 function tickSockScent(s, body) {
+  // 气味文本归谁写：默认引擎（scE-lines 整句库），开了开关就交给模型
+  const byAI = !!(s.config && s.config.scentByAI);
   const out = [];
   try {
     const now = parseStoryTime(s.world && s.world.当前日期时间);
@@ -4186,8 +4196,10 @@ function tickSockScent(s, body) {
         // （实测「…焐了一整日…；…脚跟处磨得薄了一层。」这一句半，正好躲过旧判据）。
         // 改成拿库产出的那句直接比对：不一样就换。气味这一行只认引擎写的。
         if (txt && t2 && txt !== t2) {
-          out.push(engineDiff(['npcs', i, '穿着', '袜子', '气味'], txt, t2));
-          w.气味 = t2;
+          if (!byAI) {
+            out.push(engineDiff(['npcs', i, '穿着', '袜子', '气味'], txt, t2));
+            w.气味 = t2;
+          }
         }
         // 顺手把「穿着多久」也对齐一次：导入的旧存档里这一行常是模型写的
         //（「半日」「多日未换」），跟引擎累加的 穿着小时 对不上。
@@ -4210,12 +4222,12 @@ function tickSockScent(s, body) {
       out.push(engineDiff(['npcs', i, '穿着', '袜子', '气味强度'], undefined, sv));
       out.push(engineDiff(['npcs', i, '穿着', '袜子', '穿着小时'], undefined, hv));
       out.push(engineDiff(['npcs', i, '穿着', '袜子', '材质'], undefined, mat1));
-      out.push(engineDiff(['npcs', i, '穿着', '袜子', '气味'], String(w.气味 || ''), t1));
+      if (!byAI) out.push(engineDiff(['npcs', i, '穿着', '袜子', '气味'], String(w.气味 || ''), t1));
       out.push(engineDiff(['npcs', i, '穿着', '袜子', '穿着时长'], String(w.穿着时长 || ''), humanSockHours(hv)));
       w.气味强度 = sv;
       w.穿着小时 = hv;
       w.材质 = mat1;
-      w.气味 = t1;
+      if (!byAI) w.气味 = t1;
       w.穿着时长 = humanSockHours(hv);
     });
     
@@ -4249,7 +4261,7 @@ function tickSockScent(s, body) {
         out.push(engineDiff(['npcs', i, '穿着', '袜子', '气味强度'], oldStr, 0));
         out.push(engineDiff(['npcs', i, '穿着', '袜子', '穿着小时'], Number(w.穿着小时) || 0, 0));
         out.push(engineDiff(['npcs', i, '穿着', '袜子', '材质'], w.材质 || '', mat0));
-        out.push(engineDiff(['npcs', i, '穿着', '袜子', '气味'], String(w.气味 || ''), t0));
+        if (!byAI) out.push(engineDiff(['npcs', i, '穿着', '袜子', '气味'], String(w.气味 || ''), t0));
         out.push(engineDiff(['npcs', i, '穿着', '袜子', '穿着时长'], String(w.穿着时长 || ''), '刚换上'));
         w.气味强度 = 0;
         w.穿着小时 = 0;
@@ -4273,7 +4285,7 @@ function tickSockScent(s, body) {
         out.push(engineDiff(['npcs', i, '穿着', '袜子', '气味强度'], Number(w.气味强度) || 0, 0, 'sockstale'));
         out.push(engineDiff(['npcs', i, '穿着', '袜子', '穿着小时'], Number(w.穿着小时) || 0, 0, 'sockstale'));
         out.push(engineDiff(['npcs', i, '穿着', '袜子', '材质'], w.材质 || '', matR, 'sockstale'));
-        out.push(engineDiff(['npcs', i, '穿着', '袜子', '气味'], String(w.气味 || ''), tR, 'sockstale'));
+        if (!byAI) out.push(engineDiff(['npcs', i, '穿着', '袜子', '气味'], String(w.气味 || ''), tR, 'sockstale'));
         out.push(engineDiff(['npcs', i, '穿着', '袜子', '穿着时长'], String(w.穿着时长 || ''), '刚换上', 'sockstale'));
         w.气味强度 = 0;
         w.穿着小时 = 0;
@@ -4305,7 +4317,7 @@ function tickSockScent(s, body) {
       const oldText = String(w.气味 || '');
       const newText = scentTextOf(scentLevel(after), mat, w.物品, String(n.姓名 || ''));
       if (oldText !== newText) {
-        out.push(engineDiff(['npcs', i, '穿着', '袜子', '气味'], oldText, newText));
+        if (!byAI) out.push(engineDiff(['npcs', i, '穿着', '袜子', '气味'], oldText, newText));
         w.气味 = newText;
       }
       const oldDur = String(w.穿着时长 || '');
@@ -6061,6 +6073,9 @@ let aiPickFail = '';
       '  · **穿着时长**：按这个档位写 —— 刚换上／半日／整日／多日／多日未换。时间推进、换衣服、洗澡之后都要跟着更新（换了一件新的就写「刚换上」）。',
       '  · 状态只在非正常时写（起球／沾了泥／破了个口／勒出印子），正常整洁就留空；',
       '  · **简介**每件衣物都要写，10~25 字一句：这件衣服的由来或当下的样子（谁给的／什么时候买的／穿了多久／为什么换上／洗没洗过／哪里磨旧了）。不要复述物品名，不要写形容词堆砌。',
+      // 气味文本归谁写：默认引擎从 scent-lines.json 整句取，开了开关就让模型自己写
+      (s.config && s.config.scentByAI) ?
+      '  · 气味：**女性角色的「袜子」「内衣」「内裤」必须写**（常规字段，别漏；哪怕正文没细写，也按材质底息＋穿了多久给一句），男性角色一律留空，其他部位也留空。你想怎么写就怎么写 —— 一句流水句、一个句号、不堆形容词、不带具体场所（练功房／柜台／工地都不写）。参考下面注入的【袜子／鞋的气味引擎】的语感。**气味强度／材质／穿着小时／穿着时长仍然由后台按时间算，这几个你不要写。**':
       '  · 气味：**女性角色的「袜子」「内衣」「内裤」必须写**（常规字段，别漏；哪怕正文没细写，也按材质底息＋穿了多久给一句），男性角色一律留空，其他部位也留空。**袜子**那条严格按下面注入的【袜子／鞋的气味引擎】写；**内衣内裤**只写这一句，气味强度／材质／穿着小时／穿着时长由后台按时间算，你不要写（写了也会被覆盖）。写的时候不要带具体场所（练功房／柜台／工地都不写）。',
       '  · **袜子脱下**：正文里出现「脱下袜子／把袜子递过来／袜子被拿走／塞进口袋」这类事实时，做两件事 —— ',
       '    ① 把该角色 穿着.袜子 的 物品／状态／气味／气味强度／穿着小时／材质 全部置空（不要留半截）；',
@@ -6278,7 +6293,7 @@ let aiPickFail = '';
         const cur = (s[root] || {})[k];
         // 主角的「穿着」也按部位合并：模型只给了一个部位时，别把其他部位抹掉
         if (root === 'protagonist' && k === '穿着') {
-          const merged = mergeWear(cur, box[k]);
+          const merged = mergeWear(cur, box[k], !!(s.config && s.config.scentByAI));
           if (!same(merged, cur || {})) diffs.push({ path: [root, k], to: merged });
           return;
         }
@@ -6333,7 +6348,7 @@ let aiPickFail = '';
         if (k === '姓名') return;
         const cur = npcs[at][k];
         if (k === '穿着') {
-          const merged = mergeWear(cur, item.穿着);
+          const merged = mergeWear(cur, item.穿着, !!(s.config && s.config.scentByAI));
           if (!same(merged, cur || {})) diffs.push({ path: ['npcs', at, '穿着'], to: merged });
           return;
         }
@@ -6461,7 +6476,7 @@ let aiPickFail = '';
   }
 
   /** 穿着按部位合并：新的有值就用新的，没有就保留原来的（别把已填的部位清空） */
-  function mergeWear(base, incoming) {
+  function mergeWear(base, incoming, byAI) {
     const b = base && typeof base === 'object' ? base : {};
     const i = incoming && typeof incoming === 'object' ? incoming : {};
     const out = {};
@@ -6482,6 +6497,11 @@ let aiPickFail = '';
       // 会盖掉整句库的效果 —— 玩家一眼就看出不是库里的句子。
       ['气味强度', '穿着小时', '材质', '穿着时长', '沾染', '气味'].forEach((f) => {
         // base 优先：引擎已经算过的不让模型改，模型只在引擎还没写过时兜底
+        // 气味单独放行：开了「气味由 AI 结算」就听模型的（他想要自由发挥的句子）
+        if (f === '气味' && byAI) {
+          out[k][f] = ii[f] !== undefined ? ii[f] : (bi[f] || '');
+          return;
+        }
         const v = (bi[f] !== undefined && bi[f] !== '') ? bi[f] : ii[f];
         if (v === undefined) return;
         out[k][f] = (v && typeof v === 'object') ? JSON.parse(JSON.stringify(v)) : v;
