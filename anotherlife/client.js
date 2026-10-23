@@ -12276,6 +12276,20 @@ function toggleFans(npc) {
                     },
                   })
                 ),
+                // 气味文本归谁写：默认引擎（整句库），可切给结算模型
+                h('div', { style: { marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--sim-bd)' } },
+                  h('div', { style: { fontSize: 'var(--sim-fs-2)', color: 'var(--sim-t2)', marginBottom: 6 } }, '气味由谁写'),
+                  h(Btn, {
+                    primary: !!(dcfg && dcfg.scentByAI),
+                    onClick: function () {
+                      const c = Object.assign({}, dcfg);
+                      c.scentByAI = !c.scentByAI;
+                      upd({ config: c });
+                      run(call('saveConfig', { config: c }, gameId));
+                    },
+                  }, (dcfg && dcfg.scentByAI) ? '🤖 AI 写' : '📚 引擎'),
+                  h('div', { className: 'sim-hint', style: { marginTop: 4 } }, (dcfg && dcfg.scentByAI) ? '结算模型自己写那句；浓度、材质、穿了多久仍由后台算。' : '从整句库里按档位取；同一档换个人就是另一句。')
+                ),
                 h('div', { className: 'sim-hint' }, '最少字数是硬要求，写不够算不合格；最多字数填 0 表示不设上限。段落数按字数自动换算。')
               ),
               h(SoundCfg, { key: 'sound' })
