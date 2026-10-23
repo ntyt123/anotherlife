@@ -4137,6 +4137,16 @@ function tickSockScent(s, body) {
           out.push(engineDiff(['npcs', i, '穿着', '袜子', '气味'], txt, t2));
           w.气味 = t2;
         }
+        // 顺手把「穿着多久」也对齐一次：导入的旧存档里这一行常是模型写的
+        //（「半日」「多日未换」），跟引擎累加的 穿着小时 对不上。
+        const hvNow = Number(w.穿着小时);
+        if (Number.isFinite(hvNow) && hvNow > 0) {
+          const durNow = humanSockHours(hvNow);
+          if (String(w.穿着时长 || '') !== durNow) {
+            out.push(engineDiff(['npcs', i, '穿着', '袜子', '穿着时长'], String(w.穿着时长 || ''), durNow));
+            w.穿着时长 = durNow;
+          }
+        }
         return;
       }
       if (w.气味强度 != null && w.气味强度 !== '') return;
