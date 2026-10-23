@@ -4246,6 +4246,25 @@ function tickSockScent(s, body) {
       // 不在场的人我们不知道换没换，默认她过着正常生活（换了），
       // 比默认她连续穿三天爆表更合理。
       if (bodyText && (nmNow.length < 2 || bodyText.indexOf(nmNow) < 0)) return;
+      // 连续穿超过两天 → 当作换过。现实里没人会连着穿同一双袜子 48 小时，
+      // 累到 72 小时那种数只是「出场攒出来的」，继续算下去只会让弹窗越来越离谱。
+      // 阈值取 48 而不是 24：SOCK_FULL_HOURS 里棉袜满档就是 48，
+      // 这样「涨到满档」和「判定换过」发生在同一点，不会把强度上限压到 50。
+      if (Number(w.穿着小时) > 48) {
+        const matR = detectSockMaterial(w.物品);
+        const tR = scentTextOf(0, matR, w.物品, String(n.姓名 || ''));
+        out.push(engineDiff(['npcs', i, '穿着', '袜子', '气味强度'], Number(w.气味强度) || 0, 0, 'sockstale'));
+        out.push(engineDiff(['npcs', i, '穿着', '袜子', '穿着小时'], Number(w.穿着小时) || 0, 0, 'sockstale'));
+        out.push(engineDiff(['npcs', i, '穿着', '袜子', '材质'], w.材质 || '', matR, 'sockstale'));
+        out.push(engineDiff(['npcs', i, '穿着', '袜子', '气味'], String(w.气味 || ''), tR, 'sockstale'));
+        out.push(engineDiff(['npcs', i, '穿着', '袜子', '穿着时长'], String(w.穿着时长 || ''), '刚换上', 'sockstale'));
+        w.气味强度 = 0;
+        w.穿着小时 = 0;
+        w.材质 = matR;
+        w.气味 = tR;
+        w.穿着时长 = '刚换上';
+        return;
+      }
       const mat = w.材质 || detectSockMaterial(w.物品);
       const rate = 100 / (SOCK_FULL_HOURS[mat] || SOCK_FULL_HOURS.混纺);
       const before = Number(w.气味强度) || 0;
