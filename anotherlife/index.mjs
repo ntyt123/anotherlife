@@ -3224,9 +3224,7 @@ function purgeOldScent(s) {
   try {
     s.story = s.story || {};
     if (s.story.scentPurgeV1) return out;
-    // 气味交给 AI 结算时不干预 —— 玩家就是要模型自己写的句子
-    if (s.config && s.config.scentByAI) return out;
-    const byAI = false;   // 上面那句已经把「开着」的分支 return 掉了
+    const byAI = false;   // 三段式是格式错误，不分谁写的，一律清
     const 多句 = (t) => (String(t || '').match(/[。]/g) || []).length > 1;
     const npcs = Array.isArray(s.npcs) ? s.npcs : [];
     npcs.forEach((n, i) => {
@@ -7757,7 +7755,19 @@ function seasonText(s) {
     return s;
   }
 
-  reg('getState', async ({ gameId }) => withKeyStatus(await loadState(gameId)));
+  reg('getState', async ({ gameId }) => {
+    const s = await loadState(gameId);
+    // 清掉旧版本拼出来的三段式袜子气味（「…。…。…。」那种）。
+    // 挂着而不是放 runTurn：玩家光打开界面看、不推进剧情时，那个迁移永远不触发。
+    // 之前因为「byAI is not defined」被误判成元凶而摘掉过，现在 byAI 已经定义好了。
+    const ds = purgeOldScent(s);
+    if (ds.length) {
+      applyDiffs(s, ds);
+      await saveState(s);
+      await turnLog('[scent] 清掉 ' + ds.length + ' 处三段式气味');
+    }
+    return withKeyStatus(s);
+  });
 
   /** 一次写入多个顶层字段（面板表单保存用） */
   reg('saveFields', async ({ gameId, patch }) => {
