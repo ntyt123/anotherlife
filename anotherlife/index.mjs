@@ -3240,7 +3240,7 @@ function purgeOldScent(s) {
         const t = scentTextOf(scentLevel(Number(sk.气味强度) || 0), mat, sk.物品, String(n.姓名 || ''));
         if (t) {
           if (!byAI) out.push(engineDiff(['npcs', i, '穿着', '袜子', '气味'], String(sk.气味 || ''), t, 'scentpurge'));
-          sk.气味 = t;
+          if (!byAI) sk.气味 = t;
         }
       }
       // 内衣 / 内裤
@@ -3251,7 +3251,7 @@ function purgeOldScent(s) {
         const t = scentTextOf(scentLevel(Number(slot.气味强度) || 0), mat, slot.物品, String(n.姓名 || ''), 'under', key);
         if (t) {
           if (!byAI) out.push(engineDiff(['npcs', i, '穿着', key, '气味'], String(slot.气味 || ''), t, 'scentpurge'));
-          slot.气味 = t;
+          if (!byAI) slot.气味 = t;
         }
       });
     });
@@ -4268,7 +4268,7 @@ function tickSockScent(s, body) {
         w.气味强度 = 0;
         w.穿着小时 = 0;
         w.材质 = mat0;
-        w.气味 = t0;
+        if (!byAI) w.气味 = t0;
         w.穿着时长 = '刚换上';
       }
       w._上一双 = curName;
@@ -4292,7 +4292,7 @@ function tickSockScent(s, body) {
         w.气味强度 = 0;
         w.穿着小时 = 0;
         w.材质 = matR;
-        w.气味 = tR;
+        if (!byAI) w.气味 = tR;
         w.穿着时长 = '刚换上';
         return;
       }
@@ -4320,7 +4320,7 @@ function tickSockScent(s, body) {
       const newText = scentTextOf(scentLevel(after), mat, w.物品, String(n.姓名 || ''));
       if (oldText !== newText) {
         if (!byAI) out.push(engineDiff(['npcs', i, '穿着', '袜子', '气味'], oldText, newText));
-        w.气味 = newText;
+        if (!byAI) w.气味 = newText;
       }
       const oldDur = String(w.穿着时长 || '');
       const newDur = humanSockHours(afterH);
@@ -10958,7 +10958,7 @@ reg('migrateSockScent', async ({ gameId }) => {
     w.气味强度 = sVal;
     w.穿着小时 = hVal;
     w.材质 = detectSockMaterial(w.物品);
-    w.气味 = scentTextOf(scentLevel(sVal), w.材质, w.物品, String(x.姓名 || ''));
+    if (!byAI) w.气味 = scentTextOf(scentLevel(sVal), w.材质, w.物品, String(x.姓名 || ''));
     w.穿着时长 = humanSockHours(hVal);
     changed += 1;
   });
