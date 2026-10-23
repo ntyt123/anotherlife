@@ -7706,18 +7706,7 @@ function seasonText(s) {
     return s;
   }
 
-  reg('getState', async ({ gameId }) => {
-    const s = await loadState(gameId);
-    // 一次性清掉旧的三段式气味。挂在这里而不是 runTurn ——
-    // 玩家光打开界面看、不推进剧情时，那个迁移永远不触发。
-    const ds = purgeOldScent(s);
-    if (ds.length) {
-      applyDiffs(s, ds);
-      await saveState(s);
-      await turnLog('[scent] 清掉 ' + ds.length + ' 处三段式气味');
-    }
-    return withKeyStatus(s);
-  });
+  reg('getState', async ({ gameId }) => withKeyStatus(await loadState(gameId)));
 
   /** 一次写入多个顶层字段（面板表单保存用） */
   reg('saveFields', async ({ gameId, patch }) => {
