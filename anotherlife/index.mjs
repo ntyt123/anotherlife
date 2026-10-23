@@ -3872,6 +3872,26 @@ function tickUnderScent(s, dh, body) {
       }
     });
   });
+  // 开关开着时模型可能漏写某一项 —— 空着不是「AI 的发挥」，是「没写」。
+  // 这种空由库补上，否则弹窗上就是一句（未记录）。
+  if (byAI) {
+    list.forEach((row) => {
+      const owner = row && row.owner;
+      const base = (row && row.base) || [];
+      if (!owner || !owner.穿着) return;
+      ['内衣', '内裤'].forEach((key) => {
+        const slot = owner.穿着[key];
+        if (!slot || !String(slot.物品 || '').trim()) return;
+        if (String(slot.气味 || '').trim()) return;   // 模型写过就不动
+        const lv = scentLevel(Number(slot.气味强度) || 0);
+        const mat = slot.材质 || detectUnderMaterial(slot.物品);
+        const t = scentTextOf(lv, mat, slot.物品, String(owner.姓名 || ''), 'under', key);
+        if (!t) return;
+        out.push(engineDiff(base.concat(['穿着', key, '气味']), '', t, 'underscent'));
+        slot.气味 = t;
+      });
+    });
+  }
   return out;
 }
 
@@ -4346,6 +4366,23 @@ function tickSockScent(s, body) {
     });
   } catch (e) {
     /* 袜子强度是锦上添花，算挂了不能影响这一轮保存 */
+  }
+  // 同内衣内裤：开关开着时模型可能漏写，空着由库补上。
+  // 用 s.npcs 现取 —— 上面那个 npcs 是 try 里的局部变量，这里够不着。
+  if (byAI) {
+    const 袜子们 = Array.isArray(s.npcs) ? s.npcs : [];
+    袜子们.forEach((n, i) => {
+      if (!n || String(n.性别 || '').indexOf('男') >= 0) return;
+      const w = n && n.穿着 && n.穿着.袜子;
+      if (!w || !String(w.物品 || '').trim()) return;
+      if (String(w.气味 || '').trim()) return;   // 模型写过就不动
+      const lv = scentLevel(Number(w.气味强度) || 0);
+      const mat = w.材质 || detectSockMaterial(w.物品);
+      const t = scentTextOf(lv, mat, w.物品, String(n.姓名 || ''));
+      if (!t) return;
+      out.push(engineDiff(['npcs', i, '穿着', '袜子', '气味'], '', t, 'sockfill'));
+      w.气味 = t;
+    });
   }
   return out;
 }
