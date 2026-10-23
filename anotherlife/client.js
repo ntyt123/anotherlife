@@ -4447,18 +4447,16 @@ function App({ gameId, close }) {
                 setErr(msg(e));
                 setBusy(false);
                 // 自检：ping 还通不通，用来判断宿主侧是"没注册"还是"注册了旧版本"
+                // 自检只写 console：拼进界面会把真正的错误挤走 —— ping 的返回有 2KB（118 个 handle 名）
+                try { console.error('[simulator] 加载失败：' + msg(e)); } catch (x) {}
                 call('ping', {}, gameId)
-                  .then((p) => {
-                    if (alive) setErr(msg(e) + '\n（自检：ping 通 → ' + JSON.stringify(p) + '）');
-                  })
-                  .catch((pe) => {
-                    if (alive) setErr(msg(e) + '\n（自检：ping 也失败 → ' + (pe && pe.message ? pe.message : String(pe)) + ' ｜ 说明宿主侧完全没注册上）');
+                  .then((p) => { try { console.log('[simulator] ping 通，' + (p && p.registered) + ' 个 handle'); } catch (x) {} })
+                  .catch((pe) => { try { console.error('[simulator] ping 也失败：' + (pe && pe.message ? pe.message : String(pe))); } catch (x) {} });
                   });
-              });
-            return () => {
-              alive = false;
-            };
-          }, [gameId]);
+                  return () => {
+                    alive = false;
+                  };
+                  }, [gameId]);
 
           const msg = (e) => (e && e.message ? e.message : String(e));
           // ── 长期偏好：直接跟随 Tavern 的设置（user-preference-profile.json），这里只管一个总开关 ──
