@@ -3208,6 +3208,57 @@ function scentTextOf(level, material, sockName, extra, kind, sub) {
 }
 
 /** 小时数 → 人话：「6 小时」「1 天 3 小时」 */
+/**
+ * 一次性清掉旧版本「三池兜底」拼出来的三段式气味句子。
+ *
+ * 那时候 scent-lines.json 还没接上调用点（见 loadState 的注释），所有气味都走内置兜底 ——
+ * 嗅觉 + 样子 + 时长各占一句，一条气味成了三句。现在库优先，一条就是一句流水句。
+ *
+ * 挂在 getState 上而不是 runTurn 里：玩家光打开界面看、不推进剧情时，
+ * 挂在 runTurn 的迁移永远不触发（实测过一次：重启后标记一直是 undefined）。
+ *
+ * 返回需要追加进 diffs 的条目；没有可改的就返回空数组。
+ */
+function purgeOldScent(s) {
+  const out = [];
+  try {
+    s.story = s.story || {};
+    if (s.story.scentPurgeV1) return out;
+    const 多句 = (t) => (String(t || '').match(/[。]/g) || []).length > 1;
+    const npcs = Array.isArray(s.npcs) ? s.npcs : [];
+    npcs.forEach((n, i) => {
+      if (!n || String(n.性别 || '').indexOf('男') >= 0) return;
+      const w = n.穿着;
+      if (!w || typeof w !== 'object') return;
+      // 袜子
+      const sk = w.袜子;
+      if (sk && typeof sk === 'object' && 多句(sk.气味)) {
+        const mat = sk.材质 || detectSockMaterial(sk.物品);
+        const t = scentTextOf(scentLevel(Number(sk.气味强度) || 0), mat, sk.物品, String(n.姓名 || ''));
+        if (t) {
+          out.push(engineDiff(['npcs', i, '穿着', '袜子', '气味'], String(sk.气味 || ''), t, 'scentpurge'));
+          sk.气味 = t;
+        }
+      }
+      // 内衣 / 内裤
+      ['内衣', '内裤'].forEach((key) => {
+        const slot = w[key];
+        if (!slot || typeof slot !== 'object' || !多句(slot.气味)) return;
+        const mat = slot.材质 || detectUnderMaterial(slot.物品);
+        const t = scentTextOf(scentLevel(Number(slot.气味强度) || 0), mat, slot.物品, String(n.姓名 || ''), 'under', key);
+        if (t) {
+          out.push(engineDiff(['npcs', i, '穿着', key, '气味'], String(slot.气味 || ''), t, 'scentpurge'));
+          slot.气味 = t;
+        }
+      });
+    });
+    s.story.scentPurgeV1 = 1;
+  } catch (e) {
+    // 迁移失败不该影响读状态
+  }
+  return out;
+}
+
 function humanSockHours(h) {
   const n = Number(h) || 0;
   if (n < 1) return '刚换上';
@@ -4103,40 +4154,6 @@ function tickSockScent(s, body) {
     s.story.sockTick = now;
     const npcs = Array.isArray(s.npcs) ? s.npcs : [];
     
-    // 一次性迁移：清掉旧版本「三池兜底」拼出来的三段式气味句子。
-    // 那时候 scent-lines.json 还没接上调用点（见 loadState 的注释），
-    // 所有气味都走内置兜底 —— 嗅觉 + 样子 + 时长各占一句，一条气味成了三句。
-    // 现在库优先，一条就是一句流水句。用真函数重算，别指望模型自己改回来。
-    const 多句 = (t) => (String(t || '').match(/[。]/g) || []).length > 1;
-    if (!s.story.scentPurgeV1) {
-      s.story.scentPurgeV1 = 1;
-      npcs.forEach((n, i) => {
-        if (!n || String(n.性别 || '').indexOf('男') >= 0) return;
-        const w = n.穿着;
-        if (!w || typeof w !== 'object') return;
-        // 袜子
-        const sk = w.袜子;
-        if (sk && typeof sk === 'object' && 多句(sk.气味)) {
-          const mat = sk.材质 || detectSockMaterial(sk.物品);
-          const t = scentTextOf(scentLevel(Number(sk.气味强度) || 0), mat, sk.物品, String(n.姓名 || ''));
-          if (t) {
-            out.push(engineDiff(['npcs', i, '穿着', '袜子', '气味'], String(sk.气味 || ''), t, 'scentpurge'));
-            sk.气味 = t;
-          }
-        }
-        // 内衣 / 内裤
-        ['内衣', '内裤'].forEach((key) => {
-          const slot = w[key];
-          if (!slot || typeof slot !== 'object' || !多句(slot.气味)) return;
-          const mat = slot.材质 || detectUnderMaterial(slot.物品);
-          const t = scentTextOf(scentLevel(Number(slot.气味强度) || 0), mat, slot.物品, String(n.姓名 || ''), 'under', key);
-          if (t) {
-            out.push(engineDiff(['npcs', i, '穿着', key, '气味'], String(slot.气味 || ''), t, 'scentpurge'));
-            slot.气味 = t;
-          }
-        });
-      });
-    }
     
     // 男性袜子不算气味（设定：气味只记女性袜子）。
     // 但历史存档里可能已经被写进去了 —— 清掉，别让界面上还挂着「三天没洗」。
@@ -7669,7 +7686,18 @@ function seasonText(s) {
     return s;
   }
 
-  reg('getState', async ({ gameId }) => withKeyStatus(await loadState(gameId)));
+  reg('getState', async ({ gameId }) => {
+    const s = await loadState(gameId);
+    // 一次性清掉旧的三段式气味。挂在这里而不是 runTurn ——
+    // 玩家光打开界面看、不推进剧情时，那个迁移永远不触发。
+    const ds = purgeOldScent(s);
+    if (ds.length) {
+      applyDiffs(s, ds);
+      await saveState(s);
+      await turnLog('[scent] 清掉 ' + ds.length + ' 处三段式气味');
+    }
+    return withKeyStatus(s);
+  });
 
   /** 一次写入多个顶层字段（面板表单保存用） */
   reg('saveFields', async ({ gameId, patch }) => {
