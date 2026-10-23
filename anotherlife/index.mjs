@@ -4103,6 +4103,41 @@ function tickSockScent(s, body) {
     s.story.sockTick = now;
     const npcs = Array.isArray(s.npcs) ? s.npcs : [];
     
+    // 一次性迁移：清掉旧版本「三池兜底」拼出来的三段式气味句子。
+    // 那时候 scent-lines.json 还没接上调用点（见 loadState 的注释），
+    // 所有气味都走内置兜底 —— 嗅觉 + 样子 + 时长各占一句，一条气味成了三句。
+    // 现在库优先，一条就是一句流水句。用真函数重算，别指望模型自己改回来。
+    const 多句 = (t) => (String(t || '').match(/[。]/g) || []).length > 1;
+    if (!s.story.scentPurgeV1) {
+      s.story.scentPurgeV1 = 1;
+      npcs.forEach((n, i) => {
+        if (!n || String(n.性别 || '').indexOf('男') >= 0) return;
+        const w = n.穿着;
+        if (!w || typeof w !== 'object') return;
+        // 袜子
+        const sk = w.袜子;
+        if (sk && typeof sk === 'object' && 多句(sk.气味)) {
+          const mat = sk.材质 || detectSockMaterial(sk.物品);
+          const t = scentTextOf(scentLevel(Number(sk.气味强度) || 0), mat, sk.物品, String(n.姓名 || ''));
+          if (t) {
+            out.push(engineDiff(['npcs', i, '穿着', '袜子', '气味'], String(sk.气味 || ''), t, 'scentpurge'));
+            sk.气味 = t;
+          }
+        }
+        // 内衣 / 内裤
+        ['内衣', '内裤'].forEach((key) => {
+          const slot = w[key];
+          if (!slot || typeof slot !== 'object' || !多句(slot.气味)) return;
+          const mat = slot.材质 || detectUnderMaterial(slot.物品);
+          const t = scentTextOf(scentLevel(Number(slot.气味强度) || 0), mat, slot.物品, String(n.姓名 || ''), 'under', key);
+          if (t) {
+            out.push(engineDiff(['npcs', i, '穿着', key, '气味'], String(slot.气味 || ''), t, 'scentpurge'));
+            slot.气味 = t;
+          }
+        });
+      });
+    }
+    
     // 男性袜子不算气味（设定：气味只记女性袜子）。
     // 但历史存档里可能已经被写进去了 —— 清掉，别让界面上还挂着「三天没洗」。
     npcs.forEach((n, i) => {
