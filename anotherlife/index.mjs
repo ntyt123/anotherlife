@@ -6976,6 +6976,9 @@ function seasonText(s) {
       const sec = Math.round((Date.now() - t0) / 1000);
       setProg(gid, 'story', '生成正文中 · 已收到 ' + n + ' 字（' + sec + 's）');
     };
+    // 注入量体检：sys 里含状态快照 + 衣着参考 + 全部规则，是最大的一块。
+    // 有了这条，才知道该砍哪里；不然只能凭感觉。
+    await turnLog('[inject] 正文 sys=' + String(sys || '').length + ' user=' + String(userContent || '').length + ' 其中历史=' + String(recent || '').length + ' 合计=' + (String(sys || '').length + String(userContent || '').length));
     const storyOpts = { temperature: storyTempOf(s), maxTokens: tokOf(s, 'story'), onChunk, firstChunkMs: 420000, idleMs: 600000, purpose: opts.all ? '开场' : '正文', shouldStop: opts.shouldStop };
 
         const bodyEffort = await reasoningOf(s, 'body');
