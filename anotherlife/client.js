@@ -12307,6 +12307,24 @@ function toggleFans(npc) {
                   }, (dcfg && dcfg.styleBoost !== false) ? '✅ 开着' : '⬜ 关着'),
                   h('div', { className: 'sim-hint', style: { marginTop: 4 } }, '结尾留悬、情绪有滞后、不写全知、不替他做决定。关掉就是纯叙事。')
                 ),
+                h('div', { className: 'sim-field', style: { marginTop: 10 } },
+                  h('label', null, '自己的调整'),
+                  h('textarea', {
+                    key: 'notes:' + String((dcfg && dcfg.styleNotes) || ''),
+                    style: { minHeight: 88, width: '100%', boxSizing: 'border-box', padding: '8px 10px', fontSize: 'var(--sim-fs-2)', lineHeight: 1.6, borderRadius: 8, border: '1px solid var(--sim-bd)', background: 'var(--sim-bg)', color: 'var(--sim-t1)', resize: 'vertical' },
+                    defaultValue: (dcfg && dcfg.styleNotes) || '',
+                    placeholder: '写你不满意的地方。比如：音乐是美的，不是噪音／主角不抽烟／别写宿命感……',
+                    onBlur: function (e) {
+                      var v = String(e.target.value || '');
+                      if (v === String((dcfg && dcfg.styleNotes) || '')) return;
+                      var c = Object.assign({}, dcfg);
+                      c.styleNotes = v;
+                      upd({ config: c });
+                      run(call('saveConfig', { config: c }, gameId));
+                    },
+                  }),
+                  h('div', { className: 'sim-hint', style: { marginTop: 4 } }, '写什么注什么，优先级高于上面所有规则。点别处即保存。')
+                ),
                 // 气味文本归谁写：默认引擎（整句库），可切给结算模型
                 h('div', { style: { marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--sim-bd)' } },
                   h('div', { style: { fontSize: 'var(--sim-fs-2)', color: 'var(--sim-t2)', marginBottom: 6 } }, '气味由谁写'),
