@@ -12983,9 +12983,9 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
                         {
                           className: 'sim-opt',
                           key: i,
-                          title: '点一下填进输入框',
+                          title: '填进输入框（不含路线标签）',
                           onClick: () => {
-                            setInput(line);
+                            setInput(text);
                             setOptsOpen(false);
                           },
                         },

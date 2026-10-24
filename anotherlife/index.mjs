@@ -7038,6 +7038,20 @@ function seasonText(s) {
     };
     // 注入量体检：sys 里含状态快照 + 衣着参考 + 全部规则，是最大的一块。
     // 有了这条，才知道该砍哪里；不然只能凭感觉。
+    // 把 sys 拆开量：哪一块最肥，一眼就能看出来。不能只记总数。
+    // 标记按 storySystemPrompt 里 push 的顺序排 —— 顺序错了会把块算到别人头上。
+    const 块标 = ['【写作指导', '【本轮相关状态】', '【全部设定（开局）】', '【最近剧情（逐轮原文）】', '【输出格式】', '【反模式清单】', '【作者补充的调整】', '【正文长度】'];
+    const 块pos = 块标
+      .map((k) => ({ k, i: String(sys || '').indexOf(k) }))
+      .filter((x) => x.i >= 0)
+      .sort((a, b) => a.i - b.i);
+    const 块量 = 块pos.map((x, n) => {
+      const end = n + 1 < 块pos.length ? 块pos[n + 1].i : String(sys || '').length;
+      return x.k.replace(/[【】]/g, '') + '=' + (end - x.i);
+    });
+    await turnLog(
+      '[inject] 分块 ' + 块量.join(' ')
+    );
     await turnLog('[inject] 正文 sys=' + String(sys || '').length + ' user=' + String(userContent || '').length + ' 其中历史=' + String(recent || '').length + ' 合计=' + (String(sys || '').length + String(userContent || '').length));
     const storyOpts = { temperature: storyTempOf(s), maxTokens: tokOf(s, 'story'), onChunk, firstChunkMs: 420000, idleMs: 600000, purpose: opts.all ? '开场' : '正文', shouldStop: opts.shouldStop };
 
