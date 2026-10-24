@@ -12276,6 +12276,24 @@ function toggleFans(npc) {
                     },
                   })
                 ),
+                h('div', { className: 'sim-field', style: { marginTop: 10 } },
+                  h('label', null, '正文温度'),
+                  h('select', {
+                    className: 'sim-select',
+                    value: String((function () { var v = Number(dcfg && dcfg.storyTemp); return Number.isFinite(v) ? v : 0.95; })()),
+                    onChange: function (e) {
+                      var c = Object.assign({}, dcfg);
+                      c.storyTemp = Number(e.target.value);
+                      upd({ config: c });
+                      run(call('saveConfig', { config: c }, gameId));
+                    },
+                  },
+                    h('option', { value: '0.7' }, '0.70 · 稳，少出错'),
+                    h('option', { value: '0.85' }, '0.85 · 略活'),
+                    h('option', { value: '0.95' }, '0.95 · 默认'),
+                    h('option', { value: '1' }, '1.00 · 最放得开'),
+                  )
+                ),
                 // 气味文本归谁写：默认引擎（整句库），可切给结算模型
                 h('div', { style: { marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--sim-bd)' } },
                   h('div', { style: { fontSize: 'var(--sim-fs-2)', color: 'var(--sim-t2)', marginBottom: 6 } }, '气味由谁写'),

@@ -5041,6 +5041,13 @@ function tokOf(s, key) {
   return Math.max(200, Math.min(65536, Math.floor(v)));
 }
 
+/** 正文温度。默认 0.95 —— 比 0.7 更敢写，接近 SillyTavern 那种手感。 */
+function storyTempOf(s) {
+  const v = Number(s && s.config && s.config.storyTemp);
+  if (!Number.isFinite(v) || v < 0) return 0.95;
+  return Math.max(0, Math.min(2, v));
+}
+
   /**
    * 按「输入多少字」给输出额度。
    *
@@ -6969,7 +6976,7 @@ function seasonText(s) {
       const sec = Math.round((Date.now() - t0) / 1000);
       setProg(gid, 'story', '生成正文中 · 已收到 ' + n + ' 字（' + sec + 's）');
     };
-    const storyOpts = { maxTokens: tokOf(s, 'story'), onChunk, firstChunkMs: 420000, idleMs: 600000, purpose: opts.all ? '开场' : '正文', shouldStop: opts.shouldStop };
+    const storyOpts = { temperature: storyTempOf(s), maxTokens: tokOf(s, 'story'), onChunk, firstChunkMs: 420000, idleMs: 600000, purpose: opts.all ? '开场' : '正文', shouldStop: opts.shouldStop };
 
         const bodyEffort = await reasoningOf(s, 'body');
 
