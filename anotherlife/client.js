@@ -2877,7 +2877,7 @@ const WARN_FALLBACK = {
           // 图库页：切过去才加载（列表回的是缩略图，不占带宽）
           const [gal, setGal] = React.useState({ list: [], loaded: false, busy: false });
           React.useEffect(() => {
-              if (tab !== 'gallery' || gal.loaded) return;
+              if (tab !== 'gallery') return;
               let alive = true;
               Promise.resolve(props.listGallery ? props.listGallery() : { items: [] })
                 .then((r) => {
