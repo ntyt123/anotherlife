@@ -12134,6 +12134,20 @@ function toggleFans(npc) {
           }
 
           // 设定页的展开态记忆：刷新后保持（只记在这台机器上）
+
+// 「自己的调整」的默认内容 —— 和 index.mjs 里的 STYLE_NOTES_DEFAULT 必须一致
+const STYLE_NOTES_DEFAULT = [
+  '· 主角不抽烟，不戴眼镜。他爱干净但不是洁癖，幽默开朗，没有心机，最可贵的是真实。',
+  '· 音乐是美的，不是噪音，也不是脏东西。写演奏就写它好听在哪儿。',
+  '· 他不是全知全能的，认知只限于自己的时代、年龄和出身。他不是穿越者，不写超越那个年代的东西。',
+  '· 他是活生生的人：该感动的时候感动，该流泪的时候流泪，不是一台讲道理的机器。',
+  '· 他不是理科生，没有理科思维。别让他张口就是分析、计算、原理。',
+  '· 他不是情圣。别把每一段关系都写成暧昧或者撩拨。',
+  '· 不写甜宠。现实主义，稍微虐一点。',
+  '· 不把任何人写成疯子、暴君、赌徒这类极端样子。',
+  '· 不随便上升价值，不总结，少感慨。一件事完了就完了。',
+  '· 一场戏没走完，不要替他结束。',
+].join('\n');
           const SET_OPEN_DEFAULT = { look: true, body: true, model: false, ctx: false, local: false, dev: false };
           const setOpen = (k, v) => writeUiPref('setopen-' + k, v ? '1' : '0');
           const isOpen = (k) => {
@@ -12310,13 +12324,13 @@ function toggleFans(npc) {
                 h('div', { className: 'sim-field', style: { marginTop: 10 } },
                   h('label', null, '自己的调整'),
                   h('textarea', {
-                    key: 'notes:' + String((dcfg && dcfg.styleNotes) || ''),
+                    key: 'notes:' + String((dcfg && dcfg.styleNotes) == null ? STYLE_NOTES_DEFAULT : dcfg.styleNotes),
                     style: { minHeight: 88, width: '100%', boxSizing: 'border-box', padding: '8px 10px', fontSize: 'var(--sim-fs-2)', lineHeight: 1.6, borderRadius: 8, border: '1px solid var(--sim-bd)', background: 'var(--sim-bg)', color: 'var(--sim-t1)', resize: 'vertical' },
-                    defaultValue: (dcfg && dcfg.styleNotes) || '',
+                    defaultValue: (dcfg && dcfg.styleNotes) == null ? STYLE_NOTES_DEFAULT : dcfg.styleNotes,
                     placeholder: '写你不满意的地方。比如：音乐是美的，不是噪音／主角不抽烟／别写宿命感……',
                     onBlur: function (e) {
                       var v = String(e.target.value || '');
-                      if (v === String((dcfg && dcfg.styleNotes) || '')) return;
+                      if (v === String((dcfg && dcfg.styleNotes) == null ? STYLE_NOTES_DEFAULT : dcfg.styleNotes)) return;
                       var c = Object.assign({}, dcfg);
                       c.styleNotes = v;
                       upd({ config: c });
