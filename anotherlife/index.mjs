@@ -5299,6 +5299,35 @@ const STYLE_NOTES_DEFAULT = [
 
   // ────────────────────────────── 上下文注入层 ──────────────────────────────
 
+/**
+ * 注入给正文的 NPC 副本：穿着只留「物品 + 状态」。
+ *
+ * 为什么砍：一张 NPC 卡里穿着占一半（8 部位 × 5 字段），而气味和简介是给界面看的 ——
+ * 气味只出现在角色悬浮窗、简介只在详情弹窗，正文一个字都不写它们。
+ * 稀有度同理（N/R/SR 是界面上的框）。这三样塞进提示词纯粹白占位置。
+ *
+ * 只影响「注入正文的那一份」，存档和界面读的仍是原对象，存档不动。
+ */
+function slimNpcForPrompt(n) {
+  if (!n || typeof n !== 'object') return n;
+  const out = Object.assign({}, n);
+  const w = n.穿着;
+  if (!w || typeof w !== 'object') return out;
+  const w2 = {};
+  Object.keys(w).forEach((k) => {
+    const slot = w[k];
+    if (!slot || typeof slot !== 'object') return;
+    const 物 = String(slot.物品 || '').trim();
+    if (!物) return;
+    const one = { 物品: 物 };
+    const 态 = String(slot.状态 || '').trim();
+    if (态) one.状态 = 态;
+    w2[k] = one;
+  });
+  out.穿着 = w2;
+  return out;
+}
+
   function buildEntryCatalog(s) {
     const E = [];
     const world = s.world || {};
@@ -5314,7 +5343,7 @@ const STYLE_NOTES_DEFAULT = [
     });
     (s.npcs || []).forEach((n, i) => {
       const nm = nameOf(n, ['姓名', '名字']) || 'NPC' + (i + 1);
-      E.push({ id: 'npc.' + i, kind: 'rel', label: 'NPC·' + nm, hint: 'NPC「' + nm + '」：' + brief(n, 40), value: n, name: nm });
+      E.push({ id: 'npc.' + i, kind: 'rel', label: 'NPC·' + nm, hint: 'NPC「' + nm + '」：' + brief(n, 40), value: slimNpcForPrompt(n), name: nm });
     });
     (s.relationships || []).forEach((r, i) => {
       const nm = nameOf(r, ['对象', '姓名', '名字']) || '关系' + (i + 1);
