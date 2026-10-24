@@ -989,7 +989,7 @@ async function activeWritingSkill() {
   }
 
   /** 每多少轮留一份上一版备份（不必每轮复制：写入本身是原子的，不会写坏） */
-  const BACKUP_EVERY = 8;
+  const BACKUP_EVERY = 10;
 
   /**
    * 写这一局的状态。
@@ -7130,6 +7130,11 @@ function seasonText(s) {
           { role: 'system', content: await settleSystemPrompt(s, gid, sp.body) },
           { role: 'user', content: '本轮正文：\n' + sp.body },
         ];
+      // 结算也量一下：这次调用的输入量一直是黑盒，而它每轮都跑一次。
+      // 正文那次 sys 八万字，要是结算也差不多，那才是真正在烧钱的地方。
+      await turnLog(
+        '[inject] 结算 sys=' + String((msgs[0] && msgs[0].content) || '').length + ' user=' + String((msgs[1] && msgs[1].content) || '').length + ' 合计=' + (String((msgs[0] && msgs[0].content) || '').length + String((msgs[1] && msgs[1].content) || '').length)
+      );
         // 这里**只花一次调用**：世界/主角/角色档案/关系/技能资产全在这一次里。
         // 不加 response_format=json_object —— 要先让它写检查清单（逐项点名），
         // 只要求「输出 JSON」时模型常常只丢一个日期就交卷。
