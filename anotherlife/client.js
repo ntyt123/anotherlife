@@ -594,7 +594,9 @@ window.__ModuleLoader__.load({
       '.sim-avm-tabs{display:flex;gap:6px;margin-bottom:12px}',
       // 图库：网格缩略图（页面里与换头像弹窗里共用）
       '.sim-gal-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:8px;margin-top:12px}',
-      '.sim-gal-grid.pick{grid-template-columns:repeat(auto-fill,minmax(70px,1fr));margin-top:0;max-height:230px;overflow-y:auto;padding:2px}',
+      '.sim-gal-grid.pick{grid-template-columns:repeat(auto-fill,minmax(70px,1fr));margin-top:0;max-height:400px;overflow-y:auto;padding:2px 6px 2px 2px;scrollbar-width:auto}',
+      '.sim-gal-grid.pick::-webkit-scrollbar{width:10px}',
+      '.sim-gal-grid.pick::-webkit-scrollbar-thumb{background:var(--sim-bd);border-radius:5px}',
       '.sim-gal-cell{position:relative;display:flex;flex-direction:column;gap:4px;border:1px solid var(--sim-bd);border-radius:8px;padding:4px;background:var(--sim-bg);cursor:pointer;transition:border-color .12s}',
       '.sim-gal-cell:hover{border-color:var(--sim-ac)}',
       '.sim-gal-cell img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:5px;display:block}',
