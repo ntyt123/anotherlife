@@ -523,6 +523,9 @@ window.__ModuleLoader__.load({
       '.sim-think>summary::before{content:"▸ "}',
       '.sim-think[open]>summary::before{content:"▾ "}',
       '.sim-think .sim-fold-body{margin-top:6px;white-space:pre-wrap;line-height:1.7}',
+      // think 漂成英文时给个黄框：说明这轮的自检没按格式走
+      '.sim-think.sim-think-warn{border-left-color:#d98a1f;background:rgba(217,138,31,.09)}',
+      '.sim-think.sim-think-warn>summary{color:#d98a1f}',
       '.sim-msg{border-left:3px solid var(--sim-ac);padding:8px 10px;margin-bottom:10px;background:var(--sim-bg2);border-radius:0 8px 8px 0}',
       '.sim-msg.user{border-left-color:var(--sim-t3)}',
       '.sim-role{font-size:var(--sim-fs-1);color:var(--sim-t2);margin-bottom:4px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}',
@@ -8450,7 +8453,7 @@ onDoubleClick: () => {
                     )
                   : null,
                 // 思考过程放在正文最上方（折叠）
-                t.think ? h('details', { className: 'sim-think' }, h('summary', null, '思考过程'), h('div', { className: 'sim-fold-body' }, t.think)) : null,
+                t.think ? h('details', { className: 'sim-think' + (thinkDrifted(t.think) ? ' sim-think-warn' : '') }, h('summary', null, '思考过程'), h('div', { className: 'sim-fold-body' }, t.think)) : null,
                 t.sent && t.sent !== t.body
                   ? h('details', { className: 'sim-think' }, h('summary', null, '查看发送给 AI 的开局信息'), h('div', { className: 'sim-fold-body' }, t.sent))
                   : null,
@@ -12148,6 +12151,15 @@ const STYLE_NOTES_DEFAULT = [
   '· 不随便上升价值，不总结，少感慨。一件事完了就完了。',
   '· 一场戏没走完，不要替他结束。',
 ].join('\n');
+/** think 块是不是漂成英文了。中文不到英文的一半、且英文超过 40 个字母，就判定跑偏。
+ *  为什么要提示：一旦用英文想，那七节的结构就不跟了，自检等于没做。 */
+function thinkDrifted(t) {
+  const s = String(t || '');
+  const z = (s.match(/[\u4e00-\u9fa5]/g) || []).length;
+  const e = (s.match(/[a-zA-Z]/g) || []).length;
+  return e > 40 && z < e * 0.5;
+}
+
           const SET_OPEN_DEFAULT = { look: true, body: true, model: false, ctx: false, local: false, dev: false };
           const setOpen = (k, v) => writeUiPref('setopen-' + k, v ? '1' : '0');
           const isOpen = (k) => {
@@ -13501,7 +13513,7 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
                             m.think
                                 ? h(
                                     'details',
-                                    { className: 'sim-think sim-as-think' },
+                                    { className: 'sim-think sim-as-think' + (thinkDrifted(m.think) ? ' sim-think-warn' : '') },
                                     h('summary', null, '思考过程'),
                                     h('div', { className: 'sim-fold-body' }, m.think)
                                   )
