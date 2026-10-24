@@ -521,6 +521,59 @@ const WEAR_KEYS = ['头部', '上衣', '内衣', '内裤', '下衣', '袜子', '
   function safeId(v) {
     return String(v || 'default').replace(/[^A-Za-z0-9._-]/g, '_');
   }
+/**
+ * 头像落地成独立文件 —— 它不该跟着存档每轮走。
+ *
+ * 现状：avatars 里存的是完整 dataURL（data:image/jpeg;base64,…），
+ * 5 个头像 195KB，要是 57 个人都传就是 2.2MB。而存档每轮整份写盘，
+ * 那 2MB 就跟着每轮 JSON.stringify 一遍、写一遍。
+ *
+ * 现在：存档里只留文件名，内容放在 workspace 根下的独立 .img 文件里。
+ * 文件名带上「长度 + 首尾片段」当指纹 —— 内容没变就复用同一个文件，
+ * 不会每轮重写一遍。
+ *
+ * 不建子目录：宿主的 fs 服务只给了 readText / writeText / resolve / stat，
+ * 没有 mkdir，建不了目录。
+ */
+const AVATAR_PREFIX = STORE_DIR + 'simulator-avatar-';
+
+/** dataURL → 文件名。内容没变就复用旧文件；写不进去就退回 dataURL（宁可存档大，别丢头像）。 */
+async function avatarToFile(key, dataUrl) {
+  const v = String(dataUrl || '');
+  if (!v || !v.startsWith('data:')) return v;   // 已经是文件名了
+  // 指纹：长度 + 中间一段 + 末尾一段。够区分，又不怕截断太长。
+  const 指纹 = (v.length + '-' + v.slice(20, 34) + '-' + v.slice(-34)).replace(/[^A-Za-z0-9_-]/g, '').slice(0, 56);
+  const name = safeId(String(key || 'x')).slice(0, 24) + '-' + 指纹 + '.img';
+  const p = AVATAR_PREFIX + name;
+  try {
+    const t0 = await fs.resolve(p);
+    const old = await fs.readText(t0);
+    if (old && old.length === v.length) return name;   // 同一个内容，不重写
+  } catch (e) {
+    /* 读不到就是还没写过，往下写 */
+  }
+  try {
+    const t = await fs.resolve(p);
+    await fs.writeText(t, v);
+    return name;
+  } catch (e) {
+    return v;   // 写不进去就退回 dataURL
+  }
+}
+
+/** 文件名 → dataURL。读不到返回空串（界面显示占位，不崩）。 */
+async function avatarFromFile(name) {
+  const v = String(name || '');
+  if (!v || v.startsWith('data:')) return v;
+  try {
+    const t = await fs.resolve(AVATAR_PREFIX + v);
+    const txt = await fs.readText(t);
+    return txt && txt.startsWith('data:') ? txt : '';
+  } catch (e) {
+    return '';
+  }
+}
+
   function statePath(gameId) {
     return STORE_DIR + 'simulator-' + safeId(gameId) + '.json';
   }
@@ -901,6 +954,13 @@ async function activeWritingSkill() {
     const src = raw && typeof raw === 'object' ? raw : {};
     const base = defaultState();
     const s = Object.assign(base, src);
+    // 头像：存档里存的是文件名，读回来要还原成 dataURL 交给界面。
+    // 老存档里还是 dataURL 的，avatarFromFile 会原样返回，不用特殊处理。
+    if (s.avatars && typeof s.avatars === 'object') {
+      for (const k of Object.keys(s.avatars)) {
+        s.avatars[k] = await avatarFromFile(s.avatars[k]);
+      }
+    }
     // 早先把粉丝 diff 的 path 写成了 ['粉丝', ...]（漏了 protagonist 这一层），
     // applyDiffs 于是在存档顶层建了个 粉丝。真数据在 protagonist / npcs 里面，
     // 这份是残留，读到就丢掉。
@@ -997,6 +1057,15 @@ async function activeWritingSkill() {
   async function saveState(s) {
     slimContext(s);
     const out = Object.assign({}, s);
+    // 头像从存档里搬出去：这里只留文件名，内容在独立文件里。
+    // 转换失败（写不进磁盘）就原样留着 dataURL —— 宁可存档大一点，不能把头像弄丢。
+    if (out.avatars && typeof out.avatars === 'object') {
+      const av = {};
+      for (const k of Object.keys(out.avatars)) {
+        av[k] = await avatarToFile(k, out.avatars[k]);
+      }
+      out.avatars = av;
+    }
     delete out.keyStatus;
     delete out.gameId;
     const target = statePath(s.gameId);
