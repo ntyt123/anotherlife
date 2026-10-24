@@ -7009,7 +7009,7 @@ function seasonText(s) {
   // 而是「把已经发生的这一轮换个写法再写一遍」。所以发给模型的不是原始输入，
   // 而是一句重写要求 —— 但检索（storySystemPrompt 的 input）仍然用原始输入，
   // 那样挑出来的状态才对得上。
-  const userContent = opts.rewrite
+  let userContent = opts.rewrite
     ? (recent ? recent + '\n\n' : '') +
       '【重写】玩家这一轮已经做了：' + sendText +
       '\n请把这一轮的叙事重写一遍。玩家做了什么、发生了什么、结果如何，全部保持不变；' +
@@ -7020,6 +7020,14 @@ function seasonText(s) {
         '（上面这段是玩家自己写的一段 —— 他想要的这一轮大致长这样，不是已经写好的正文。' +
         '按它把这一轮写出来：补满细节与旁人反应，然后让剧情往前走一点。）'
       : sendText;
+
+      // 近场提醒：把「自己的调整」再贴一遍到离当前对话最近的位置。
+      // system 里那份离这条消息隔了几万字，近因效应下压不住 —— 模型更容易听最近的话。
+      // 只贴作者自己写的那些，不重复反模式清单（那份太长，贴过来会喧宾夺主）。
+      const 近场 = String((s.config && s.config.styleNotes) == null ? STYLE_NOTES_DEFAULT : s.config.styleNotes).trim();
+      if (近场) {
+        userContent += '\n\n【还是这些，别忘了】\n' + 近场 + '\n· 结尾收在「该玩家接手」的位置，但别替他做决定。';
+      }
     setProg(gid, 'story', '正在请求正文（主模型）');
     // 收到多少字就报一下，免得看着像卡死（尤其是不支持流式的中转，要等很久）
     const t0 = Date.now();
