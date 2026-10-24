@@ -12294,6 +12294,19 @@ function toggleFans(npc) {
                     h('option', { value: '1' }, '1.00 · 最放得开'),
                   )
                 ),
+                h('div', { className: 'sim-field', style: { marginTop: 10 } },
+                  h('label', null, '反模式清单'),
+                  h(Btn, {
+                    primary: !(dcfg && dcfg.styleBoost === false),
+                    onClick: function () {
+                      var c = Object.assign({}, dcfg);
+                      c.styleBoost = c.styleBoost === false ? true : false;
+                      upd({ config: c });
+                      run(call('saveConfig', { config: c }, gameId));
+                    },
+                  }, (dcfg && dcfg.styleBoost !== false) ? '✅ 开着' : '⬜ 关着'),
+                  h('div', { className: 'sim-hint', style: { marginTop: 4 } }, '结尾留悬、情绪有滞后、不写全知、不替他做决定。关掉就是纯叙事。')
+                ),
                 // 气味文本归谁写：默认引擎（整句库），可切给结算模型
                 h('div', { style: { marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--sim-bd)' } },
                   h('div', { style: { fontSize: 'var(--sim-fs-2)', color: 'var(--sim-t2)', marginBottom: 6 } }, '气味由谁写'),
