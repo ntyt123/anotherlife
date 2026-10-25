@@ -1056,7 +1056,10 @@ window.__ModuleLoader__.load({
       '.sim-wb-foot{display:flex;align-items:center;gap:18px;padding:9px 14px;border-top:1px solid #f0f0f0;background:#fff;color:#8a8a8a;font-size:var(--sim-fs-5)}',
       '.sim-wb-input{flex:1 1 auto;height:30px;line-height:30px;border-radius:15px;background:#f4f5f7;color:#b0b6bd;font-size:var(--sim-fs-2);padding:0 12px}',
       '.sim-wb-fic{flex:0 0 auto;line-height:1}',
-      '.sim-wb-cmts{background:#f7f8fa;border-top:1px solid #eee;padding:10px 14px;display:flex;flex-direction:column;gap:10px}',
+      '.sim-wb-cmts{margin-top:10px;padding:10px 12px;background:#f7f8fa;border-radius:8px;display:flex;flex-direction:column;gap:7px}',
+      '.sim-wb-cmt{font-size:13px;line-height:1.55;color:#333;word-break:break-word}',
+      '.sim-wb-cmt .who{color:#5a7fa6;font-weight:600}',
+      '.sim-wb-cmt .txt{color:#333}',
       '.sim-wb-c{display:flex;gap:8px;align-items:flex-start}',
       '.sim-wb-cav{flex:0 0 auto;width:28px;height:28px;border-radius:50%;background:#d5d9e0;color:#5c6470;display:flex;align-items:center;justify-content:center;font-size:var(--sim-fs-2);font-weight:600}',
       '.sim-wb-cbody{min-width:0}',
@@ -3962,8 +3965,6 @@ function App({ gameId, close }) {
         const [phoneHotBusy, setPhoneHotBusy] = React.useState(false);
         const [phoneWbWho, setPhoneWbWho] = React.useState('');
         const [phoneWbTab, setPhoneWbTab] = React.useState('home');   // 微博底部的三个 tab
-        // 哪一条微博展开了评论区（-1 = 都收着）
-        const [phoneWbOpen, setPhoneWbOpen] = React.useState(-1);
         const [phoneContacts, setPhoneContacts] = React.useState(null);
         const [phoneThreadId, setPhoneThreadId] = React.useState('');
         const [phoneMsgs, setPhoneMsgs] = React.useState([]);
@@ -6550,7 +6551,6 @@ function phoneDoComment(id) {
                                 {
                                   className: 'sim-wb-item' + (w.相关 ? ' rel' : ''),
                                   key: 't' + i,
-                                  onClick: () => setPhoneWbOpen(phoneWbOpen === i ? -1 : i),
                                   },
                                 h(
                                   'div',
@@ -6574,7 +6574,7 @@ function phoneDoComment(id) {
                                   h('span', null, '☆ ' + (w.赞 || '赞'))
                                 ),
                                 // 展开后显示评论区 —— 像真微博那样点开才看得到
-                                phoneWbOpen === i && Array.isArray(w.评论列表) && w.评论列表.length
+                                Array.isArray(w.评论列表) && w.评论列表.length
                                   ? h(
                                       'div',
                                       { className: 'sim-wb-cmts' },
