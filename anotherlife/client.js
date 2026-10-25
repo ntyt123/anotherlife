@@ -322,6 +322,9 @@ window.__ModuleLoader__.load({
   '.sim-wb-dots{color:#ccc;font-size:14px}',
   '.sim-wb-tx{font-size:14px;line-height:1.65;color:#222;margin:8px 0 0;white-space:pre-wrap;word-break:break-word}',
   '.sim-wb-img{margin-top:8px;font-size:12px;color:#888;border:1px dashed #ddd;border-radius:6px;padding:6px 8px;width:80px;text-align:center}',
+  '.sim-wb-morebtn{display:block;width:100%;margin:16px 0 4px;padding:11px 0;border:1px solid #eee;border-radius:8px;background:#fafafa;color:#8a8a8a;font-size:13px;cursor:pointer}',
+  '.sim-wb-morebtn:active{background:#f0f0f0}',
+  '.sim-wb-morebtn:disabled{color:#c8c8c8;cursor:default}',
   '.sim-wb-acts{display:flex;gap:22px;margin-top:10px;font-size:12px;color:#8a8a8a}',
   '.sim-wb-nav{display:flex;flex:0 0 auto;border-top:1px solid #eee;background:#fafafa}',
   '.sim-wb-nv{flex:1;border:0;background:none;padding:8px 0 10px;display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;color:#8a8a8a}',
@@ -3965,6 +3968,8 @@ function App({ gameId, close }) {
         const [phoneHotBusy, setPhoneHotBusy] = React.useState(false);
         const [phoneWbWho, setPhoneWbWho] = React.useState('');
         const [phoneWbTab, setPhoneWbTab] = React.useState('home');   // 微博底部的三个 tab
+        // 「加载更多」进行中
+        const [phoneWbBusy, setPhoneWbBusy] = React.useState(false);
         const [phoneContacts, setPhoneContacts] = React.useState(null);
         const [phoneThreadId, setPhoneThreadId] = React.useState('');
         const [phoneMsgs, setPhoneMsgs] = React.useState([]);
@@ -6589,7 +6594,19 @@ function phoneDoComment(id) {
                                     )
                                   : null
                               )
-                            )
+                            ),
+                            // 底部「加载更多」：带着已有的去要一批新的，不换掉当前的
+                            h('button', {
+                              className: 'sim-wb-morebtn',
+                              disabled: phoneWbBusy,
+                              onClick: function () {
+                                if (phoneWbBusy) return;
+                                setPhoneWbBusy(true);
+                                Promise.resolve(call('moreWeibo', {}, gameId))
+                                  .then(function (r) { setPhoneHot(r || null); setPhoneWbBusy(false); })
+                                  .catch(function () { setPhoneWbBusy(false); });
+                              },
+                            }, phoneWbBusy ? '加载中…' : '加载更多')
                           )
                         : h('div', { className: 'sim-wbf-empty' }, '还没有内容。', hs.提示 ? h('div', { style: { marginTop: 8, fontSize: 12, color: '#b0b0b0' } }, hs.提示) : null))
                     : tab === 'explore'

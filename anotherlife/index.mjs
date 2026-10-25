@@ -10293,7 +10293,7 @@ function 角色名单(s) {
 }
 
 /** 生成热搜用的提示词。 */
-function 热搜提示词(s) {
+function 微博提示词(s, 已有) {
   const w = s.world || {};
   const 日期 = 游戏内日期(s);
   const L = [];
@@ -10315,6 +10315,13 @@ function 热搜提示词(s) {
   L.push('但查到的东西如果跟游戏内日期差一个月以上，不要直接抄，改成那个时间点合理会有的内容。');
   L.push('查不到就按那个年代的社会气氛自己写 —— 但要像真事，不要像编的。');
   L.push('');
+  // 追加模式：把已经给过的标题/正文塞进去，明确要它出新的，不然大概率重复。
+  if (已有 && 已有.length) {
+    L.push('【下面这些已经看过了，全部换新的】');
+    已有.forEach((x) => L.push('· ' + x));
+    L.push('不要重写、不要换个说法写同一件事。');
+    L.push('');
+  }
   L.push('【时间线怎么编】');
   L.push('这一屏是「推荐算法推给你的」。所以要有亲近感，也要有杂音。');
   L.push('· 8~10 条。其中 3~4 条来自上面那批人（相关: true）—— 他们在营业：');
@@ -10361,12 +10368,54 @@ function 热搜提示词(s) {
  * 取热搜：优先缓存（同一天），否则调 weibo 槽位生成。
  * 降级顺序：缓存 → 新生成 → 只给正文里的 → 空。
  */
-async function getHotsearch(s, gid) {
+async function getHotsearch(s, gid, opts) {
   const 日期 = 游戏内日期(s);
   const p = weiboCachePath(gid);
   let cache = null;
   try { cache = await readJson(p); } catch (e) { cache = null; }
 
+  const 追加 = !!(opts && opts.more);
+  
+  // 追加模式跳过缓存直接生成（但要带上已有的标题，免得重复）
+  if (追加) {
+    const 已有 = (cache && Array.isArray(cache.时间线) ? cache.时间线 : [])
+      .map((x) => String(x.正文 || '').slice(0, 30)).filter(Boolean);
+    const cfgM = (s.config && s.config.weibo) || {};
+    if (!cfgM.provider || !cfgM.model) {
+      return Object.assign({}, cache || { ok: false, 热搜: [], 时间线: [] }, { ok: false, 提示: '请先在设定页配好微博模型' });
+    }
+    try {
+      const sysM = 微博提示词(s, 已有);
+      const msgsM = [{ role: 'system', content: sysM }, { role: 'user', content: '再给一批新的，只输出那个 JSON。' }];
+      const rawM = await callSlot(s, 'weibo', msgsM, { tag: '微博', temperature: 0.95 });
+      const txtM = (rawM && typeof rawM === 'object' && rawM.text != null ? String(rawM.text) : String(rawM == null ? '' : rawM)).trim();
+      const objM = parseJsonLoose(txtM);
+      const 新线 = Array.isArray(objM && objM.时间线) ? objM.时间线.filter((x) => x && x.正文).map((x) => ({
+        作者: String((x && x.作者) || ''),
+        认证: String((x && x.认证) || ''),
+        时间: String((x && x.时间) || ''),
+        正文: String((x && x.正文) || ''),
+        有图: !!(x && x.有图),
+        转发: String((x && x.转发) || ''),
+        评论数: String((x && (x.评论数 || x.评论)) || ''),
+        评论列表: Array.isArray(x && x.评论列表)
+          ? x.评论列表.filter((c) => c && (c.内容 || c.谁)).map((c) => ({ 谁: String((c && c.谁) || '微博用户'), 内容: String((c && c.内容) || '') }))
+          : [],
+        赞: String((x && x.赞) || ''),
+        相关: !!(x && x.相关),
+      })) : [];
+      if (!新线.length) throw new Error('这次没给新的时间线');
+      const 合并 = (cache && Array.isArray(cache.时间线) ? cache.时间线 : []).concat(新线);
+      const 新缓存 = Object.assign({}, cache || {}, { 时间线: 合并, 更到: Date.now() });
+      try { await writeJson(p, 新缓存); } catch (e) {}
+      await turnLog('[微博] 追加 ' + 新线.length + ' 条，累计 ' + 合并.length);
+      return { ok: true, 来源: '追加', 日期, 热搜: (cache && cache.热搜) || [], 时间线: 合并 };
+    } catch (e) {
+      await turnLog('[微博] 追加失败：' + String((e && e.message) || e));
+      return Object.assign({}, cache || {}, { 提示: '没拉到新的' });
+    }
+  }
+  
   // 缓存命中：同一天、有内容
   if (cache && cache.日期 && cache.日期 === 日期 && Array.isArray(cache.热搜) && cache.热搜.length) {
     return { ok: true, 来源: '缓存', 日期, 热搜: cache.热搜, 时间线: Array.isArray(cache.时间线) ? cache.时间线 : [] };
@@ -10382,7 +10431,7 @@ async function getHotsearch(s, gid) {
   }
 
   try {
-    const sys = 热搜提示词(s);
+    const sys = 微博提示词(s);
     const msgs = [{ role: 'system', content: sys }, { role: 'user', content: '按上面的要求，给这一屏热搜。只输出那个 JSON。' }];
     const r = await callSlot(s, 'weibo', msgs, { tag: '微博', temperature: 0.9 });
     const txt = (r && typeof r === 'object' && r.text != null ? String(r.text) : String(r == null ? '' : r)).trim();
@@ -10471,6 +10520,12 @@ reg('refreshHotsearch', async ({ gameId }) => {
   }
   const r = await getHotsearch(s, gameId);
   return Object.assign({}, r, { 来源: r && r.ok ? '生成' : (r && r.来源) });
+});
+
+/** 微博加载更多：带着已有的一起给模型，要一批新的。 */
+reg('moreWeibo', async ({ gameId }) => {
+  const s = await loadState(gameId);
+  return await getHotsearch(s, gameId, { more: true });
 });
 
   reg('galleryList', async () => {
