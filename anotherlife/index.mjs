@@ -299,6 +299,8 @@ const WEAR_KEYS = ['头部', '上衣', '内衣', '内裤', '下衣', '袜子', '
       相册: [],      // [{ id, 描述, 时间, 轮次, 图 }] —— 描述是给「发圈时生成评论」用的
       // 两个平台各自独立，结构相同：{ id, 作者, 时间, 轮次, 正文, 图片:[{相册id,描述}], 赞:[名字], 评论:[{谁,内容}] }
       动态: { 朋友圈: [], 说说: [] },
+    // 微博：正文里写过的 :::weibo 卡片会被抽出来存进这里，手机上能翻历史
+    微博: [],      // [{ id, 作者, 时间, 正文, 转发, 评论数, 点赞, 图片, 评论:[{谁,内容}], 轮次 }]
     };
   }
 
@@ -995,6 +997,8 @@ async function activeWritingSkill() {
     if (!Array.isArray(s.手机.相册)) s.手机.相册 = [];
     if (!s.手机.动态 || typeof s.手机.动态 !== 'object' || Array.isArray(s.手机.动态)) s.手机.动态 = { 朋友圈: [], 说说: [] };
     ['朋友圈', '说说'].forEach((k) => { if (!Array.isArray(s.手机.动态[k])) s.手机.动态[k] = []; });
+    // 微博：老存档没有这个键，补成空数组
+    if (!Array.isArray(s.手机.微博)) s.手机.微博 = [];
     });
     s.transcript = Array.isArray(src.transcript) ? src.transcript : [];
     s.summaries = Array.isArray(src.summaries) ? src.summaries : [];
@@ -7119,6 +7123,63 @@ function seasonText(s) {
     });
   }
 
+/**
+ * 从正文里把微博卡片抠出来，存进手机。
+ *
+ * 正文里渲染过的东西，往下翻就没了 —— 存一份，手机上能回头翻。
+ * 格式：
+ *   :::weibo
+ *   作者|王玉雯V
+ *   时间|今天 12:30 来自 iPhone
+ *   正文|新剧杀青！
+ *   转发|1.2万
+ *   评论|8642
+ *   点赞|23.5万
+ *   评论-小满|姐姐好
+ *   :::
+ *
+ * 同一轮同作者同正文不重复存（重新生成会重跑这一段）。
+ */
+function harvestWeibo(s, body, seq) {
+  const txt = String(body || '');
+  if (txt.indexOf(':::weibo') < 0) return 0;
+  const re = /:::weibo\s*\n([\s\S]*?)\n:::/g;
+  let m;
+  let n = 0;
+  while ((m = re.exec(txt))) {
+    const lines = m[1].split(/\r?\n/).map((x) => x.trim()).filter(Boolean);
+    const o = { 评论: [] };
+    lines.forEach((ln) => {
+      const i = ln.indexOf('|');
+      if (i < 0) return;
+      const k = ln.slice(0, i).trim();
+      const v = ln.slice(i + 1).trim();
+      const cm = k.match(/^评论[-－](.+)$/);
+      if (cm) o.评论.push({ 谁: cm[1].trim(), 内容: v });
+      else if (k === '评论') o.评论数 = v;
+      else if (k) o[k] = v;
+    });
+    if (!o.正文) continue;
+    const 重 = (s.手机.微博 || []).some((x) => x.轮次 === seq && x.作者 === (o.作者 || '') && x.正文 === o.正文);
+    if (重) continue;
+    const 评数 = o.评论数 || (typeof o.评论 === 'string' ? o.评论 : '');
+    s.手机.微博.push({
+      id: 'w' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
+      作者: o.作者 || '',
+      时间: o.时间 || '',
+      正文: o.正文 || '',
+      转发: o.转发 || '',
+      评论数: 评数,
+      点赞: o.点赞 || '',
+      图片: o.图片 || '',
+      评论: Array.isArray(o.评论) ? o.评论 : [],
+      轮次: seq,
+    });
+    n++;
+  }
+  return n;
+}
+
   async function runTurn(s, sendText, displayText, opts) {
     opts = opts || {};
     const gid = String(opts.gameId || '');
@@ -7437,6 +7498,13 @@ function seasonText(s) {
       })(),
       ts: Date.now(),
     };
+    // 正文里写过的微博卡片，存进手机 —— 渲染完就翻不到了，这里留一份。
+    try {
+      const wbN = harvestWeibo(s, sp.body, seq);
+      if (wbN) await turnLog('[微博] 存了 ' + wbN + ' 条');
+    } catch (e) {
+      await turnLog('[微博] 抽取失败：' + String((e && e.message) || e));
+    }
     s.transcript.push(entry);
     s.story.current_message_index += 1;
     // 标记这一轮谁出场了。纯代码判断，不让模型写 ——
