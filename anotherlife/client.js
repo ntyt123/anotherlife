@@ -302,6 +302,24 @@ window.__ModuleLoader__.load({
       '.sim-ph-hd-btn{flex:0 0 auto;width:24px;height:24px;border-radius:8px;border:1px solid var(--sim-bd);background:transparent;color:var(--sim-t2);cursor:pointer;font-size:12px;line-height:1}',
       '.sim-ph-body{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;overflow:hidden;position:relative;background:var(--sim-bg2)}',
       '.sim-ph-list{flex:1 1 auto;min-height:0;overflow-y:auto}',
+  '.sim-wbfeed{display:flex;flex-direction:column;height:100%;background:#fff}',
+  '.sim-wbf-top{display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid #eee;flex:0 0 auto}',
+  '.sim-wbf-back{border:0;background:none;font-size:22px;line-height:1;color:#333;padding:0 2px;cursor:pointer}',
+  '.sim-wbf-tab{flex:1;text-align:center;font-weight:700;font-size:15px;color:#1a1a1a}',
+  '.sim-wbf-more{font-size:18px;color:#999}',
+  '.sim-wbf-list{flex:1;overflow-y:auto;padding:0 12px}',
+  '.sim-wbf-item{padding:14px 0;border-bottom:1px solid #f2f2f2}',
+  '.sim-wbf-head{display:flex;align-items:flex-start;gap:10px}',
+  '.sim-wbf-av{width:40px;height:40px;border-radius:50%;background:linear-gradient(#FFB199,#FF6A2E);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;flex:0 0 auto}',
+  '.sim-wbf-nb{flex:1;min-width:0}',
+  '.sim-wbf-nm{font-size:14px;font-weight:700;color:#333;display:flex;align-items:center;gap:4px}',
+  '.sim-wbf-v{display:inline-block;font-size:9px;line-height:1;padding:2px 3px;border-radius:3px;background:#FF8200;color:#fff;font-weight:400}',
+  '.sim-wbf-tm{font-size:11px;color:#999;margin-top:3px}',
+  '.sim-wbf-dots{color:#ccc;font-size:14px}',
+  '.sim-wbf-tx{font-size:14px;line-height:1.65;color:#222;margin:8px 0 0;white-space:pre-wrap;word-break:break-word}',
+  '.sim-wbf-img{margin-top:8px;font-size:12px;color:#888;border:1px dashed #ddd;border-radius:6px;padding:6px 8px}',
+  '.sim-wbf-acts{display:flex;gap:22px;margin-top:10px;font-size:12px;color:#8a8a8a}',
+  '.sim-wbf-empty{padding:40px 20px;text-align:center;font-size:13px;color:#999;line-height:1.8}',
       '.sim-ph-alb{display:flex;flex-direction:column;flex:1 1 auto;min-height:0;overflow-y:auto;background:#000}',
       '.sim-ph-feed{flex:1 1 auto;min-height:0;overflow-y:auto}',
       '.sim-ph-post{padding:11px 12px;border-bottom:1px solid var(--sim-bd)}',
@@ -3908,6 +3926,8 @@ function App({ gameId, close }) {
         const phoneDragRef = React.useRef(null);
         // 手机内部当前在哪一屏：home（九宫格）/ contacts / thread
         const [phoneView, setPhoneView] = React.useState('home');
+        // 微博：按作者筛选（空 = 全部）。点某条的作者名进来就是看他的主页。
+        const [phoneWbWho, setPhoneWbWho] = React.useState('');
         const [phoneContacts, setPhoneContacts] = React.useState(null);
         const [phoneThreadId, setPhoneThreadId] = React.useState('');
         const [phoneMsgs, setPhoneMsgs] = React.useState([]);
@@ -5436,6 +5456,7 @@ function App({ gameId, close }) {
             if (phoneView === 'newgroup') return '拉个群';
             if (phoneView === 'apphome') return phoneApp2 === 'qq' ? 'QQ' : '微信';
             if (phoneView === 'album') return '相册';
+          if (phoneView === 'weibo') return '微博';
             if (phoneView === 'photo') return '照片';
             if (phoneView === 'feed') return phoneFeedWho ? phoneFeedWho + '的' + phonePlatform : phonePlatform;
             if (phoneView === 'call') return phoneWho ? '通话 · ' + phoneWho : '通话';
@@ -5522,6 +5543,7 @@ function App({ gameId, close }) {
             电话: 'linear-gradient(#4CD964,#2BB44A)',
             微信: 'linear-gradient(#07C160,#06AD56)',
             QQ: 'linear-gradient(#1C9FE0,#0A6E96)',
+ 微博: 'linear-gradient(#FF6A2E,#E6162D)',
           };
           function phoneApp(ic, lbl, onTap, off) {
             return h('div', {
@@ -6453,6 +6475,56 @@ function phoneDoComment(id) {
             }
 
             // album：iOS 风格 —— 按日期分节、3 列贴满、点一张进全屏
+            if (phoneView === 'weibo') {
+              const wbList = (state.手机 && Array.isArray(state.手机.微博) ? state.手机.微博 : [])
+                .filter((x) => !phoneWbWho || String(x.作者 || '').indexOf(phoneWbWho) === 0)
+                .slice()
+                .reverse();
+              return h(
+                'div',
+                { className: 'sim-wbfeed' },
+                h(
+                  'div',
+                  { className: 'sim-wbf-top' },
+                  h('button', { className: 'sim-wbf-back', onClick: () => { if (phoneWbWho) setPhoneWbWho(''); else setPhoneView('home'); } }, '‹'),
+                  h('div', { className: 'sim-wbf-tab' }, phoneWbWho || '推荐'),
+                  h('span', { className: 'sim-wbf-more' }, '⊕')
+                ),
+                wbList.length
+                  ? h(
+                      'div',
+                      { className: 'sim-wbf-list' },
+                      wbList.map((w) =>
+                        h(
+                          'div',
+                          { className: 'sim-wbf-item', key: w.id },
+                          h(
+                            'div',
+                            { className: 'sim-wbf-head' },
+                            h('span', { className: 'sim-wbf-av' }, String(w.作者 || '微')[0]),
+                            h(
+                              'div',
+                              { className: 'sim-wbf-nb' },
+                              h('div', { className: 'sim-wbf-nm' }, w.作者 || '', h('span', { className: 'sim-wbf-v' }, 'V')),
+                              h('div', { className: 'sim-wbf-tm' }, w.时间 || ''),
+                            ),
+                            h('span', { className: 'sim-wbf-dots' }, '···')
+                          ),
+                          h('div', { className: 'sim-wbf-tx' }, w.正文 || ''),
+                          w.图片 ? h('div', { className: 'sim-wbf-img' }, w.图片) : null,
+                          h(
+                            'div',
+                            { className: 'sim-wbf-acts' },
+                            h('span', null, '↻ ' + (w.转发 || '转发')),
+                            h('span', null, '💬 ' + (w.评论数 || '评论')),
+                            h('span', null, '☆ ' + (w.点赞 || '赞'))
+                          )
+                        )
+                      )
+                    )
+                  : h('div', { className: 'sim-wbf-empty' }, '还没有微博。剧情里出现微博时，会自动收进来。')
+              );
+            }
             if (phoneView === 'album') {
               const items = (phoneAlbum || []).slice().reverse();   // 新的在前
               if (!items.length) {
@@ -6519,6 +6591,7 @@ function phoneDoComment(id) {
               phoneApp('📞', '电话', () => {}, true),
               phoneApp('💬', '微信', () => { setPhoneApp2('wechat'); setPhoneTab('chat'); setPhoneView('apphome'); phoneLoadThreads('wechat'); if (!phoneContacts) phoneLoadContacts('wechat'); }, !era.有微信),
               ),
+            phoneApp('🔥', '微博', () => { setPhoneView('weibo'); setPhoneWbWho(''); }),
               // QQ 先不做 —— 它和微信共用同一套结构，做出来只是多一层皮（配色 + 底栏 + 顶栏）。
               // 要恢复就把下一行开头的 // 去掉。
               // phoneApp('🐧', 'QQ', () => { setPhoneApp2('qq'); setPhoneTab('chat'); setPhoneView('apphome'); phoneLoadThreads('qq'); if (!phoneContacts) phoneLoadContacts('qq'); }, !era.有QQ),
