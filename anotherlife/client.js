@@ -382,7 +382,7 @@ window.__ModuleLoader__.load({
       '.sim-ph-widget .w{text-align:right;font-size:12.5px;color:rgba(255,255,255,.86);line-height:1.45}',
       '.sim-ph-widget .w b{display:block;font-size:17px;font-weight:500;color:#fff}',
       '.sim-ph-desk{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;overflow-y:auto;background:linear-gradient(165deg,#16233d 0%,#26406e 40%,#5b4a78 72%,#8a5f7a 100%)}',
-            '.sim-ph-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px 4px;padding:22px 10px 14px;justify-items:center}',
+  '.sim-ph-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(64px,1fr));gap:16px 4px;padding:22px 10px 14px;justify-items:center}',
             '.sim-ph-app{width:100%;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:7px;cursor:pointer}',
             '.sim-ph-app .ic{width:64px;height:64px;border-radius:15px;display:flex;align-items:center;justify-content:center;font-size:28px;line-height:1;text-align:center;color:#fff;box-shadow:0 3px 10px rgba(0,0,0,.32);background:linear-gradient(#8e8e93,#636366)}',
             '.sim-ph-app .lbl{width:100%;text-align:center;font-size:11px;line-height:1.2;color:rgba(255,255,255,.93);text-shadow:0 1px 2px rgba(0,0,0,.4);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
