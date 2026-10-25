@@ -299,8 +299,6 @@ const WEAR_KEYS = ['头部', '上衣', '内衣', '内裤', '下衣', '袜子', '
       相册: [],      // [{ id, 描述, 时间, 轮次, 图 }] —— 描述是给「发圈时生成评论」用的
       // 两个平台各自独立，结构相同：{ id, 作者, 时间, 轮次, 正文, 图片:[{相册id,描述}], 赞:[名字], 评论:[{谁,内容}] }
       动态: { 朋友圈: [], 说说: [] },
-    // 微博：正文里写过的 :::weibo 卡片会被抽出来存进这里，手机上能翻历史
-    微博: [],      // [{ id, 作者, 时间, 正文, 转发, 评论数, 点赞, 图片, 评论:[{谁,内容}], 轮次 }]
     };
   }
 
@@ -314,6 +312,8 @@ const WEAR_KEYS = ['头部', '上衣', '内衣', '内裤', '下衣', '袜子', '
         retrieve: { baseURL: '', model: '' },
         settle: { baseURL: '', model: '' },
         summary: { baseURL: '', model: '' },
+    // 微博热搜：打开微博时按游戏内日期生成（一天一次），独立槽位便于配便宜模型
+    weibo: { baseURL: '', model: '' },
         // 基线：无论检索结果如何都会注入的字段。
         // 出生地放在这里 —— 它是「随时可能被聊到」的常识性信息（口音、老家、过节去哪儿），
         // 靠检索挑的话，玩家这轮没提家乡就永远轮不到它，AI 等于不知道。
@@ -997,8 +997,6 @@ async function activeWritingSkill() {
     if (!Array.isArray(s.手机.相册)) s.手机.相册 = [];
     if (!s.手机.动态 || typeof s.手机.动态 !== 'object' || Array.isArray(s.手机.动态)) s.手机.动态 = { 朋友圈: [], 说说: [] };
     ['朋友圈', '说说'].forEach((k) => { if (!Array.isArray(s.手机.动态[k])) s.手机.动态[k] = []; });
-    // 微博：老存档没有这个键，补成空数组
-    if (!Array.isArray(s.手机.微博)) s.手机.微博 = [];
     });
     s.transcript = Array.isArray(src.transcript) ? src.transcript : [];
     s.summaries = Array.isArray(src.summaries) ? src.summaries : [];
@@ -5127,6 +5125,7 @@ const TOKEN_DEFAULTS = {
   story: 12000,        // 正文（中文 1 字≈1.5 token，4500 只够 3000 字；实测单轮到过 5750 字）
   settle: 20000,       // 结算（实测思考到过 19000 字≈12600 token）：全部变量变化（最费）
   summary: 6000,       // 剧情总结
+  weibo: 3000,         // 微博热搜：十几条短标题，不需要长
   summaryMerge: 6000,  // 多段总结合并
   parse: 8000,         // 创角解析（主角＋名册）
   realInfo: 8000,      // 真人资料补全
@@ -7123,62 +7122,6 @@ function seasonText(s) {
     });
   }
 
-/**
- * 从正文里把微博卡片抠出来，存进手机。
- *
- * 正文里渲染过的东西，往下翻就没了 —— 存一份，手机上能回头翻。
- * 格式：
- *   :::weibo
- *   作者|王玉雯V
- *   时间|今天 12:30 来自 iPhone
- *   正文|新剧杀青！
- *   转发|1.2万
- *   评论|8642
- *   点赞|23.5万
- *   评论-小满|姐姐好
- *   :::
- *
- * 同一轮同作者同正文不重复存（重新生成会重跑这一段）。
- */
-function harvestWeibo(s, body, seq) {
-  const txt = String(body || '');
-  if (txt.indexOf(':::weibo') < 0) return 0;
-  const re = /:::weibo\s*\n([\s\S]*?)\n:::/g;
-  let m;
-  let n = 0;
-  while ((m = re.exec(txt))) {
-    const lines = m[1].split(/\r?\n/).map((x) => x.trim()).filter(Boolean);
-    const o = { 评论: [] };
-    lines.forEach((ln) => {
-      const i = ln.indexOf('|');
-      if (i < 0) return;
-      const k = ln.slice(0, i).trim();
-      const v = ln.slice(i + 1).trim();
-      const cm = k.match(/^评论[-－](.+)$/);
-      if (cm) o.评论.push({ 谁: cm[1].trim(), 内容: v });
-      else if (k === '评论') o.评论数 = v;
-      else if (k) o[k] = v;
-    });
-    if (!o.正文) continue;
-    const 重 = (s.手机.微博 || []).some((x) => x.轮次 === seq && x.作者 === (o.作者 || '') && x.正文 === o.正文);
-    if (重) continue;
-    const 评数 = o.评论数 || (typeof o.评论 === 'string' ? o.评论 : '');
-    s.手机.微博.push({
-      id: 'w' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
-      作者: o.作者 || '',
-      时间: o.时间 || '',
-      正文: o.正文 || '',
-      转发: o.转发 || '',
-      评论数: 评数,
-      点赞: o.点赞 || '',
-      图片: o.图片 || '',
-      评论: Array.isArray(o.评论) ? o.评论 : [],
-      轮次: seq,
-    });
-    n++;
-  }
-  return n;
-}
 
   async function runTurn(s, sendText, displayText, opts) {
     opts = opts || {};
@@ -7498,13 +7441,6 @@ function harvestWeibo(s, body, seq) {
       })(),
       ts: Date.now(),
     };
-    // 正文里写过的微博卡片，存进手机 —— 渲染完就翻不到了，这里留一份。
-    try {
-      const wbN = harvestWeibo(s, sp.body, seq);
-      if (wbN) await turnLog('[微博] 存了 ' + wbN + ' 条');
-    } catch (e) {
-      await turnLog('[微博] 抽取失败：' + String((e && e.message) || e));
-    }
     s.transcript.push(entry);
     s.story.current_message_index += 1;
     // 标记这一轮谁出场了。纯代码判断，不让模型写 ——
@@ -10302,6 +10238,169 @@ reg('feedDelComment', async ({ gameId, 平台, id, 索引 }) => {
   // 插件的 fs 服务只有文本读写、写不了二进制，所以图片以 dataUrl 存；
   // 每张存两份：data（长边 512，贴头像用）与 thumb（长边 96，列表用）。
   // 列表只回 thumb，否则一次二十张图能把界面卡住。
+
+// ────────────────────── 微博热搜 ──────────────────────
+
+/**
+ * 微博热搜。
+ *
+ * 设计要点（和「抓真实热搜」那版相比）：
+ *   · 不抓网页 —— 提示词里让模型自己去查「这个时间点真实发生过什么」，查不到就按那个年代合理编。
+ *   · 一次调用产出两组：剧情热搜（跟角色有关）+ 世界热搜（跟角色完全无关）。
+ *   · 按「游戏内日期」缓存 —— 同一天反复打开只调一次，跨天才重生成。
+ *   · 结果单独存文件，不进存档 → 不影响剧情、不影响结算提示词。
+ *
+ * 为什么不塞进结算：
+ *   结算已经要写 60+ 个字段，再加一组热搜会分掉它的注意力；
+ *   而且热搜只在打开微博时才需要，没必要每轮都产。
+ */
+
+/** 从 world.当前日期时间 里截出 YYYY-MM-DD。截不出来返回空串（就不缓存，每次重生成）。 */
+function 游戏内日期(s) {
+  const t = String((s.world || {}).当前日期时间 || '');
+  const m = t.match(/(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日/);
+  if (!m) return '';
+  return m[1] + '-' + String(m[2]).padStart(2, '0') + '-' + String(m[3]).padStart(2, '0');
+}
+
+/** 微博缓存文件：跟存档分开，删掉不影响游戏。 */
+function weiboCachePath(gid) {
+  return STORE_DIR + 'simulator-weibo-cache-' + safeId(gid) + '.json';
+}
+
+/** 取最近 N 轮的正文梗概（给热搜生成当背景，只要发生了什么，不要细节）。 */
+function 近轮梗概(s, n) {
+  const list = (s.transcript || []).filter((t) => t && t.role !== 'user').slice(-n);
+  const out = [];
+  list.forEach((t) => {
+    const sum = String(t.summary || '').trim();
+    const body = String(t.body || '').replace(/\s+/g, ' ').trim();
+    const 一句 = sum || body.slice(0, 120);
+    if (一句) out.push('· ' + 一句);
+  });
+  return out.join('\n');
+}
+
+/** 角色名单：姓名 + 身份。只给这两样 —— 给履历会让它把角色写进世界热搜。 */
+function 角色名单(s) {
+  const out = [];
+  const p = s.protagonist || {};
+  if (p.姓名) out.push(String(p.姓名) + '（主角' + (p.身份 ? '·' + p.身份 : '') + '）');
+  (s.npcs || []).forEach((n) => {
+    if (n && n.姓名) out.push(String(n.姓名) + (n.身份 ? '（' + n.身份 + '）' : ''));
+  });
+  return out.join('、');
+}
+
+/** 生成热搜用的提示词。 */
+function 热搜提示词(s) {
+  const w = s.world || {};
+  const 日期 = 游戏内日期(s);
+  const L = [];
+  L.push('你是微博热搜的编排者。任务：产出「这个时间点」的一屏热搜。');
+  L.push('');
+  L.push('【世界】' + (w.当前日期时间 || '') + '；' + (w.起始地点 || '') + '；' + (w.世界观类型 || ''));
+  if (w.时代与年份) L.push('【年代】' + String(w.时代与年份));
+  if (w.信息与传播) L.push('【传播环境】' + String(w.信息与传播));
+  L.push('');
+  L.push('【最近发生了什么】');
+  L.push(近轮梗概(s, 10) || '（暂无）');
+  L.push('');
+  L.push('【这些人不能出现在世界热搜里】');
+  L.push(角色名单(s) || '（暂无）');
+  L.push('');
+  L.push('【时间口径 —— 很重要】');
+  L.push('要的是「游戏内这两天」的新闻，不是「最近几天的实时热搜」。');
+  L.push('如果你能联网，可以查这个时间点前后真实发生过什么来取材；');
+  L.push('但查到的东西如果跟游戏内日期差一个月以上，不要直接抄，改成那个时间点合理会有的内容。');
+  L.push('查不到就按那个年代的社会气氛自己写 —— 但要像真事，不要像编的。');
+  L.push('');
+  L.push('【输出两组】');
+  L.push('');
+  L.push('一、剧情热搜（1~4 条）：跟上面那批人直接相关。');
+  L.push('  杀青、定档、被拍、翻车、撕番、官宣、路透、暴雷 —— 有什么写什么。');
+  L.push('  措辞要像营销号标题，不要像剧情总结。');
+  L.push('');
+  L.push('二、世界热搜（10~14 条）：跟上面那批人**完全无关**的事。');
+  L.push('  **这组里一个角色名都不许出现，也不许影射他们。**');
+  L.push('  社会新闻、别家艺人的八卦、奇闻异事、全民话题，混着来。');
+  L.push('');
+  L.push('【格式】只输出一个 JSON，不要任何别的字：');
+  L.push('{');
+  L.push('  "剧情热搜": ["标题1", "标题2"],');
+  L.push('  "世界热搜": ["标题1", "标题2", "..."]');
+  L.push('}');
+  L.push('');
+  L.push('标题要短（不超过 24 字），带话题标签的用 #话题# 包住。不要加热度数字，那个我来加。');
+  return L.join('\n');
+}
+
+/**
+ * 取热搜：优先缓存（同一天），否则调 weibo 槽位生成。
+ * 降级顺序：缓存 → 新生成 → 只给正文里的 → 空。
+ */
+async function getHotsearch(s, gid) {
+  const 日期 = 游戏内日期(s);
+  const p = weiboCachePath(gid);
+  let cache = null;
+  try { cache = await readJson(p); } catch (e) { cache = null; }
+
+  // 缓存命中：同一天、有内容
+  if (cache && cache.日期 && cache.日期 === 日期 && Array.isArray(cache.热搜) && cache.热搜.length) {
+    return { ok: true, 来源: '缓存', 日期, 热搜: cache.热搜 };
+  }
+
+  // 没配槽位就别硬来
+  const cfg = (s.config && s.config.weibo) || {};
+  if (!cfg.provider || !cfg.model) {
+    if (cache && Array.isArray(cache.热搜) && cache.热搜.length) {
+      return { ok: true, 来源: '旧缓存', 日期: cache.日期 || '', 热搜: cache.热搜, 提示: '微博模型没配，用的是上一次的结果' };
+    }
+    return { ok: false, 来源: 'none', 日期, 热搜: [], 提示: '请先在设定页配好微博模型' };
+  }
+
+  try {
+    const sys = 热搜提示词(s);
+    const msgs = [{ role: 'system', content: sys }, { role: 'user', content: '按上面的要求，给这一屏热搜。只输出那个 JSON。' }];
+    const r = await callSlot(s, 'weibo', msgs, { tag: '微博', temperature: 0.9 });
+    const txt = String((r && r.text) || '').trim();
+    const obj = parseJsonLoose(txt);
+    const 剧情 = Array.isArray(obj && obj.剧情热搜) ? obj.剧情热搜.map(String).filter(Boolean) : [];
+    const 世界 = Array.isArray(obj && obj.世界热搜) ? obj.世界热搜.map(String).filter(Boolean) : [];
+    if (!剧情.length && !世界.length) throw new Error('模型没给热搜（原文前 80 字：' + txt.slice(0, 80) + '）');
+
+    // 拼成一屏：剧情置顶，世界补满 18 条
+    const 一屏 = [];
+    let 热度 = 1480000;
+    剧情.forEach((t) => {
+      一屏.push({ 标题: t, 热度, 标签: '热', 剧情: true });
+      热度 -= 90000 + Math.floor(Math.random() * 40000);
+    });
+    世界.slice(0, 18).forEach((t) => {
+      一屏.push({ 标题: t, 热度, 标签: Math.random() < 0.35 ? '新' : '', 剧情: false });
+      热度 -= 40000 + Math.floor(Math.random() * 60000);
+    });
+    一屏.forEach((x, i) => {
+      x.序号 = i + 1;
+      if (x.热度 < 50000) x.热度 = 50000 + Math.floor(Math.random() * 30000);
+    });
+
+    try {
+      await writeJson(p, { 日期, 生成于: Date.now(), 热搜: 一屏 });
+    } catch (e) {
+      await turnLog('[微博] 缓存写入失败：' + String((e && e.message) || e));
+    }
+    await turnLog('[微博] 生成热搜 ' + 一屏.length + ' 条（剧情 ' + 剧情.length + ' / 世界 ' + 世界.length + '）');
+    return { ok: true, 来源: '生成', 日期, 热搜: 一屏 };
+  } catch (e) {
+    await turnLog('[微博] 生成失败：' + String((e && e.message) || e));
+    if (cache && Array.isArray(cache.热搜) && cache.热搜.length) {
+      return { ok: true, 来源: '旧缓存', 日期: cache.日期 || '', 热搜: cache.热搜, 提示: '这次没生成出来，用的是上一次的结果' };
+    }
+    return { ok: false, 来源: 'failed', 日期, 热搜: [], 提示: String((e && e.message) || e).slice(0, 120) };
+  }
+}
+
   const GALLERY_FILE = STORE_DIR + 'simulator-gallery.json';
   const GALLERY_MAX_ITEMS = 40;
   const GALLERY_MAX_ONE = 500 * 1024;
@@ -10314,6 +10413,25 @@ reg('feedDelComment', async ({ gameId, 平台, id, 索引 }) => {
   async function writeGallery(items) {
     await writeJson(GALLERY_FILE, { items });
   }
+/** 微博热搜：打开微博时调一次，按游戏内日期缓存。 */
+reg('getHotsearch', async ({ gameId }) => {
+  const s = await loadState(gameId);
+  return await getHotsearch(s, gameId);
+});
+
+/** 强制重生成：先删缓存再走一遍。界面上那个 ↻ 用的。 */
+reg('refreshHotsearch', async ({ gameId }) => {
+  const s = await loadState(gameId);
+  try {
+    const t = await fs.resolve(weiboCachePath(gameId));
+    await fs.writeText(t, JSON.stringify({ 日期: '', 热搜: [] }));
+  } catch (e) {
+    /* 没有缓存就直接生成 */
+  }
+  const r = await getHotsearch(s, gameId);
+  return Object.assign({}, r, { 来源: r && r.ok ? '生成' : (r && r.来源) });
+});
+
   reg('galleryList', async () => {
     const items = await readGallery();
     return {
