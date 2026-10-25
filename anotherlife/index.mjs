@@ -4833,7 +4833,7 @@ function toolModeOf(s) {
  */
 const PARSE_TOOL = {
   name: 'emit_parsed_json',
-  description: '提交解析结果：一个完整的 JSON 对象，字段按系统提示的要求给全。',
+  description: '提交解析结果。参数是一个 JSON 对象，**键名必须用中文，且与系统提示里列出的字段名逐字一致**（例如「世界观类型」「时代与年份」「姓名」「性别」）。不要翻译成英文，不要用 snake_case。',
   parameters: {
     type: 'object',
     properties: {},
@@ -4901,13 +4901,87 @@ function 拆工具参数(o) {
   return o;
 }
 
+/**
+ * 实测：deepseek-flash 拿到空 schema 的工具时，会自己给英文字段名
+ * （world_type / current_datetime / start_location…），而界面读的是中文键。
+ * 结果是「解析成功但界面全空」—— 数据其实好好的，只是名字对不上。
+ * 这里做一层兜底：认识的英文键换回中文；不认识的保持原样（宁可多一个键，不丢数据）。
+ */
+const 英文键映射 = {
+  description: '',   // 模型爱加个总述，界面没有对应字段，丢掉
+  world_type: '世界观类型',
+  era: '时代与年份',
+  current_datetime: '当前日期时间',
+  start_location: '起始地点',
+  power_structure: '权力结构',
+  currency_economy: '货币与经济',
+  class_identity: '阶层与身份',
+  law_order: '法律与秩序',
+  tech_level: '文明与技术水平',
+  supernatural_system: '超自然与力量体系',
+  races_species: '种族与物种',
+  factions_organizations: '势力与组织',
+  dangers_survival: '危险与生存',
+  taboos_rules: '禁忌与规则',
+  common_sense: '常识与习俗',
+  name: '姓名',
+  gender: '性别',
+  birthday: '生日',
+  birth_place: '出生地',
+  age: '年龄',
+  height: '身高',
+  weight: '体重',
+  measurements: '三围',
+  cup: '罩杯',
+  appearance: '外貌',
+  identity: '身份',
+  race: '种族',
+  surface_personality: '表性格',
+  inner_personality: '里性格',
+  currency_name: '货币名',
+  money: '金钱',
+  items: '物品',
+  skills: '技能',
+  traits: '特点',
+  outfit: '穿着',
+  fetishes: '性癖',
+  sensitive_points: '敏感点',
+  bottom_line: '底线',
+  experience: '经验',
+  health: '健康状况',
+  diseases: '疾病与伤病',
+  is_virgin: '是否处女',
+  menstrual_cycle: '生理周期',
+  menstrual_status: '月经状态',
+  pregnancy_status: '妊娠状态',
+  marital_status: '婚姻状况',
+  current_thoughts: '当前想法',
+  current_state: '当前状态',
+  body_state: '身体状态',
+  relationships: '人物关系',
+  tags: '标签',
+  extra_info: '额外信息',
+};
+
+/** 把英文键换回中文。值为空串的映射表示「丢掉这个键」。 */
+function 修键名(o) {
+  if (!o || typeof o !== 'object' || Array.isArray(o)) return o;
+  const out = {};
+  Object.keys(o).forEach((k) => {
+    const m = 英文键映射[k];
+    if (m === '') return;                    // 明确丢弃
+    out[m || k] = o[k];
+  });
+  return out;
+}
+
 function pickToolCall(r) {
   const calls = (r && Array.isArray(r.toolCalls)) ? r.toolCalls : [];
   for (const c of calls) {
     if (!c || !c.args) continue;
     try {
       const obj = JSON.parse(c.args);
-      if (obj && typeof obj === 'object' && !Array.isArray(obj)) return 拆工具参数(obj);
+      if (obj && typeof obj === 'object' && !Array.isArray(obj)) return 修键名(拆工具参数(obj));
     } catch (e) {
       /* 多半是被截断，下面补全 */
     }
@@ -4917,7 +4991,7 @@ function pickToolCall(r) {
       const fixed = repairJson(body);
       if (fixed) {
         const obj = JSON.parse(fixed);
-        if (obj && typeof obj === 'object' && !Array.isArray(obj)) return 拆工具参数(obj);
+        if (obj && typeof obj === 'object' && !Array.isArray(obj)) return 修键名(拆工具参数(obj));
       }
     } catch (e) {
       /* 补不回来就交给文本兜底 */
