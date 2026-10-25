@@ -5588,6 +5588,20 @@ function App({ gameId, close }) {
  微博: 'linear-gradient(#FF6A2E,#E6162D)',
           };
         /** 拉热搜。force=true 时绕过后端缓存（顶栏那个 ↻）。 */
+        /** 把「多少分钟前」渲染成人话。后端分配的是原始分钟数，展示交给这里。 */
+        function wbWhen(m) {
+          const n = Number(m);
+          if (!isFinite(n) || n < 0) return '';
+          if (n < 1) return '刚刚';
+          if (n < 60) return Math.floor(n) + '分钟前';
+          if (n < 1440) return Math.floor(n / 60) + '小时前';
+          const d = Math.floor(n / 1440);
+          if (d === 1) return '昨天';
+          if (d < 7) return d + '天前';
+          if (d < 30) return Math.floor(d / 7) + '周前';
+          if (d < 365) return Math.floor(d / 30) + '个月前';
+          return Math.floor(d / 365) + '年前';
+        }
         function phoneLoadHot(force) {
           setPhoneHotBusy(true);
           Promise.resolve(call(force ? 'refreshHotsearch' : 'getHotsearch', {}, gameId))
@@ -6565,7 +6579,7 @@ function phoneDoComment(id) {
                                     'div',
                                     { className: 'sim-wb-nb' },
                                     h('div', { className: 'sim-wb-nm' }, w.作者 || '', w.认证 ? h('span', { className: 'sim-wb-v' }, 'V') : null),
-                                    h('div', { className: 'sim-wb-tm' }, [w.认证, w.时间].filter(Boolean).join(' · ')),
+                                    h('div', { className: 'sim-wb-tm' }, [w.认证, wbWhen(w.分钟前) || w.时间].filter(Boolean).join(' · ')),
                                   ),
                                   h('span', { className: 'sim-wb-dots' }, '···')
                                 ),

@@ -10293,6 +10293,35 @@ function 角色名单(s) {
 }
 
 /** 生成热搜用的提示词。 */
+/**
+ * 给一批微博分配「多少分钟前」。
+ *
+ * 时间不由模型给 —— 它给的是「2小时前/昨天」这种没有锚点的字符串，
+ * 追加时必然和上一批撞车。这里改成代码算：
+ *   第 n 批从「上一批最老的那条」再往前推，每条间隔 35~95 分钟递增。
+ * 第一批发自 4 分钟前。
+ *
+ * 返回起点（供下一批接着往前推）。
+ */
+function 分配时间(条s, 起点分钟) {
+  let 累 = 起点分钟;
+  条s.forEach((x, i) => {
+    if (i > 0) 累 += 35 + Math.floor(Math.random() * 60);
+    x.分钟前 = 累;
+  });
+  return 累;
+}
+
+/** 一批有几条就用它推下一批的起点：取已有里最大的「分钟前」。 */
+function 下一批起点(时间线) {
+  let 最大 = 0;
+  (Array.isArray(时间线) ? 时间线 : []).forEach((x) => {
+    const m = Number(x && x.分钟前);
+    if (isFinite(m) && m > 最大) 最大 = m;
+  });
+  return 最大 + 30;
+}
+
 function 微博提示词(s, 已有) {
   const w = s.world || {};
   const 日期 = 游戏内日期(s);
@@ -10317,6 +10346,10 @@ function 微博提示词(s, 已有) {
   L.push('');
   // 追加模式：把已经给过的标题/正文塞进去，明确要它出新的，不然大概率重复。
   if (已有 && 已有.length) {
+    L.push('【这一批是往更早翻的】');
+    L.push('用户在往下翻，想看比现在更早发生的事。内容可以是同一批人前几天发的东西，');
+    L.push('也可以是当时那阵子的新闻。不要把刚才那一个小时的事再讲一遍。');
+    L.push('');
     L.push('【下面这些已经看过了，全部换新的】');
     已有.forEach((x) => L.push('· ' + x));
     L.push('不要重写、不要换个说法写同一件事。');
@@ -10335,7 +10368,7 @@ function 微博提示词(s, 已有) {
   L.push('  要有层次：夸的、追问的、玩梗的、阴阳的、单纯 +1 的、刷屏催更的，混着来。');
   L.push('  相关: true 的那几条，评论里可以出现粉丝称呼、@别人、催营业、说「姐姐今天好美」。');
   L.push('  **不要每条都夸**，那几条世界里来的微博下面，就得多点抬杠和冷嘲。');
-  L.push('· 时间用「2小时前 / 昨天 21:30 / 5-19」这种相对写法。');
+  L.push('· 时间不用你写，我会按顺序分配。');
   L.push('');
   L.push('【输出三组】');
   L.push('');
@@ -10405,6 +10438,8 @@ async function getHotsearch(s, gid, opts) {
         相关: !!(x && x.相关),
       })) : [];
       if (!新线.length) throw new Error('这次没给新的时间线');
+      // 这批接着上一批最老的那条往前推
+      分配时间(新线, 下一批起点(cache && cache.时间线));
       const 合并 = (cache && Array.isArray(cache.时间线) ? cache.时间线 : []).concat(新线);
       const 新缓存 = Object.assign({}, cache || {}, { 时间线: 合并, 更到: Date.now() });
       try { await writeJson(p, 新缓存); } catch (e) {}
@@ -10455,6 +10490,8 @@ async function getHotsearch(s, gid, opts) {
       相关: !!(x && x.相关),
     });
     const 时间线 = Array.isArray(obj && obj.时间线) ? obj.时间线.filter((x) => x && x.正文).map(时间线对) : [];
+    // 时间由代码分配：第一批发自 4 分钟前，往后每条间隔 35~95 分钟
+    分配时间(时间线, 4);
     const 剧情 = Array.isArray(obj && obj.剧情热搜) ? obj.剧情热搜.map(String).filter(Boolean) : [];
     const 世界 = Array.isArray(obj && obj.世界热搜) ? obj.世界热搜.map(String).filter(Boolean) : [];
     if (!时间线.length && !剧情.length && !世界.length) throw new Error('模型没给热搜（原文前 80 字：' + txt.slice(0, 80) + '）');
