@@ -9464,6 +9464,7 @@ onDoubleClick: () => {
            * 老字段（艺人咖位／经纪公司／代表作品／当前代言…）直接复用，不另存一份。
            */
           const starEditor = (function () {
+            const p = (state && state.protagonist) || {};
             // 没开星途模拟时，这一页只放一个开关 —— 剧情中途出道也能自己打开。
             // 提示词里明确禁止模型判断这个开关，所以必须是玩家自己点。
             if (!(p.是否艺人 === true)) {
@@ -9478,7 +9479,6 @@ onDoubleClick: () => {
                 }, '开启')
               );
             }
-            const p = (state && state.protagonist) || {};
             const L = (v) => String(v == null ? '' : v).trim();
             const arr = (v) => (Array.isArray(v) ? v : []);
             const kv = (o) => {
