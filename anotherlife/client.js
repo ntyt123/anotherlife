@@ -326,6 +326,11 @@ window.__ModuleLoader__.load({
   '.sim-wb-morebtn:active{background:#f0f0f0}',
   '.sim-wb-morebtn:disabled{color:#c8c8c8;cursor:default}',
   '.sim-wb-acts{display:flex;gap:22px;margin-top:10px;font-size:12px;color:#8a8a8a}',
+  '.wb-composer{display:flex;gap:8px;padding:8px 12px;border-top:1px solid #eee;background:#fafafa;flex:0 0 auto}',
+  '.wb-in{flex:1;min-width:0;border:1px solid #e4e4e4;border-radius:18px;padding:8px 14px;font-size:13px;background:#fff;outline:none}',
+  '.wb-in:disabled{background:#f4f4f4;color:#b0b0b0}',
+  '.wb-send{border:0;border-radius:18px;padding:0 16px;background:#FF6A2E;color:#fff;font-size:13px;cursor:pointer}',
+  '.wb-send:disabled{background:#f0d7cc;color:#fff;cursor:default}',
   '.sim-wb-nav{display:flex;flex:0 0 auto;border-top:1px solid #eee;background:#fafafa}',
   '.sim-wb-nv{flex:1;border:0;background:none;padding:8px 0 10px;display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;color:#8a8a8a}',
   '.sim-wb-nv .i{font-size:17px;line-height:1}',
@@ -1061,6 +1066,9 @@ window.__ModuleLoader__.load({
       '.sim-wb-fic{flex:0 0 auto;line-height:1}',
       '.sim-wb-cmts{margin-top:10px;padding:10px 12px;background:#f7f8fa;border-radius:8px;display:flex;flex-direction:column;gap:7px}',
       '.sim-wb-cmt{font-size:13px;line-height:1.55;color:#333;word-break:break-word}',
+  '.sim-wb-cmt.mine .who{color:#FF6A2E}',
+  '.sim-wb-item{cursor:pointer}',
+  '.sim-wb-cmt{cursor:pointer}',
       '.sim-wb-cmt .who{color:#5a7fa6;font-weight:600}',
       '.sim-wb-cmt .txt{color:#333}',
       '.sim-wb-c{display:flex;gap:8px;align-items:flex-start}',
@@ -3970,6 +3978,10 @@ function App({ gameId, close }) {
         const [phoneWbTab, setPhoneWbTab] = React.useState('home');   // 微博底部的三个 tab
         // 「加载更多」进行中
         const [phoneWbBusy, setPhoneWbBusy] = React.useState(false);
+        // 微博：当前要评论哪一条（null = 没选）。回谁 为空表示评微博本身，否则评某条评论。
+        const [wbTarget, setWbTarget] = React.useState(null);
+        // 我发过的评论（只在界面上显示，重启就丢）
+        const [wbMine, setWbMine] = React.useState([]);
         const [phoneContacts, setPhoneContacts] = React.useState(null);
         const [phoneThreadId, setPhoneThreadId] = React.useState('');
         const [phoneMsgs, setPhoneMsgs] = React.useState([]);
@@ -5588,6 +5600,27 @@ function App({ gameId, close }) {
  微博: 'linear-gradient(#FF6A2E,#E6162D)',
           };
         /** 拉热搜。force=true 时绕过后端缓存（顶栏那个 ↻）。 */
+/** 发一条评论：入宿主队列（下一轮正文会带上），同时本地显示出来。 */
+function wbSendComment() {
+  const t = String(phoneIn || '').trim();
+  if (!t || !wbTarget) return;
+  const 记 = {
+    作者: wbTarget.作者,
+    正文: wbTarget.正文,
+    回谁: wbTarget.回谁 || '',
+    评论: t,
+  };
+  setWbMine((prev) => prev.concat([记]));
+  setPhoneIn('');
+  setWbTarget(null);
+  Promise.resolve(call('queueWeiboComment', {
+    微博作者: 记.作者,
+    微博正文: 记.正文,
+    回谁: 记.回谁,
+    评论: 记.评论,
+  }, gameId)).catch(() => {});
+}
+
         /** 把「多少分钟前」渲染成人话。后端分配的是原始分钟数，展示交给这里。 */
         function wbWhen(m) {
           const n = Number(m);
@@ -6569,6 +6602,7 @@ function phoneDoComment(id) {
                                 'div',
                                 {
                                   className: 'sim-wb-item' + (w.相关 ? ' rel' : ''),
+                                  onClick: () => setWbTarget({ 作者: w.作者, 正文: String(w.正文 || '').slice(0, 60), 回谁: '' }),
                                   key: 't' + i,
                                   },
                                 h(
@@ -6593,20 +6627,27 @@ function phoneDoComment(id) {
                                   h('span', null, '☆ ' + (w.赞 || '赞'))
                                 ),
                                 // 展开后显示评论区 —— 像真微博那样点开才看得到
-                                Array.isArray(w.评论列表) && w.评论列表.length
+                                // 评论区：模型给的 + 我发过的（本地记着）
+                                Array.isArray(w.评论列表) && (w.评论列表.length || wbMine.filter((m) => m.作者 === w.作者 && m.正文 === String(w.正文 || '').slice(0, 60)).length)
                                   ? h(
-                                      'div',
-                                      { className: 'sim-wb-cmts' },
-                                      w.评论列表.map((c, ci) =>
-                                        h(
-                                          'div',
-                                          { className: 'sim-wb-cmt', key: ci },
-                                          h('span', { className: 'who' }, c.谁 + '：'),
-                                          h('span', { className: 'txt' }, c.内容)
-                                        )
+                                    'div',
+                                    { className: 'sim-wb-cmts' },
+                                    w.评论列表.map((c, ci) =>
+                                      h(
+                                        'div',
+                                        { className: 'sim-wb-cmt', key: ci, onClick: (e) => { e.stopPropagation(); setWbTarget({ 作者: w.作者, 正文: String(w.正文 || '').slice(0, 60), 回谁: c.谁 }); } },
+                                        h('span', { className: 'who' }, c.谁 + '：'),
+                                        h('span', { className: 'txt' }, c.内容)
+                                      )
+                                    ),
+                                    wbMine.filter((m) => m.作者 === w.作者 && m.正文 === String(w.正文 || '').slice(0, 60)).map((m, mi) =>
+                                      h('div', { className: 'sim-wb-cmt mine', key: 'my' + mi },
+                                        h('span', { className: 'who' }, '你：'),
+                                        h('span', { className: 'txt' }, m.评论)
                                       )
                                     )
-                                  : null
+                                    )
+                                : null
                               )
                             ),
                             // 底部「加载更多」：带着已有的去要一批新的，不换掉当前的
@@ -6643,6 +6684,18 @@ function phoneDoComment(id) {
                     : h('div', { className: 'sim-wbf-empty' }, '主页还没做。')
                 ),
                 // 底部导航
+                // 底部输入框：像真微博那样「说点什么…」。没选目标时提示先点一条。
+                tab === 'home' || tab === 'explore' ? h('div', { className: 'wb-composer' },
+                  h('input', {
+                    className: 'wb-in',
+                    value: phoneIn,
+                    placeholder: wbTarget ? ('评论 @' + wbTarget.作者 + (wbTarget.回谁 ? ' 的评论' : '')) : '点一条微博或评论，再说点什么…',
+                    disabled: !wbTarget,
+                    onChange: (e) => setPhoneIn(e.target.value),
+                    onKeyDown: (e) => { if (e.key === 'Enter') wbSendComment(); },
+                  }),
+                  h('button', { className: 'wb-send', disabled: !wbTarget || !phoneIn.trim(), onClick: () => wbSendComment() }, '发送')
+                ) : null,
                 h('div', { className: 'sim-wb-nav' },
                   h('button', { className: 'sim-wb-nv' + (tab === 'home' ? ' on' : ''), onClick: () => setPhoneWbTab('home') }, h('span', { className: 'i' }, '🏠'), h('span', { className: 'l' }, '首页')),
                   h('button', { className: 'sim-wb-nv' + (tab === 'explore' ? ' on' : ''), onClick: () => setPhoneWbTab('explore') }, h('span', { className: 'i' }, '🔍'), h('span', { className: 'l' }, '发现')),

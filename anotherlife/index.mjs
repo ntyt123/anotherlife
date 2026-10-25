@@ -7172,6 +7172,43 @@ function seasonText(s) {
         '按它把这一轮写出来：补满细节与旁人反应，然后让剧情往前走一点。）'
       : sendText;
 
+// 微博上刚做过的事：只在真有未发的评论时才注入，注入完就清空（一次性）。
+// 不给它整屏微博，只给「他评的那一条」—— 上下文别被无关内容撑大。
+const 微博待发 = 取待发评论(gid);
+if (微博待发.length) {
+  const 行s = [];
+  行s.push('');
+  行s.push('【你这一轮之前，刚在微博上做过这些】');
+  微博待发.forEach((w) => {
+    if (w.回谁) {
+      // 回复某条评论
+      行s.push('· 你在 @' + w.微博作者 + ' 发的那条微博下面，回复了「' + w.回谁 + '」的评论：');
+      行s.push('  你说的：' + w.评论);
+      行s.push('  （那条微博说的是：' + w.微博正文 + '）');
+    } else {
+      // 直接评那条微博
+      行s.push('· 你在 @' + w.微博作者 + ' 发的那条微博下面评论了：');
+      行s.push('  你说的：' + w.评论);
+      行s.push('  （那条微博说的是：' + w.微博正文 + '）');
+    }
+  });
+  行s.push('');
+  行s.push('这是玩家主动做的动作，要让它在剧情里发生 —— 不一定要写得很重，');
+  行s.push('但至少要让相关的人有可能知道、有可能被影响。别完全当没发生过。');
+  行s.push('');
+  行s.push('【如果你让某个人看到了、或者回了这条评论】');
+  行s.push('在正文之后、行动选项之前，加一段（没人看到就不加）：');
+  行s.push('');
+  行s.push(':::weibo_reply');
+  行s.push('谁|田曦薇');
+  行s.push('回谁|玩家');
+  行s.push('内容|你这张嘴比我的滤镜还狠');
+  行s.push(':::');
+  行s.push('「谁」写回复的人名，「回谁」是你回复的对象（玩家，或者某条评论的人名）。');
+  行s.push('这段不会给玩家看见，是用来把回复写回他手机里的。');
+  if (行s.length) userContent += 行s.join(String.fromCharCode(10));
+}
+
       // 近场提醒：把「自己的调整」再贴一遍到离当前对话最近的位置。
       // system 里那份离这条消息隔了几万字，近因效应下压不住 —— 模型更容易听最近的话。
       // 只贴作者自己写的那些，不重复反模式清单（那份太长，贴过来会喧宾夺主）。
@@ -10256,6 +10293,38 @@ reg('feedDelComment', async ({ gameId, 平台, id, 索引 }) => {
  */
 
 /** 从 world.当前日期时间 里截出 YYYY-MM-DD。截不出来返回空串（就不缓存，每次重生成）。 */
+// ────────────────────── 微博评论 · 待发队列 ──────────────────────
+// 玩家在微博里评论了某条微博/某条评论，这个动作要影响下一轮正文。
+// 存内存 —— 重启就丢（刻意的：它是一次性行为，不是状态）。
+// 发送成功后清空，不会重复注入。
+const WB_PENDING = {};   // gameId -> [{ 微博作者, 微博正文, 回谁, 评论, 时 }]
+
+/** 记一条待发评论。回谁 为空表示直接评那条微博，否则是评某条评论。 */
+reg('queueWeiboComment', async ({ gameId, 微博作者, 微博正文, 回谁, 评论 }) => {
+  const gid = String(gameId || '');
+  const txt = String(评论 || '').trim();
+  if (!txt) return { ok: false, why: '空的' };
+  if (!WB_PENDING[gid]) WB_PENDING[gid] = [];
+  WB_PENDING[gid].push({
+    微博作者: String(微博作者 || ''),
+    微博正文: String(微博正文 || '').slice(0, 120),
+    回谁: String(回谁 || ''),
+    评论: txt,
+    时: Date.now(),
+  });
+  if (WB_PENDING[gid].length > 6) WB_PENDING[gid].shift();
+  await turnLog('[微博] 记下一条待发评论，共 ' + WB_PENDING[gid].length + ' 条');
+  return { ok: true, 待发: WB_PENDING[gid].length };
+});
+
+/** 取出并清空待发队列。正文提示词拼装时调它；拼完就等于用掉了。 */
+function 取待发评论(gid) {
+  const g = String(gid || '');
+  const list = WB_PENDING[g] || [];
+  WB_PENDING[g] = [];
+  return list;
+}
+
 function 游戏内日期(s) {
   const t = String((s.world || {}).当前日期时间 || '');
   const m = t.match(/(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日/);
