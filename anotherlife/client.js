@@ -7952,7 +7952,7 @@ function phoneDoComment(id) {
               ? [
                   ['play', '正文', '📖'],
                   ['protagonist', '主角', '👤'],
-                  ...(isStar ? [['star', '星途模拟', '🌟']] : []),
+                  ['star', '星途模拟', '🌟'],   // 没开也显示：进去能看到开关
                   ['world', '世界', '🌍'],
                   ['npcs', '角色', '👥'],
                   ['relations', '关系', '🕸'],
@@ -9464,6 +9464,20 @@ onDoubleClick: () => {
            * 老字段（艺人咖位／经纪公司／代表作品／当前代言…）直接复用，不另存一份。
            */
           const starEditor = (function () {
+            // 没开星途模拟时，这一页只放一个开关 —— 剧情中途出道也能自己打开。
+            // 提示词里明确禁止模型判断这个开关，所以必须是玩家自己点。
+            if (!(p.是否艺人 === true)) {
+              return h('div', { style: { padding: '28px 20px' } },
+                h('div', { style: { fontSize: 'var(--sim-fs-4)', fontWeight: 600, marginBottom: 8 } }, '还没开星途模拟'),
+                h('div', { className: 'sim-hint', style: { lineHeight: 1.8, marginBottom: 18 } }, '开了之后，下一轮结算会把演艺资料整批补齐。'),
+                h(Btn, {
+                  primary: true,
+                  onClick: function () {
+                    run(call('setStarMode', { on: true }, gameId));
+                  },
+                }, '开启')
+              );
+            }
             const p = (state && state.protagonist) || {};
             const L = (v) => String(v == null ? '' : v).trim();
             const arr = (v) => (Array.isArray(v) ? v : []);

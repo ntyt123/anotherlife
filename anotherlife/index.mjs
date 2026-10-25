@@ -7481,9 +7481,19 @@ if (微博待发.length) {
       // 玩家回来翻到这一轮就能看到 —— 进度条上的黄灯一刷新就没了。
       issues: (function () {
         const p = PROGRESS[String(gid || '')];
-        if (!p || !Array.isArray(p.warn) || !p.warn.length) return [];
-        const why = p.why || {};
-        return p.warn.map((k) => ({ step: k, why: String(why[k] || '') }));
+        const out = [];
+        if (p && Array.isArray(p.warn) && p.warn.length) {
+          const why0 = p.why || {};
+          p.warn.forEach((k) => out.push({ step: k, why: String(why0[k] || "") }));
+        }
+        // 出道检测：主角还不是艺人，但剧情里刚出道了 —— 提示一下，别自动改开关
+        if (s.protagonist && s.protagonist.是否艺人 !== true) {
+          const 词 = 疑似出道(sp.body);
+          if (词) {
+            out.push({ step: '星途', why: '这一轮主角「' + 词 + '」了。到「星途模拟」页打开开关，演艺资料才会开始生成。' });
+          }
+        }
+        return out;
       })(),
       ts: Date.now(),
     };
@@ -7922,6 +7932,31 @@ if (微博待发.length) {
    * 只标在阶段条上，不打断流程。
    */
   function markWarn(gameId, step, why) {
+
+/**
+ * 这一轮的正文里，主角是不是刚出道了。
+ *
+ * 只用来提示，不自动开开关 —— 开关是界面的东西，自动改会误判
+ * （比如描述里一句「他是顶流」就能把开关点开）。
+ */
+function 疑似出道(body) {
+  const t = String(body || '');
+  if (!t) return '';
+  const 词表 = [
+    ['出道', '刚出道'],
+    ['签约唱片', '签约唱片公司'],
+    ['首张专辑', '发行首张专辑'],
+    ['首支单曲', '发行首支单曲'],
+    ['正式签约经纪', '签约经纪公司'],
+    ['签了经纪公司', '签了经纪公司'],
+    ['发片', '发片'],
+  ];
+  for (let i2 = 0; i2 < 词表.length; i2++) {
+    if (t.indexOf(词表[i2][0]) >= 0) return 词表[i2][1];
+  }
+  return '';
+}
+
     const k = String(gameId || '');
     if (!k || !step) return;
     const prev = PROGRESS[k] || { stage: '', text: '', at: Date.now(), seq: 0, warn: [], why: {} };
@@ -8404,7 +8439,8 @@ reg('saveOracleAgent', async ({ gameId, on }) => {
   });
 
   // ── 写作指导：列出 skills 目录里的那几份，选一份注入正文 ──
-  // ── 叙述人称：全局设置，跨局共用 ──  // ── 破限词：玩家自己填，注入正文提示词末尾 ──
+  // ── 叙述人称：全局设置，跨局共用 ──
+  // ── 破限词：玩家自己填，注入正文提示词末尾 ──
   reg('getJailbreak', async () => {
     const jb = await activeJailbreak();
     return { on: jb.on, text: jb.text, max: JAILBREAK_MAX };
@@ -8421,8 +8457,17 @@ reg('saveOracleAgent', async ({ gameId, on }) => {
     return { ok: true, on: g.jailbreak.on, text: g.jailbreak.text };
   });
 
-  reg('getPerson', async () => ({ person: await activePerson() }));  reg('savePerson', async ({ person }) => {    const g = (await readJson(SETTINGS_FILE)) || {};    const v = String(person || '');
-    g.person = v === '1' || v === '2' || v === '3' ? v : PERSON_DEFAULT;    g.updatedAt = Date.now();    await writeJson(SETTINGS_FILE, g);    return { ok: true, person: g.person };  });  reg('getWritingSkill', async () => {
+  reg('getPerson', async () => ({ person: await activePerson() }));
+  reg('savePerson', async ({ person }) => {
+    const g = (await readJson(SETTINGS_FILE)) || {};
+    const v = String(person || '');
+    g.person = v === '1' || v === '2' || v === '3' ? v : PERSON_DEFAULT;
+    g.updatedAt = Date.now();
+    await writeJson(SETTINGS_FILE, g);
+    return { ok: true, person: g.person };
+  });
+
+  reg('getWritingSkill', async () => {
     const g = (await readJson(SETTINGS_FILE)) || {};
     const id = String(g.writingSkillId || '').trim();
     return {
@@ -10816,6 +10861,16 @@ reg('refreshHotsearch', async ({ gameId }) => {
 reg('moreWeibo', async ({ gameId }) => {
   const s = await loadState(gameId);
   return await getHotsearch(s, gameId, { more: true });
+});
+
+/** 开关「星途模拟」。开了之后下一轮结算就会把演艺资料整批生成。 */
+reg('setStarMode', async ({ gameId, on }) => {
+  const s = await loadState(gameId);
+  if (!s.protagonist) s.protagonist = {};
+  s.protagonist.是否艺人 = !!on;
+  await saveState(gameId, s);
+  await turnLog('[星途] 开关 → ' + (on ? '开' : '关'));
+  return await loadState(gameId);   // 返回完整状态，界面用 run() 吸收
 });
 
   reg('galleryList', async () => {
