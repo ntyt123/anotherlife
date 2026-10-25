@@ -9074,6 +9074,34 @@ reg('saveOracleAgent', async ({ gameId, on }) => {
         wantTools: true,
       });
       // 首选工具调用：参数本来就是 JSON，不用防围栏和半截输出
+      // 留证据：模型到底给了什么。工具没调 / 调了但参数空 / 只有 summary，是三种不同病。
+      const 调用数 = (r && Array.isArray(r.toolCalls)) ? r.toolCalls.length : 0;
+      const 键数 = viaTool ? Object.keys(viaTool).filter((k) => !String(k).startsWith('_')).length : 0;
+      await turnLog('[解析] toolCalls=' + 调用数 + ' 工具参数键数=' + 键数 + (键数 ? ' 键=' + Object.keys(viaTool).slice(0, 6).join(',') : '') + ' 正文=' + String((r && r.text) || '').length + ' 字');
+
+      // 工具参数是空的（模型只调了工具没填内容）→ 重试一次，这次把要求说得更死
+      if (调用数 > 0 && 键数 === 0) {
+        await turnLog('[解析] 工具参数为空，重试一次');
+        const msgs2 = [{ role: 'system', content: sys + '\n\n【重要】调用 emit_parsed_json 时，parameters 必须包含上面要求的全部字段，不许给空对象。' }, msgs[1]];
+        const r2 = await callSlot(s, 'settle', msgs2, {
+          temperature: 0.2,
+          maxTokens: tokOf(s, 'parse'),
+          timeoutMs: 180000,
+          tag: '变量解析·重试',
+          tools: [PARSE_TOOL],
+          wantTools: true,
+        });
+        const viaTool2 = pickToolCall(r2);
+        const 键数2 = viaTool2 ? Object.keys(viaTool2).filter((k) => !String(k).startsWith('_')).length : 0;
+        await turnLog('[解析] 重试后工具参数键数=' + 键数2 + ' 正文=' + String((r2 && r2.text) || '').length + ' 字');
+        if (viaTool2 && parseToolOk(viaTool2)) return viaTool2;
+        const out2 = String((r2 && r2.text) || '').trim();
+        if (out2) {
+          const p2 = parseJsonLoose(out2);
+          if (p2) return p2;
+        }
+        throw new Error('「变量解析」模型两次都没给出字段（工具参数为空）。换一个解析模型试试。');
+      }
       const viaTool = pickToolCall(r);
       if (viaTool && parseToolOk(viaTool)) return viaTool;
       const out = String(r && r.text != null ? r.text : r == null ? '' : r).trim();
