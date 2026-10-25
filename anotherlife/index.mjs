@@ -10363,7 +10363,7 @@ async function getHotsearch(s, gid) {
     const sys = 热搜提示词(s);
     const msgs = [{ role: 'system', content: sys }, { role: 'user', content: '按上面的要求，给这一屏热搜。只输出那个 JSON。' }];
     const r = await callSlot(s, 'weibo', msgs, { tag: '微博', temperature: 0.9 });
-    const txt = String((r && r.text) || '').trim();
+    const txt = (r && typeof r === 'object' && r.text != null ? String(r.text) : String(r == null ? '' : r)).trim();
     const obj = parseJsonLoose(txt);
     const 剧情 = Array.isArray(obj && obj.剧情热搜) ? obj.剧情热搜.map(String).filter(Boolean) : [];
     const 世界 = Array.isArray(obj && obj.世界热搜) ? obj.世界热搜.map(String).filter(Boolean) : [];
