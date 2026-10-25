@@ -6600,7 +6600,7 @@ function phoneDoComment(id) {
               phoneApp('📞', '电话', () => {}, true),
               phoneApp('💬', '微信', () => { setPhoneApp2('wechat'); setPhoneTab('chat'); setPhoneView('apphome'); phoneLoadThreads('wechat'); if (!phoneContacts) phoneLoadContacts('wechat'); }, !era.有微信),
               ),
-            phoneApp('🔥', '微博', () => { setPhoneView('weibo'); if (!phoneHot) phoneLoadHot(false); }),
+              phoneApp('🔥', '微博', () => { setPhoneView('weibo'); if (!phoneHot) phoneLoadHot(false); }),
               // QQ 先不做 —— 它和微信共用同一套结构，做出来只是多一层皮（配色 + 底栏 + 顶栏）。
               // 要恢复就把下一行开头的 // 去掉。
               // phoneApp('🐧', 'QQ', () => { setPhoneApp2('qq'); setPhoneTab('chat'); setPhoneView('apphome'); phoneLoadThreads('qq'); if (!phoneContacts) phoneLoadContacts('qq'); }, !era.有QQ),
