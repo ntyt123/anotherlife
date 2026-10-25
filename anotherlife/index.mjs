@@ -10719,9 +10719,81 @@ async function getHotsearch(s, gid, opts) {
     await writeJson(GALLERY_FILE, { items });
   }
 /** 微博热搜：打开微博时调一次，按游戏内日期缓存。 */
+/**
+ * 「我」那一页的数据。
+ *
+ * 两半：
+ *   · 资料：主角的艺人字段（咖位/粉丝/代言/风评…）—— 空的就不给，界面自己跳过
+ *   · 微博：最近 10 轮正文里写过的 :::weibo 卡片，只留作者是主角的
+ *
+ * 为什么从正文里抠而不是存一份：正文是唯一事实来源，存一份就会过期。
+ */
+function 我的微博资料(s) {
+  const p = s.protagonist || {};
+  const me = String(p.姓名 || '').trim();
+  const 资料 = {
+    姓名: me,
+    身份: String(p.身份 || ''),
+    咖位: String(p.艺人咖位 || ''),
+    公司: String(p.经纪公司 || ''),
+    粉丝: String(p.全网粉丝数 || ''),
+    称呼: String(p.粉丝称呼 || ''),
+    账号: String(p.微博账号 || ''),
+    风评: String(p.当前舆论评价 || ''),
+    来源: String(p.舆论来源 || ''),
+    热度: String(p.舆论热度 || ''),
+    作品: Array.isArray(p.代表作品) ? p.代表作品.map(String).filter(Boolean) : [],
+    代言: Array.isArray(p.当前代言) ? p.当前代言.map(String).filter(Boolean) : [],
+  };
+
+  // 最近 10 轮的正文里找 :::weibo 卡片
+  const 线 = [];
+  (s.transcript || []).filter((t) => t && t.role !== 'user').slice(-10).forEach((t) => {
+    const txt = String(t.body || '');
+    if (txt.indexOf(':::weibo') < 0) return;
+    const re = /:::weibo\s*\n([\s\S]*?)\n:::/g;
+    let m;
+    while ((m = re.exec(txt))) {
+      const 行s2 = m[1].split(/\r?\n/).map((x) => x.trim()).filter(Boolean);
+      const o = { 评论: [] };
+      行s2.forEach((ln) => {
+        const k = ln.indexOf('|');
+        if (k < 0) return;
+        const key = ln.slice(0, k).trim();
+        const val = ln.slice(k + 1).trim();
+        const cm = key.match(/^评论[-－](.+)$/);
+        if (cm) o.评论.push({ 谁: cm[1].trim(), 内容: val });
+        else if (key) o[key] = val;
+      });
+      if (!o.正文) return;
+      // 只留主角自己发的（作者名包含主角名）
+      const 作者 = String(o.作者 || '');
+      if (me && 作者.indexOf(me) < 0) return;
+      线.push({
+        作者: 作者 || me,
+        时间: String(o.时间 || ''),
+        正文: String(o.正文 || ''),
+        转发: String(o.转发 || ''),
+        评论数: String(o.评论数 || o.评论 || ''),
+        赞: String(o.点赞 || ''),
+        评论: o.评论,
+        轮次: t.seq,
+      });
+    }
+  });
+
+  return { 资料, 微博: 线.reverse() };   // 新的在前
+}
+
 reg('getHotsearch', async ({ gameId }) => {
   const s = await loadState(gameId);
   return await getHotsearch(s, gameId);
+});
+
+/** 微博「我」那一页。 */
+reg('getMyWeibo', async ({ gameId }) => {
+  const s = await loadState(gameId);
+  return 我的微博资料(s);
 });
 
 /** 强制重生成：先删缓存再走一遍。界面上那个 ↻ 用的。 */

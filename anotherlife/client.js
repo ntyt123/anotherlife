@@ -331,6 +331,16 @@ window.__ModuleLoader__.load({
   '.wb-in:disabled{background:#f4f4f4;color:#b0b0b0}',
   '.wb-send{border:0;border-radius:18px;padding:0 16px;background:#FF6A2E;color:#fff;font-size:13px;cursor:pointer}',
   '.wb-send:disabled{background:#f0d7cc;color:#fff;cursor:default}',
+  '.sim-wb-me{padding:16px 14px 20px}',
+  '.sim-wb-mehd{display:flex;align-items:center;gap:12px;margin-bottom:14px}',
+  '.sim-wb-av.big{width:56px;height:56px;font-size:22px}',
+  '.sim-wb-nm.big{font-size:17px;font-weight:700;color:#1a1a1a}',
+  '.sim-wb-stats{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}',
+  '.sim-wb-stats .st{flex:1 1 0;min-width:70px;background:#f7f8fa;border-radius:8px;padding:8px 6px;text-align:center;display:flex;flex-direction:column;gap:2px}',
+  '.sim-wb-stats .st b{font-size:14px;color:#1a1a1a;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+  '.sim-wb-stats .st span{font-size:11px;color:#999}',
+  '.sim-wb-sec{margin-top:16px}',
+  '.sim-wb-sech{font-size:13px;font-weight:700;color:#333;padding-bottom:8px;border-bottom:1px solid #f0f0f0;margin-bottom:4px}',
   '.sim-wb-nav{display:flex;flex:0 0 auto;border-top:1px solid #eee;background:#fafafa}',
   '.sim-wb-nv{flex:1;border:0;background:none;padding:8px 0 10px;display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;color:#8a8a8a}',
   '.sim-wb-nv .i{font-size:17px;line-height:1}',
@@ -3982,6 +3992,8 @@ function App({ gameId, close }) {
         const [wbTarget, setWbTarget] = React.useState(null);
         // 我发过的评论（只在界面上显示，重启就丢）
         const [wbMine, setWbMine] = React.useState([]);
+        // 「我」那一页的数据（主角资料 + 最近 10 轮的微博）
+        const [phoneMe, setPhoneMe] = React.useState(null);
         const [phoneContacts, setPhoneContacts] = React.useState(null);
         const [phoneThreadId, setPhoneThreadId] = React.useState('');
         const [phoneMsgs, setPhoneMsgs] = React.useState([]);
@@ -5600,6 +5612,14 @@ function App({ gameId, close }) {
  微博: 'linear-gradient(#FF6A2E,#E6162D)',
           };
         /** 拉热搜。force=true 时绕过后端缓存（顶栏那个 ↻）。 */
+/** 拉「我」那一页的数据。切到这个 tab 时调一次。 */
+function loadMyWeibo(force) {
+  if (phoneMe && !force) return;
+  Promise.resolve(call('getMyWeibo', {}, gameId))
+    .then((r) => setPhoneMe(r || null))
+    .catch(() => setPhoneMe({ 资料: {}, 微博: [] }));
+}
+
 /** 发一条评论：入宿主队列（下一轮正文会带上），同时本地显示出来。 */
 function wbSendComment() {
   const t = String(phoneIn || '').trim();
@@ -6681,7 +6701,46 @@ function phoneDoComment(id) {
                             )
                           )
                         : h('div', { className: 'sim-wbf-empty' }, '还没有热搜。'))
-                    : h('div', { className: 'sim-wbf-empty' }, '主页还没做。')
+                    : h('div', { className: 'sim-wb-me' },
+                      (function () {
+                        const d = (phoneMe && phoneMe.资料) || {};
+                        const 线2 = (phoneMe && phoneMe.微博) || [];
+                        const 数 = [];
+                        if (d.咖位) 数.push({ k: '咖位', v: d.咖位 });
+                        if (d.粉丝) 数.push({ k: '粉丝', v: d.粉丝 });
+                        if (d.公司) 数.push({ k: '公司', v: d.公司 });
+                        if (d.称呼) 数.push({ k: '粉丝称呼', v: d.称呼 });
+                        return h('div', null,
+                            h('div', { className: 'sim-wb-mehd' },
+                              h('span', { className: 'sim-wb-av big' }, String(d.姓名 || '我')[0]),
+                              h('div', null,
+                                h('div', { className: 'sim-wb-nm big' }, d.姓名 || '我'),
+                                d.身份 ? h('div', { className: 'sim-wb-tm' }, d.身份) : null,
+                                d.账号 ? h('div', { className: 'sim-wb-tm' }, d.账号) : null
+                              )
+                            ),
+                            数.length ? h('div', { className: 'sim-wb-stats' }, 数.map((x, k) =>
+                              h('div', { className: 'st', key: k }, h('b', null, x.v), h('span', null, x.k))
+                            )) : null,
+                            (d.风评 || d.来源 || d.热度) ? h('div', { className: 'sim-wb-sec' },
+                              h('div', { className: 'sim-wb-sech' }, '当前风评'),
+                              d.风评 ? h('div', { className: 'sim-wb-tx' }, d.风评) : null,
+                              (d.来源 || d.热度) ? h('div', { className: 'sim-wb-tm', style: { marginTop: 6 } }, [d.来源, d.热度].filter(Boolean).join(' · ')) : null
+                            ) : null,
+                            线2.length ? h('div', { className: 'sim-wb-sec' },
+                              h('div', { className: 'sim-wb-sech' }, '微博'),
+                              线2.map((w, i2) => h('div', { className: 'sim-wb-item', key: i2 },
+                                h('div', { className: 'sim-wb-tx', style: { margin: 0 } }, w.正文 || ''),
+                                h('div', { className: 'sim-wb-acts' },
+                                  h('span', null, '↻ ' + (w.转发 || '转发')),
+                                  h('span', null, '💬 ' + (w.评论数 || '评论')),
+                                  h('span', null, '☆ ' + (w.赞 || '赞'))
+                                )
+                              ))
+                            ) : h('div', { className: 'sim-wbf-empty' }, '最近没发微博。')
+                          );
+                      })()
+                    )
                 ),
                 // 底部导航
                 // 底部输入框：像真微博那样「说点什么…」。没选目标时提示先点一条。
@@ -6699,7 +6758,7 @@ function phoneDoComment(id) {
                 h('div', { className: 'sim-wb-nav' },
                   h('button', { className: 'sim-wb-nv' + (tab === 'home' ? ' on' : ''), onClick: () => setPhoneWbTab('home') }, h('span', { className: 'i' }, '🏠'), h('span', { className: 'l' }, '首页')),
                   h('button', { className: 'sim-wb-nv' + (tab === 'explore' ? ' on' : ''), onClick: () => setPhoneWbTab('explore') }, h('span', { className: 'i' }, '🔍'), h('span', { className: 'l' }, '发现')),
-                  h('button', { className: 'sim-wb-nv' + (tab === 'me' ? ' on' : ''), onClick: () => setPhoneWbTab('me') }, h('span', { className: 'i' }, '👤'), h('span', { className: 'l' }, '我'))
+                  h('button', { className: 'sim-wb-nv' + (tab === 'me' ? ' on' : ''), onClick: () => { setPhoneWbTab('me'); loadMyWeibo(false); } }, h('span', { className: 'i' }, '👤'), h('span', { className: 'l' }, '我'))
                 )
               );
             }
