@@ -4883,13 +4883,31 @@ function parseDsmlTools(text) {
   return calls.length ? calls : null;
 }
 
+/**
+ * 有些 provider 会把工具参数再包一层：{ arguments: { 真实字段… } }，
+ * 或者 { arguments: "{\"姓名\":…}" }（字符串形式的 JSON）。
+ * 不拆开的话 parseToolOk 看到「有一个键 arguments」就放行，
+ * 前端拿到的是空壳 —— 表现是「解析完什么都没有」。
+ */
+function 拆工具参数(o) {
+  if (!o || typeof o !== 'object' || Array.isArray(o)) return o;
+  const ks = Object.keys(o).filter((k) => !String(k).startsWith('_'));
+  if (ks.length !== 1 || ks[0] !== 'arguments') return o;
+  let v = o.arguments;
+  if (typeof v === 'string') {
+    try { v = JSON.parse(v); } catch (e) { return o; }
+  }
+  if (v && typeof v === 'object' && !Array.isArray(v)) return v;
+  return o;
+}
+
 function pickToolCall(r) {
   const calls = (r && Array.isArray(r.toolCalls)) ? r.toolCalls : [];
   for (const c of calls) {
     if (!c || !c.args) continue;
     try {
       const obj = JSON.parse(c.args);
-      if (obj && typeof obj === 'object' && !Array.isArray(obj)) return obj;
+      if (obj && typeof obj === 'object' && !Array.isArray(obj)) return 拆工具参数(obj);
     } catch (e) {
       /* 多半是被截断，下面补全 */
     }
@@ -4899,7 +4917,7 @@ function pickToolCall(r) {
       const fixed = repairJson(body);
       if (fixed) {
         const obj = JSON.parse(fixed);
-        if (obj && typeof obj === 'object' && !Array.isArray(obj)) return obj;
+        if (obj && typeof obj === 'object' && !Array.isArray(obj)) return 拆工具参数(obj);
       }
     } catch (e) {
       /* 补不回来就交给文本兜底 */
@@ -9048,7 +9066,7 @@ reg('saveOracleAgent', async ({ gameId, on }) => {
       if (!obj || typeof obj !== "object" || Array.isArray(obj)) return false;
       const ks = Object.keys(obj).filter(function (k) { return !k.startsWith("_"); });
       if (!ks.length) return false;
-      if (ks.length === 1 && ks[0] === "summary") return false;
+      if (ks.length === 1 && (ks[0] === "summary" || ks[0] === "arguments")) return false;   // 空壳：summary=偷懒，arguments=没拆包
       return true;
     }
 
