@@ -7460,6 +7460,12 @@ if (微博待发.length) {
       }
     }
 
+    // 正文里如果有 :::weibo_reply 块，剥出来写回微博缓存（不给玩家看见）
+    try {
+      sp.body = await 处理微博回复(s, gid, sp.body);
+    } catch (e) {
+      await turnLog('[微博] 回复处理失败：' + String((e && e.message) || e));
+    }
     const entry = {
       seq,
       role: 'assistant',
@@ -10324,6 +10330,75 @@ function 取待发评论(gid) {
   WB_PENDING[g] = [];
   return list;
 }
+
+/**
+ * 从正文里剥出 :::weibo_reply 块，把回复写回微博缓存，返回剥干净的正文。
+ *
+ * 这个块不该给玩家看见 —— 它是「把回复写回他手机里」的搬运工。
+ * 格式（可多组）：
+ *   :::weibo_reply
+ *   谁|田曦薇
+ *   回谁|玩家
+ *   内容|你这张嘴比我的滤镜还狠
+ *   :::
+ *
+ * 匹配不到对应微博就丢弃并记日志，不乱塞。
+ */
+async function 处理微博回复(s, gid, body) {
+  const txt = String(body || '');
+  if (txt.indexOf(':::weibo_reply') < 0) return body;
+  const re = /:::weibo_reply\s*\n([\s\S]*?)\n:::/g;
+  const 抓到 = [];
+  let m;
+  while ((m = re.exec(txt))) {
+    const 行s = m[1].split(/\r?\n/).map((x) => x.trim()).filter(Boolean);
+    const o = {};
+    行s.forEach((ln) => {
+      const i2 = ln.indexOf('|');
+      if (i2 < 0) return;
+      o[ln.slice(0, i2).trim()] = ln.slice(i2 + 1).trim();
+    });
+    if (o.谁 && o.内容) 抓到.push(o);
+  }
+  // 先把块从正文里剥掉 —— 不管写不写得回去，都不能让玩家看到这段
+  let out = txt.replace(re, '').replace(/\n{3,}/g, '\n\n').trim();
+  if (!抓到.length) return out;
+
+  // 写回缓存：按作者名模糊匹配那条微博，把回复追加进它自己的评论列表
+  const p = weiboCachePath(gid);
+  let cache = null;
+  try { cache = await readJson(p); } catch (e) { cache = null; }
+  if (!cache || !Array.isArray(cache.时间线)) {
+    await turnLog('[微博] 收到 ' + 抓到.length + ' 条回复，但没有缓存可写');
+    return out;
+  }
+  const 归一 = (x) => String(x || '').replace(/[@＠]/g, '').replace(/[Vv]$/, '').replace(/\s+/g, '').trim();
+  let 成功 = 0;
+  抓到.forEach((o) => {
+    const 谁 = 归一(o.谁);
+    // 挑最近的那条（时间线是新的在前，从后往前找更省事）
+    for (let k = cache.时间线.length - 1; k >= 0; k--) {
+      const w = cache.时间线[k];
+      const 作者 = 归一(w && w.作者);
+      if (!作者 || !谁) continue;
+      if (作者.indexOf(谁) < 0 && 谁.indexOf(作者) < 0) continue;
+      if (!Array.isArray(w.评论列表)) w.评论列表 = [];
+      w.评论列表.push({ 谁: o.谁, 内容: o.内容, 回谁: o.回谁 || '', 回复: true });
+      成功++;
+      break;
+    }
+  });
+  if (成功) {
+    try { await writeJson(p, cache); } catch (e) {
+      await turnLog('[微博] 回复写回缓存失败：' + String((e && e.message) || e));
+    }
+    await turnLog('[微博] 写回 ' + 成功 + '/' + 抓到.length + ' 条回复');
+  } else {
+    await turnLog('[微博] ' + 抓到.length + ' 条回复都没匹配到对应微博，丢弃');
+  }
+  return out;
+}
+
 
 function 游戏内日期(s) {
   const t = String((s.world || {}).当前日期时间 || '');
