@@ -4792,6 +4792,35 @@ const SETTLE_TOOL = {
 };
 
 /**
+ * 「正文走工具调用」模式用的工具。
+ *
+ * 常规模式：正文写在 message.content 里。
+ * 这个模式：正文写在 submit_story 的参数里 —— 相当于把内容换一条路交给上游。
+ * 有用的场景是「正文被拦、但换成工具参数就过了」，而不是「工具能让模型写得更好」。
+ *
+ * 只在 config.toolMode 打开时才挂上去；关着的时候完全走原来的路。
+ */
+const STORY_SUBMIT_TOOL = {
+  name: 'submit_story',
+  description: '提交这一轮的正文。所有内容（思考、正文、小结、行动选项）都必须放进这个工具的参数里，不要用普通消息回复。',
+  parameters: {
+    type: 'object',
+    properties: {
+      think: { type: 'string', description: '导演笔记：按系统提示里那七节逐项写' },
+      content: { type: 'string', description: '这一轮的正文，完整写在这里' },
+      summary: { type: 'string', description: '一百字左右的客观小结' },
+      options: { type: 'array', items: { type: 'string' }, description: '行动选项，每条一行带路线标签' },
+    },
+    required: ['content'],
+  },
+};
+
+/** 正文是否走工具调用。默认关 —— 这是给「正文被上游拦」时试的备用通道。 */
+function toolModeOf(s) {
+  return !!(s && s.config && s.config.toolMode);
+}
+
+/**
  * 解析存档用的工具。跟 SETTLE_TOOL 的区别是「没有必填项、没有固定字段」——
  * 解析的目标是「这一个人 / 这一批人的完整档案」，字段由系统提示决定，
  * 不该被结算那套 {world, protagonist, chars, summary} 的骨架牵着走。
@@ -6135,6 +6164,16 @@ let aiPickFail = '';
     head.push('   七行都要有，每行一两句，整块不超过 400 字。**用中文写。** 这一块要出现在回复正文里，读者能看见 —— 不要放进你看不见的内部思考通道。');
     head.push('2) 正文（只叙事，不输出变量 JSON）；');
     head.push('3) 最后以 [行动选项] 开头，按下面的规则给出行动选项。');
+    // 工具通道：告诉它这一轮的正文不走普通回复，走 submit_story 的参数。
+    if (toolModeOf(s)) {
+      head.push('');
+      head.push('【这一轮走工具】**所有内容都通过 submit_story 工具提交，不要用普通消息回复。**');
+      head.push('  · think —— 上面那七节的导演笔记');
+      head.push('  · content —— 这一轮的正文，完整写在这里');
+      head.push('  · summary —— 一百字左右的客观小结');
+      head.push('  · options —— 行动选项，每条一行，带上路线标签');
+      head.push('  正文、思考、小结、选项全部放进工具参数里；普通消息位置留空。');
+    }
     // 反模式清单：只在开关开着时注入。这几条是从 SillyTavern 那套里挑出来的高杠杆项。
     if (styleBoostOf(s)) {
       head.push('');
@@ -7160,7 +7199,19 @@ function seasonText(s) {
         const bodyEffort = await reasoningOf(s, 'body');
 
         if (bodyEffort) storyOpts.reasoningEffort = bodyEffort;
-    let r = await callStoryModel(s, gid, [{ role: 'system', content: sys }, { role: 'user', content: userContent }], storyOpts);
+    // 正文走工具调用（备用通道）：把内容塞进 submit_story 的参数里，而不是 message.content。
+    // 检索工具和这个通道冲突（两边都靠 toolCalls 传东西），所以开启时只挂 submit_story。
+    const 正文走工具 = toolModeOf(s);
+    let r;
+    if (正文走工具) {
+      await turnLog('[正文·工具] 走工具通道：submit_story');
+      r = await callMainModel(
+        [{ role: 'system', content: sys }, { role: 'user', content: userContent }],
+        Object.assign({}, storyOpts, { tools: [STORY_SUBMIT_TOOL], wantTools: true })
+      );
+    } else {
+      r = await callStoryModel(s, gid, [{ role: 'system', content: sys }, { role: 'user', content: userContent }], storyOpts);
+    }
     // 被 maxTokens 截断：不当中断处理，已经吐出来的照样用（半篇总比空白强），
     // 只在日志和 issues 里留一句，让玩家知道这轮为什么戛然而止。
     const cutStory = !!(r && r.truncated);
@@ -7168,9 +7219,24 @@ function seasonText(s) {
       await turnLog('[正文] 被 maxTokens 截断（' + String(r.text || '').length + ' 字），保留已生成部分');
     }
     let sp = splitStory(r.text);
+    // 工具通道：正文在 submit_story 的参数里，不在 r.text。
+    // 拿不到就退回 r.text —— 模型有时会无视工具直接说话，那时不能空手回去。
+    if (正文走工具) {
+      const 调用 = (r && Array.isArray(r.toolCalls) ? r.toolCalls : []).filter((tc) => tc && tc.name === 'submit_story')[0];
+      if (调用) {
+        let a = {};
+        try { a = parseToolArgs(调用.args) || {}; } catch (e) { a = {}; }
+        if (a.think) sp.think = String(a.think);
+        if (a.content) sp.body = String(a.content);
+        if (Array.isArray(a.options) && a.options.length) sp.options = a.options.map((x) => String(x));
+        await turnLog('[正文·工具] 取到正文 ' + String(sp.body || '').length + ' 字，思考 ' + String(sp.think || '').length + ' 字，选项 ' + sp.options.length + ' 条');
+      } else {
+        await turnLog('[正文·工具] 模型没调 submit_story，退回普通正文 ' + String(r && r.text || '').length + ' 字');
+      }
+    }
     // 有些模型／中转会把内容全塞进「思考」通道，正文一条都不给。
     // 原样保存就会得到一段没有正文的空轮次，所以这里重试一次。
-    if (!String(r.text || '').trim()) {
+    if (!正文走工具 && !String(r.text || '').trim()) {
       setProg(gid, 'story', '这一轮没拿到正文，正在重试一次');
       try {
         const r2 = await callStoryModel(s, gid, [{ role: 'system', content: sys }, { role: 'user', content: userContent }], storyOpts);

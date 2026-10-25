@@ -12336,6 +12336,19 @@ function thinkDrifted(t) {
                   h('div', { className: 'sim-hint', style: { marginTop: 4 } }, '结尾留悬、情绪有滞后、不写全知、不替他做决定。关掉就是纯叙事。')
                 ),
                 h('div', { className: 'sim-field', style: { marginTop: 10 } },
+                  h('label', null, '正文走工具'),
+                  h(Btn, {
+                    primary: !!(dcfg && dcfg.toolMode),
+                    onClick: function () {
+                      var c = Object.assign({}, dcfg);
+                      c.toolMode = !c.toolMode;
+                      upd({ config: c });
+                      run(call('saveConfig', { config: c }, gameId));
+                    },
+                  }, (dcfg && dcfg.toolMode) ? '✅ 走工具' : '⬜ 走普通回复'),
+                  h('div', { className: 'sim-hint', style: { marginTop: 4 } }, '正文改从 submit_story 工具的参数提交。正文被拦时试它。')
+                ),
+                h('div', { className: 'sim-field', style: { marginTop: 10 } },
                   h('label', null, '自己的调整'),
                   h('textarea', {
                     key: 'notes:' + String((dcfg && dcfg.styleNotes) == null ? STYLE_NOTES_DEFAULT : dcfg.styleNotes),
