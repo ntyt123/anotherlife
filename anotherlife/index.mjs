@@ -9097,6 +9097,14 @@ reg('saveOracleAgent', async ({ gameId, on }) => {
       const 调用数 = (r && Array.isArray(r.toolCalls)) ? r.toolCalls.length : 0;
       const 键数 = viaTool ? Object.keys(viaTool).filter((k) => !String(k).startsWith('_')).length : 0;
       await turnLog('[解析] toolCalls=' + 调用数 + ' 工具参数键数=' + 键数 + (键数 ? ' 键=' + Object.keys(viaTool).slice(0, 6).join(',') : '') + ' 正文=' + String((r && r.text) || '').length + ' 字');
+      // 把原始形态原样打出来。之前几轮都在猜结构，猜错了三次 —— 直接看。
+      if (r && Array.isArray(r.toolCalls) && r.toolCalls.length) {
+        const c0 = r.toolCalls[0] || {};
+        const 原 = c0.args;
+        await turnLog('[解析·原始] args 类型=' + (typeof 原) + ' 长度=' + String(原 == null ? 'null' : String(原).length));
+        await turnLog('[解析·原始] 前 400 字：' + String(原 == null ? '' : String(原)).slice(0, 400));
+        await turnLog('[解析·原始] 工具名=' + String(c0.name || c0.toolName || '?') + ' (r).finish=' + String((r && r.finish) || '-'));
+      }
 
       // 工具参数是空的（模型只调了工具没填内容）→ 重试一次，这次把要求说得更死
       if (调用数 > 0 && 键数 === 0) {
