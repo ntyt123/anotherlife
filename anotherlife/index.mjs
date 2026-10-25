@@ -4801,17 +4801,17 @@ const SETTLE_TOOL = {
  * 只在 config.toolMode 打开时才挂上去；关着的时候完全走原来的路。
  */
 const STORY_SUBMIT_TOOL = {
-  name: 'submit_story',
-  description: '提交这一轮的正文。所有内容（思考、正文、小结、行动选项）都必须放进这个工具的参数里，不要用普通消息回复。',
+  name: 'game',
+  description: '把这一轮的游戏内容交上来。角色说了什么、做了什么、场面怎么走，全都写在 game_content 里。',
   parameters: {
     type: 'object',
     properties: {
       think: { type: 'string', description: '导演笔记：按系统提示里那七节逐项写' },
-      content: { type: 'string', description: '这一轮的正文，完整写在这里' },
+      game_content: { type: 'string', description: '这一轮的正文，完整写在这里' },
       summary: { type: 'string', description: '一百字左右的客观小结' },
       options: { type: 'array', items: { type: 'string' }, description: '行动选项，每条一行带路线标签' },
     },
-    required: ['content'],
+    required: ['game_content'],
   },
 };
 
@@ -6167,12 +6167,12 @@ let aiPickFail = '';
     // 工具通道：告诉它这一轮的正文不走普通回复，走 submit_story 的参数。
     if (toolModeOf(s)) {
       head.push('');
-      head.push('【这一轮走工具】**所有内容都通过 submit_story 工具提交，不要用普通消息回复。**');
-      head.push('  · think —— 上面那七节的导演笔记');
-      head.push('  · content —— 这一轮的正文，完整写在这里');
-      head.push('  · summary —— 一百字左右的客观小结');
-      head.push('  · options —— 行动选项，每条一行，带上路线标签');
-      head.push('  正文、思考、小结、选项全部放进工具参数里；普通消息位置留空。');
+  head.push('【提交方式】这一轮的内容通过 game 工具交上来：');
+  head.push('  · think —— 上面那七节的导演笔记');
+  head.push('  · game_content —— 这一轮的正文，完整写在里面');
+  head.push('  · summary —— 一百字左右的客观小结');
+  head.push('  · options —— 行动选项，每条一行，带上路线标签');
+  head.push('  普通消息的位置留空就好。');
     }
     // 反模式清单：只在开关开着时注入。这几条是从 SillyTavern 那套里挑出来的高杠杆项。
     if (styleBoostOf(s)) {
@@ -7204,7 +7204,7 @@ function seasonText(s) {
     const 正文走工具 = toolModeOf(s);
     let r;
     if (正文走工具) {
-      await turnLog('[正文·工具] 走工具通道：submit_story');
+      await turnLog('[正文·工具] 走工具通道：game');
       r = await callMainModel(
         [{ role: 'system', content: sys }, { role: 'user', content: userContent }],
         Object.assign({}, storyOpts, { tools: [STORY_SUBMIT_TOOL], wantTools: true })
@@ -7222,16 +7222,16 @@ function seasonText(s) {
     // 工具通道：正文在 submit_story 的参数里，不在 r.text。
     // 拿不到就退回 r.text —— 模型有时会无视工具直接说话，那时不能空手回去。
     if (正文走工具) {
-      const 调用 = (r && Array.isArray(r.toolCalls) ? r.toolCalls : []).filter((tc) => tc && tc.name === 'submit_story')[0];
+      const 调用 = (r && Array.isArray(r.toolCalls) ? r.toolCalls : []).filter((tc) => tc && tc.name === 'game')[0];
       if (调用) {
         let a = {};
         try { a = parseToolArgs(调用.args) || {}; } catch (e) { a = {}; }
         if (a.think) sp.think = String(a.think);
-        if (a.content) sp.body = String(a.content);
+        if (a.game_content) sp.body = String(a.game_content);
         if (Array.isArray(a.options) && a.options.length) sp.options = a.options.map((x) => String(x));
         await turnLog('[正文·工具] 取到正文 ' + String(sp.body || '').length + ' 字，思考 ' + String(sp.think || '').length + ' 字，选项 ' + sp.options.length + ' 条');
       } else {
-        await turnLog('[正文·工具] 模型没调 submit_story，退回普通正文 ' + String(r && r.text || '').length + ' 字');
+        await turnLog('[正文·工具] 模型没调 game，退回普通正文 ' + String(r && r.text || '').length + ' 字');
       }
     }
     // 有些模型／中转会把内容全塞进「思考」通道，正文一条都不给。
