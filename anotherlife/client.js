@@ -3962,6 +3962,8 @@ function App({ gameId, close }) {
         const [phoneHotBusy, setPhoneHotBusy] = React.useState(false);
         const [phoneWbWho, setPhoneWbWho] = React.useState('');
         const [phoneWbTab, setPhoneWbTab] = React.useState('home');   // 微博底部的三个 tab
+        // 哪一条微博展开了评论区（-1 = 都收着）
+        const [phoneWbOpen, setPhoneWbOpen] = React.useState(-1);
         const [phoneContacts, setPhoneContacts] = React.useState(null);
         const [phoneThreadId, setPhoneThreadId] = React.useState('');
         const [phoneMsgs, setPhoneMsgs] = React.useState([]);
@@ -6545,7 +6547,11 @@ function phoneDoComment(id) {
                             线.map((w, i) =>
                               h(
                                 'div',
-                                { className: 'sim-wb-item' + (w.相关 ? ' rel' : ''), key: 't' + i },
+                                {
+                                  className: 'sim-wb-item' + (w.相关 ? ' rel' : ''),
+                                  key: 't' + i,
+                                  onClick: () => setPhoneWbOpen(phoneWbOpen === i ? -1 : i),
+                                  },
                                 h(
                                   'div',
                                   { className: 'sim-wb-hd' },
@@ -6564,9 +6570,24 @@ function phoneDoComment(id) {
                                   'div',
                                   { className: 'sim-wb-acts' },
                                   h('span', null, '↻ ' + (w.转发 || '转发')),
-                                  h('span', null, '💬 ' + (w.评论 || '评论')),
+                                  h('span', null, '💬 ' + (w.评论数 || '评论')),
                                   h('span', null, '☆ ' + (w.赞 || '赞'))
-                                )
+                                ),
+                                // 展开后显示评论区 —— 像真微博那样点开才看得到
+                                phoneWbOpen === i && Array.isArray(w.评论列表) && w.评论列表.length
+                                  ? h(
+                                      'div',
+                                      { className: 'sim-wb-cmts' },
+                                      w.评论列表.map((c, ci) =>
+                                        h(
+                                          'div',
+                                          { className: 'sim-wb-cmt', key: ci },
+                                          h('span', { className: 'who' }, c.谁 + '：'),
+                                          h('span', { className: 'txt' }, c.内容)
+                                        )
+                                      )
+                                    )
+                                  : null
                               )
                             )
                           )
