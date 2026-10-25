@@ -307,6 +307,27 @@ window.__ModuleLoader__.load({
   '.sim-wbf-back{border:0;background:none;font-size:22px;line-height:1;color:#333;padding:0 2px;cursor:pointer}',
   '.sim-wbf-tab{flex:1;text-align:center;font-weight:700;font-size:15px;color:#1a1a1a}',
   '.sim-wbf-more{font-size:18px;color:#999}',
+  '.sim-wbapp{display:flex;flex-direction:column;height:100%;background:#fff}',
+  '.sim-wb-body{flex:1;min-height:0;overflow-y:auto}',
+  '.sim-wb-feed{padding:0 12px 8px}',
+  '.sim-wb-src{display:flex;justify-content:space-between;align-items:center;padding:10px 2px 6px;font-size:12px;color:#999;position:sticky;top:0;background:#fff;z-index:2}',
+  '.sim-wb-item{padding:14px 0;border-bottom:1px solid #f2f2f2}',
+  '.sim-wb-item.rel{}',
+  '.sim-wb-hd{display:flex;align-items:flex-start;gap:10px}',
+  '.sim-wb-av{width:38px;height:38px;border-radius:50%;background:linear-gradient(#FFB199,#FF6A2E);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;flex:0 0 auto}',
+  '.sim-wb-nb{flex:1;min-width:0}',
+  '.sim-wb-nm{font-size:14px;font-weight:700;color:#333;display:flex;align-items:center;gap:4px}',
+  '.sim-wb-v{display:inline-block;font-size:9px;line-height:1;padding:2px 3px;border-radius:3px;background:#FF8200;color:#fff;font-weight:400}',
+  '.sim-wb-tm{font-size:11px;color:#999;margin-top:3px}',
+  '.sim-wb-dots{color:#ccc;font-size:14px}',
+  '.sim-wb-tx{font-size:14px;line-height:1.65;color:#222;margin:8px 0 0;white-space:pre-wrap;word-break:break-word}',
+  '.sim-wb-img{margin-top:8px;font-size:12px;color:#888;border:1px dashed #ddd;border-radius:6px;padding:6px 8px;width:80px;text-align:center}',
+  '.sim-wb-acts{display:flex;gap:22px;margin-top:10px;font-size:12px;color:#8a8a8a}',
+  '.sim-wb-nav{display:flex;flex:0 0 auto;border-top:1px solid #eee;background:#fafafa}',
+  '.sim-wb-nv{flex:1;border:0;background:none;padding:8px 0 10px;display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;color:#8a8a8a}',
+  '.sim-wb-nv .i{font-size:17px;line-height:1}',
+  '.sim-wb-nv .l{font-size:10px;line-height:1}',
+  '.sim-wb-nv.on{color:#FF6A2E}',
   '.sim-wbf-hd{display:flex;justify-content:space-between;align-items:center;padding:10px 0 6px;font-size:12px;color:#999;position:sticky;top:0;background:#fff;z-index:2}',
   '.sim-wbf-src{font-size:11px;color:#bbb}',
   '.sim-wbf-row{display:flex;align-items:center;gap:8px;padding:11px 0;border-bottom:1px solid #f5f5f5}',
@@ -3940,6 +3961,7 @@ function App({ gameId, close }) {
         const [phoneHot, setPhoneHot] = React.useState(null);
         const [phoneHotBusy, setPhoneHotBusy] = React.useState(false);
         const [phoneWbWho, setPhoneWbWho] = React.useState('');
+        const [phoneWbTab, setPhoneWbTab] = React.useState('home');   // 微博底部的三个 tab
         const [phoneContacts, setPhoneContacts] = React.useState(null);
         const [phoneThreadId, setPhoneThreadId] = React.useState('');
         const [phoneMsgs, setPhoneMsgs] = React.useState([]);
@@ -6495,43 +6517,85 @@ function phoneDoComment(id) {
 
             // album：iOS 风格 —— 按日期分节、3 列贴满、点一张进全屏
             if (phoneView === 'weibo') {
-              const hs = phoneHot || { ok: false, 热搜: [], 来源: '', 提示: '' };
-              const 条 = Array.isArray(hs.热搜) ? hs.热搜 : [];
+              const hs = phoneHot || { ok: false, 时间线: [], 热搜: [], 来源: '', 提示: '' };
+              const 线 = Array.isArray(hs.时间线) ? hs.时间线 : [];
+              const 热 = Array.isArray(hs.热搜) ? hs.热搜 : [];
+              const tab = phoneWbTab || 'home';
               return h(
                 'div',
-                { className: 'sim-wbfeed' },
+                { className: 'sim-wbapp' },
+                // 顶栏：返回 + 标题 + 刷新
                 h(
                   'div',
-                  { className: 'sim-wbf-top' },
+                  { className: 'sim-wb-top' },
                   h('button', { className: 'sim-wbf-back', onClick: () => setPhoneView('home') }, '‹'),
-                  h('div', { className: 'sim-wbf-tab' }, '微博热搜'),
+                  h('div', { className: 'sim-wbf-tab' }, tab === 'home' ? '微博' : (tab === 'explore' ? '发现' : '我的主页')),
                   h('span', { className: 'sim-wbf-more', title: '刷新', onClick: () => { if (!phoneHotBusy) phoneLoadHot(true); } }, phoneHotBusy ? '…' : '↻')
                 ),
-                phoneHotBusy && !条.length
-                  ? h('div', { className: 'sim-wbf-empty' }, '正在生成这一屏热搜…')
-                  : 条.length
-                  ? h(
-                      'div',
-                      { className: 'sim-wbf-list' },
-                      h('div', { className: 'sim-wbf-hd' },
-                        h('span', null, hs.日期 ? hs.日期.replace(/-/g, '·') : ''),
-                        h('span', { className: 'sim-wbf-src' }, hs.来源 === '缓存' ? '今日' : (hs.来源 === '生成' ? '刚刚更新' : (hs.来源 === '旧缓存' ? '停在上次' : '')))
-                      ),
-                      条.map((x, i) =>
-                        h(
-                          'div',
-                          { className: 'sim-wbf-row' + (x.剧情 ? ' hot' : ''), key: x.序号 || i },
-                          h('span', { className: 'sim-wbf-no' + (i < 3 ? ' top' : '') }, String(x.序号 || i + 1)),
-                          h('span', { className: 'sim-wbf-word' }, String(x.标题 || '')),
-                          x.标签 ? h('span', { className: 'sim-wbf-tag' }, String(x.标签)) : null,
-                          h('span', { className: 'sim-wbf-heat' }, Number(x.热度) >= 10000 ? (Number(x.热度) / 10000).toFixed(1) + '万' : String(x.热度 || ''))
-                        )
-                      )
-                    )
-                  : h('div', { className: 'sim-wbf-empty' },
-                      h('div', null, '还没有热搜。'),
-                      hs.提示 ? h('div', { style: { marginTop: 8, fontSize: 12, color: '#b0b0b0' } }, hs.提示) : null
-                    )
+                // 内容区
+                h('div', { className: 'sim-wb-body' },
+                  phoneHotBusy && !线.length && !热.length
+                    ? h('div', { className: 'sim-wbf-empty' }, '正在生成这一屏…')
+                    : tab === 'home'
+                    ? (线.length
+                        ? h(
+                            'div',
+                            { className: 'sim-wb-feed' },
+                            h('div', { className: 'sim-wb-src' }, hs.日期 ? hs.日期.replace(/-/g, '·') : '', h('span', { className: 'sim-wbf-src' }, hs.来源 === '缓存' ? '今日' : (hs.来源 === '生成' ? '刚刚更新' : (hs.来源 === '旧缓存' ? '停在上次' : '')))),
+                            线.map((w, i) =>
+                              h(
+                                'div',
+                                { className: 'sim-wb-item' + (w.相关 ? ' rel' : ''), key: 't' + i },
+                                h(
+                                  'div',
+                                  { className: 'sim-wb-hd' },
+                                  h('span', { className: 'sim-wb-av' }, String(w.作者 || '微')[0]),
+                                  h(
+                                    'div',
+                                    { className: 'sim-wb-nb' },
+                                    h('div', { className: 'sim-wb-nm' }, w.作者 || '', w.认证 ? h('span', { className: 'sim-wb-v' }, 'V') : null),
+                                    h('div', { className: 'sim-wb-tm' }, [w.认证, w.时间].filter(Boolean).join(' · ')),
+                                  ),
+                                  h('span', { className: 'sim-wb-dots' }, '···')
+                                ),
+                                h('div', { className: 'sim-wb-tx' }, w.正文 || ''),
+                                w.有图 ? h('div', { className: 'sim-wb-img' }, '图片') : null,
+                                h(
+                                  'div',
+                                  { className: 'sim-wb-acts' },
+                                  h('span', null, '↻ ' + (w.转发 || '转发')),
+                                  h('span', null, '💬 ' + (w.评论 || '评论')),
+                                  h('span', null, '☆ ' + (w.赞 || '赞'))
+                                )
+                              )
+                            )
+                          )
+                        : h('div', { className: 'sim-wbf-empty' }, '还没有内容。', hs.提示 ? h('div', { style: { marginTop: 8, fontSize: 12, color: '#b0b0b0' } }, hs.提示) : null))
+                    : tab === 'explore'
+                    ? (热.length
+                        ? h(
+                            'div',
+                            { className: 'sim-wbf-list' },
+                            热.map((x, i) =>
+                              h(
+                                'div',
+                                { className: 'sim-wbf-row' + (x.剧情 ? ' hot' : ''), key: 'h' + i },
+                                h('span', { className: 'sim-wbf-no' + (i < 3 ? ' top' : '') }, String(x.序号 || i + 1)),
+                                h('span', { className: 'sim-wbf-word' }, String(x.标题 || '')),
+                                x.标签 ? h('span', { className: 'sim-wbf-tag' }, String(x.标签)) : null,
+                                h('span', { className: 'sim-wbf-heat' }, Number(x.热度) >= 10000 ? (Number(x.热度) / 10000).toFixed(1) + '万' : String(x.热度 || ''))
+                              )
+                            )
+                          )
+                        : h('div', { className: 'sim-wbf-empty' }, '还没有热搜。'))
+                    : h('div', { className: 'sim-wbf-empty' }, '主页还没做。')
+                ),
+                // 底部导航
+                h('div', { className: 'sim-wb-nav' },
+                  h('button', { className: 'sim-wb-nv' + (tab === 'home' ? ' on' : ''), onClick: () => setPhoneWbTab('home') }, h('span', { className: 'i' }, '🏠'), h('span', { className: 'l' }, '首页')),
+                  h('button', { className: 'sim-wb-nv' + (tab === 'explore' ? ' on' : ''), onClick: () => setPhoneWbTab('explore') }, h('span', { className: 'i' }, '🔍'), h('span', { className: 'l' }, '发现')),
+                  h('button', { className: 'sim-wb-nv' + (tab === 'me' ? ' on' : ''), onClick: () => setPhoneWbTab('me') }, h('span', { className: 'i' }, '👤'), h('span', { className: 'l' }, '我'))
+                )
               );
             }
             if (phoneView === 'album') {

@@ -5125,7 +5125,7 @@ const TOKEN_DEFAULTS = {
   story: 12000,        // 正文（中文 1 字≈1.5 token，4500 只够 3000 字；实测单轮到过 5750 字）
   settle: 20000,       // 结算（实测思考到过 19000 字≈12600 token）：全部变量变化（最费）
   summary: 6000,       // 剧情总结
-  weibo: 3000,         // 微博热搜：十几条短标题，不需要长
+  weibo: 6000,         // 微博热搜：十几条短标题，不需要长
   summaryMerge: 6000,  // 多段总结合并
   parse: 8000,         // 创角解析（主角＋名册）
   realInfo: 8000,      // 真人资料补全
@@ -10315,23 +10315,38 @@ function 热搜提示词(s) {
   L.push('但查到的东西如果跟游戏内日期差一个月以上，不要直接抄，改成那个时间点合理会有的内容。');
   L.push('查不到就按那个年代的社会气氛自己写 —— 但要像真事，不要像编的。');
   L.push('');
-  L.push('【输出两组】');
+  L.push('【时间线怎么编】');
+  L.push('这一屏是「推荐算法推给你的」。所以要有亲近感，也要有杂音。');
+  L.push('· 8~10 条。其中 3~4 条来自上面那批人（相关: true）—— 他们在营业：');
+  L.push('  发剧照、发日常、转发别人的微博、给谁点赞。措辞要像艺人自己发的：');
+  L.push('  短句、emoji、偶尔的废话，不解释、不总结。');
+  L.push('· 其余来自真实艺人和媒体号（相关: false）—— 内容跟他们无关，');
+  L.push('  但**风格要混着来**：营销号、粉丝站、官媒、路人吐槽，都要有。');
+  L.push('· 每条正文 30~80 字，不要写成长文。有图就标 有图: true。');
+  L.push('· 时间用「2小时前 / 昨天 21:30 / 5-19」这种相对写法。');
   L.push('');
-  L.push('一、剧情热搜（1~4 条）：跟上面那批人直接相关。');
+  L.push('【输出三组】');
+  L.push('');
+  L.push('一、时间线（8~10 条）：见上面的【时间线怎么编】。');
+  L.push('');
+  L.push('二、剧情热搜（1~4 条）：跟上面那批人直接相关。');
   L.push('  杀青、定档、被拍、翻车、撕番、官宣、路透、暴雷 —— 有什么写什么。');
   L.push('  措辞要像营销号标题，不要像剧情总结。');
   L.push('');
-  L.push('二、世界热搜（10~14 条）：跟上面那批人**完全无关**的事。');
+  L.push('三、世界热搜（10~14 条）：跟上面那批人**完全无关**的事。');
   L.push('  **这组里一个角色名都不许出现，也不许影射他们。**');
   L.push('  社会新闻、别家艺人的八卦、奇闻异事、全民话题，混着来。');
   L.push('');
   L.push('【格式】只输出一个 JSON，不要任何别的字：');
   L.push('{');
+  L.push('  "时间线": [');
+  L.push('    { "作者":"田曦薇", "认证":"演员", "时间":"3小时前", "正文":"…", "有图":true, "转发":"1.2万", "评论":"8642", "赞":"23.5万", "相关":true }');
+  L.push('  ],');
   L.push('  "剧情热搜": ["标题1", "标题2"],');
   L.push('  "世界热搜": ["标题1", "标题2", "..."]');
   L.push('}');
   L.push('');
-  L.push('标题要短（不超过 24 字），带话题标签的用 #话题# 包住。不要加热度数字，那个我来加。');
+  L.push('热搜标题要短（不超过 24 字），带话题标签的用 #话题# 包住。不要加热度数字，那个我来加。');
   return L.join('\n');
 }
 
@@ -10347,14 +10362,14 @@ async function getHotsearch(s, gid) {
 
   // 缓存命中：同一天、有内容
   if (cache && cache.日期 && cache.日期 === 日期 && Array.isArray(cache.热搜) && cache.热搜.length) {
-    return { ok: true, 来源: '缓存', 日期, 热搜: cache.热搜 };
+    return { ok: true, 来源: '缓存', 日期, 热搜: cache.热搜, 时间线: Array.isArray(cache.时间线) ? cache.时间线 : [] };
   }
 
   // 没配槽位就别硬来
   const cfg = (s.config && s.config.weibo) || {};
   if (!cfg.provider || !cfg.model) {
     if (cache && Array.isArray(cache.热搜) && cache.热搜.length) {
-      return { ok: true, 来源: '旧缓存', 日期: cache.日期 || '', 热搜: cache.热搜, 提示: '微博模型没配，用的是上一次的结果' };
+      return { ok: true, 来源: '旧缓存', 日期: cache.日期 || '', 热搜: cache.热搜, 时间线: Array.isArray(cache.时间线) ? cache.时间线 : [], 提示: '微博模型没配，用的是上一次的结果' };
     }
     return { ok: false, 来源: 'none', 日期, 热搜: [], 提示: '请先在设定页配好微博模型' };
   }
@@ -10365,9 +10380,22 @@ async function getHotsearch(s, gid) {
     const r = await callSlot(s, 'weibo', msgs, { tag: '微博', temperature: 0.9 });
     const txt = (r && typeof r === 'object' && r.text != null ? String(r.text) : String(r == null ? '' : r)).trim();
     const obj = parseJsonLoose(txt);
+    // 时间线：模型给的是一组对象，逐条规范化 —— 缺字段给空串，别让界面拿到 undefined。
+    const 时间线对 = (x) => ({
+      作者: String((x && x.作者) || ''),
+      认证: String((x && x.认证) || ''),
+      时间: String((x && x.时间) || ''),
+      正文: String((x && x.正文) || ''),
+      有图: !!(x && x.有图),
+      转发: String((x && x.转发) || ''),
+      评论: String((x && x.评论) || ''),
+      赞: String((x && x.赞) || ''),
+      相关: !!(x && x.相关),
+    });
+    const 时间线 = Array.isArray(obj && obj.时间线) ? obj.时间线.filter((x) => x && x.正文).map(时间线对) : [];
     const 剧情 = Array.isArray(obj && obj.剧情热搜) ? obj.剧情热搜.map(String).filter(Boolean) : [];
     const 世界 = Array.isArray(obj && obj.世界热搜) ? obj.世界热搜.map(String).filter(Boolean) : [];
-    if (!剧情.length && !世界.length) throw new Error('模型没给热搜（原文前 80 字：' + txt.slice(0, 80) + '）');
+    if (!时间线.length && !剧情.length && !世界.length) throw new Error('模型没给热搜（原文前 80 字：' + txt.slice(0, 80) + '）');
 
     // 拼成一屏：剧情置顶，世界补满 18 条
     const 一屏 = [];
@@ -10386,16 +10414,16 @@ async function getHotsearch(s, gid) {
     });
 
     try {
-      await writeJson(p, { 日期, 生成于: Date.now(), 热搜: 一屏 });
+      await writeJson(p, { 日期, 生成于: Date.now(), 热搜: 一屏, 时间线 });
     } catch (e) {
       await turnLog('[微博] 缓存写入失败：' + String((e && e.message) || e));
     }
     await turnLog('[微博] 生成热搜 ' + 一屏.length + ' 条（剧情 ' + 剧情.length + ' / 世界 ' + 世界.length + '）');
-    return { ok: true, 来源: '生成', 日期, 热搜: 一屏 };
+    return { ok: true, 来源: '生成', 日期, 热搜: 一屏, 时间线 };
   } catch (e) {
     await turnLog('[微博] 生成失败：' + String((e && e.message) || e));
     if (cache && Array.isArray(cache.热搜) && cache.热搜.length) {
-      return { ok: true, 来源: '旧缓存', 日期: cache.日期 || '', 热搜: cache.热搜, 提示: '这次没生成出来，用的是上一次的结果' };
+      return { ok: true, 来源: '旧缓存', 日期: cache.日期 || '', 热搜: cache.热搜, 时间线: Array.isArray(cache.时间线) ? cache.时间线 : [], 提示: '这次没生成出来，用的是上一次的结果' };
     }
     return { ok: false, 来源: 'failed', 日期, 热搜: [], 提示: String((e && e.message) || e).slice(0, 120) };
   }
