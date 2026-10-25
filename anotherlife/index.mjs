@@ -9074,6 +9074,7 @@ reg('saveOracleAgent', async ({ gameId, on }) => {
         wantTools: true,
       });
       // 首选工具调用：参数本来就是 JSON，不用防围栏和半截输出
+      const viaTool = pickToolCall(r);
       // 留证据：模型到底给了什么。工具没调 / 调了但参数空 / 只有 summary，是三种不同病。
       const 调用数 = (r && Array.isArray(r.toolCalls)) ? r.toolCalls.length : 0;
       const 键数 = viaTool ? Object.keys(viaTool).filter((k) => !String(k).startsWith('_')).length : 0;
@@ -9102,7 +9103,6 @@ reg('saveOracleAgent', async ({ gameId, on }) => {
         }
         throw new Error('「变量解析」模型两次都没给出字段（工具参数为空）。换一个解析模型试试。');
       }
-      const viaTool = pickToolCall(r);
       if (viaTool && parseToolOk(viaTool)) return viaTool;
       const out = String(r && r.text != null ? r.text : r == null ? '' : r).trim();
       if (!out) throw new Error('「变量解析」模型没有返回内容');
