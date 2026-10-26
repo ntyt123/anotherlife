@@ -7754,7 +7754,7 @@ if (微博待发.length) {
 
     // 正文里如果有 :::weibo_reply 块，剥出来写回微博缓存（不给玩家看见）
     try {
-      sp.body = await 处理微博回复(s, gid, sp.body, 微博待发);
+      sp.body = await 处理微博回复(s, gid, sp.body, 微博待发, seq);
       // 剥掉末尾分节符（*** / --- / ===）。模型爱在收尾时加，看着像没写完。
       // 用 split 判断，避开正则转义 —— 只处理末尾，中间的分节符是排版用的，留着。
       剥末尾分节符: {
@@ -10782,7 +10782,7 @@ function 取待发评论(gid, seq) {
  *
  * 匹配不到对应微博就丢弃并记日志，不乱塞。
  */
-async function 处理微博回复(s, gid, body, 待发) {
+async function 处理微博回复(s, gid, body, 待发, seq) {
   const txt = String(body || '');
   if (txt.indexOf(':::weibo_reply') < 0) return body;
   const re = /:::weibo_reply\s*\n([\s\S]*?)\n:::/g;
@@ -10844,10 +10844,29 @@ async function 处理微博回复(s, gid, body, 待发) {
     if (命中 < 0) return;
     const 条 = cache.时间线[命中];
     if (!Array.isArray(条.评论列表)) 条.评论列表 = [];
-    条.评论列表.push({ 谁: o.谁, 内容: o.内容, 回谁: o.回谁 || '', 回复: true });
+    // 重发同一轮时这段会再跑一次 —— 先把本轮写过的回复清掉，否则会叠两条一模一样的。
+    if (seq != null) 条.评论列表 = 条.评论列表.filter((c) => !(c && c.回复 && Number(c.轮次) === Number(seq)));
+    条.评论列表.push({ 谁: o.谁, 内容: o.内容, 回谁: o.回谁 || '', 回复: true, 轮次: seq == null ? undefined : Number(seq) });
     成功++;
   });
-  if (成功) {
+  // 老数据里可能已经叠了重复回复（重发时旧版会写两遍），顺手去个重：
+  // 同一微博下、谁和内容完全相同的，只留最早那条。
+  let 去过重 = false;
+  cache.时间线.forEach((w) => {
+    if (!w || !Array.isArray(w.评论列表)) return;
+    const 见过 = new Set();
+    const 前 = w.评论列表.length;
+    w.评论列表 = w.评论列表.filter((c) => {
+      if (!c) return false;
+      const k = String(c.谁 || '') + '\u0001' + String(c.内容 || '');
+      if (见过.has(k)) return false;
+      见过.add(k);
+      return true;
+    });
+    if (w.评论列表.length !== 前) 去过重 = true;
+  });
+  
+  if (成功 || 去过重) {
     try { await writeJson(p, cache); } catch (e) {
       await turnLog('[微博] 回复写回缓存失败：' + String((e && e.message) || e));
     }
