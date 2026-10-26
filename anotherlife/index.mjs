@@ -5401,7 +5401,6 @@ const STYLE_NOTES_DEFAULT = [
         // 不再二次截断 —— read_turns 一轮就截到 4000，search 最多约 800 字，
         // 工具侧已经保证体积。原来这里再砍到 3000，等于把刚读到的正文又切掉一截。
         const body = String(out);
-        await turnLog('[神谕·回灌] ' + tc.name + ' id=' + String(tc.id || '(无)') + ' 给了 ' + body.length + ' 字：' + body.slice(0, 100).replace(/\s+/g, ' ')).catch(() => {});
         messages.push({ role: 'tool', toolCallId: tc.id, toolName: tc.name, content: body });
       }
       r = await callMainModel(messages, 带工具);
@@ -11871,8 +11870,6 @@ function recentBodies(s, rounds) {
       }
       if (name === 'list_notes') {
         const items = await readNotes(gameId);
-        // 留证据：读的哪个文件、拿到几条。神谕说「没有笔记」时靠这行判断。
-        await turnLog('[神谕·笔记] 列 gameId=' + gameId + ' 文件=' + notesFile(gameId) + ' 条目=' + items.length).catch(() => {});
         if (!items.length) return '（还没有笔记）';
         return items
           .map((x) => {
@@ -11887,7 +11884,6 @@ function recentBodies(s, rounds) {
         const q = String(a.query || '').trim();
         if (!q) return '（关键词是空的）';
         const items = await readNotes(gameId);
-        await turnLog('[神谕·笔记] 搜「' + q + '」 条目=' + items.length).catch(() => {});
         const hits = [];
         for (const x of items) {
           const body = String(x.body || '');
@@ -12005,7 +12001,6 @@ function recentBodies(s, rounds) {
             ? String(out).slice(0, ORACLE_BACKFILL) +
               '\n（共 ' + String(out).length + ' 字，已截断）'
             : String(out);
-        await turnLog('[神谕·回灌] ' + tc.name + ' id=' + String(tc.id || '(无)') + ' 给了 ' + body.length + ' 字：' + body.slice(0, 100).replace(/\s+/g, ' ')).catch(() => {});
         messages.push({ role: 'tool', toolCallId: tc.id, toolName: tc.name, content: body });
         // 再补一条纯文本。tool-result 这个块上游不一定认（实测给了 800 字、
         // 模型仍回答「接口返回为空」，而且同一轮反复重调工具），
