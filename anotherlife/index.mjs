@@ -11320,6 +11320,7 @@ async function getHotsearch(s, gid, opts) {
     } else {
       分配时间(时间线, 4);
     }
+    const 剧情 = Array.isArray(obj && obj.剧情热搜) ? obj.剧情热搜.map(String).filter(Boolean) : [];
     const 世界 = Array.isArray(obj && obj.世界热搜) ? obj.世界热搜.map(String).filter(Boolean) : [];
     if (!时间线.length && !剧情.length && !世界.length) throw new Error('模型没给热搜（原文前 80 字：' + txt.slice(0, 80) + '）');
 
