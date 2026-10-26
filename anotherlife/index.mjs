@@ -5379,7 +5379,7 @@ const STYLE_NOTES_DEFAULT = [
         // 预算用完：把工具摘掉、补一句说明，让它现在就把正文写出来
         messages.push({ role: 'assistant', content: String(r.text || ''), toolCalls: calls });
         for (const tc of calls) {
-          messages.push({ role: 'tool', toolCallId: tc.id, content: '（检索预算已用完，请用现有材料直接写正文）' });
+          messages.push({ role: 'tool', toolCallId: tc.id, toolName: tc.name, content: '（检索预算已用完，请用现有材料直接写正文）' });
         }
         return await callMainModel(messages, opts);
       }
