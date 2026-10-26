@@ -6730,7 +6730,9 @@ function phoneDoComment(id) {
                                       return [
                                         普通评论.map((c, ci) => {
                                           const 我对他的 = 我的.filter((m) => String(m.回谁 || '') === String(c.谁 || ''));
-                                          const 这段回我的 = 已放.v ? [] : 回我的;
+                                          // 只有「这条评论下有你回复」的那一条，才把「回你的」带上 ——
+                                          // 原来只判 已放，结果第一条评论就把它们收走了，挂在一条你根本没回过的评论下面。
+                                          const 这段回我的 = (已放.v || !我对他的.length) ? [] : 回我的;
                                           if (这段回我的.length) 已放.v = true;
                                           return h(
                                             'div',
