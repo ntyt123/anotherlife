@@ -4022,6 +4022,8 @@ function App({ gameId, close }) {
         const [rebuildBusy, setRebuildBusy] = React.useState(false);
         // 补电话进行中
         const [phoneFillBusy, setPhoneFillBusy] = React.useState(false);
+        // 补电话跑完的结果（补了几个 / 留空几个 / 存档路径）
+        const [phoneFillInfo, setPhoneFillInfo] = React.useState(null);
         const [phoneContacts, setPhoneContacts] = React.useState(null);
         const [phoneThreadId, setPhoneThreadId] = React.useState('');
         const [phoneMsgs, setPhoneMsgs] = React.useState([]);
@@ -12687,7 +12689,9 @@ function thinkDrifted(t) {
                       setPhoneFillBusy(false);
                       var 补 = r && r.已补 != null ? r.已补 : '?';
                       var 待 = r && r.待补 != null ? r.待补 : '?';
-                      setNote(待 === 0 ? '所有人都有电话了' : '补了 ' + 补 + ' / ' + 待 + ' 人');
+                      var 空 = r && r.留空 != null ? r.留空 : 0;
+                      setPhoneFillInfo({ 补: 补, 待: 待, 空: 空, 文件: (r && r.文件) || '' });
+                      setNote(待 === 0 ? '所有人都有电话了' : '补了 ' + 补 + ' / ' + 待 + ' 人' + (空 ? '，' + 空 + ' 人留空' : ''));
                       try { load(); } catch (e) {}
                     })
                     .catch(function (e) {
@@ -12695,7 +12699,13 @@ function thinkDrifted(t) {
                       setNote('补电话失败：' + String((e && e.message) || e));
                     });
                 },
-              }, phoneFillBusy ? '正在补…' : '补齐电话')
+              }, phoneFillBusy ? '正在补…' : '补齐电话'),
+              // 结果和存档路径 —— 留空的人要玩家自己去那份 JSON 里填
+              phoneFillInfo ? h('div', { style: { marginTop: 10, fontSize: 12, lineHeight: 1.9, color: '#888' } },
+                h('div', null, '补了 ' + phoneFillInfo.补 + ' / ' + phoneFillInfo.待 + ' 人' + (phoneFillInfo.空 ? '，' + phoneFillInfo.空 + ' 人留空' : '')),
+                phoneFillInfo.空 ? h('div', null, '留空的人已经建好空号位，可以到下面这份文件里手填：') : null,
+                phoneFillInfo.文件 ? h('div', { style: { wordBreak: 'break-all', color: '#666', marginTop: 2 } }, phoneFillInfo.文件) : null
+              ) : null,
             ),
 
             /* ── 外观与正文 ── */
