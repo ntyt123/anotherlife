@@ -5395,6 +5395,7 @@ const STYLE_NOTES_DEFAULT = [
         // 不再二次截断 —— read_turns 一轮就截到 4000，search 最多约 800 字，
         // 工具侧已经保证体积。原来这里再砍到 3000，等于把刚读到的正文又切掉一截。
         const body = String(out);
+        await turnLog('[神谕·回灌] ' + tc.name + ' id=' + String(tc.id || '(无)') + ' 给了 ' + body.length + ' 字：' + body.slice(0, 100).replace(/\s+/g, ' ')).catch(() => {});
         messages.push({ role: 'tool', toolCallId: tc.id, content: body });
       }
       r = await callMainModel(messages, 带工具);
@@ -11998,6 +11999,7 @@ function recentBodies(s, rounds) {
             ? String(out).slice(0, ORACLE_BACKFILL) +
               '\n（共 ' + String(out).length + ' 字，已截断）'
             : String(out);
+        await turnLog('[神谕·回灌] ' + tc.name + ' id=' + String(tc.id || '(无)') + ' 给了 ' + body.length + ' 字：' + body.slice(0, 100).replace(/\s+/g, ' ')).catch(() => {});
         messages.push({ role: 'tool', toolCallId: tc.id, content: body });
       }
     }
