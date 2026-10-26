@@ -7446,7 +7446,7 @@ function seasonText(s) {
 
 // 微博上刚做过的事：只在真有未发的评论时才注入，注入完就清空（一次性）。
 // 不给它整屏微博，只给「他评的那一条」—— 上下文别被无关内容撑大。
-const 微博待发 = 取待发评论(gid);
+const 微博待发 = 取待发评论(gid, seq);
 if (微博待发.length) {
   const 行s = [];
   行s.push('');
@@ -10729,14 +10729,20 @@ reg('feedDelComment', async ({ gameId, 平台, id, 索引 }) => {
 // ────────────────────── 微博评论 · 待发队列 ──────────────────────
 // 玩家在微博里评论了某条微博/某条评论，这个动作要影响下一轮正文。
 // 存内存 —— 重启就丢（刻意的：它是一次性行为，不是状态）。
-// 发送成功后清空，不会重复注入。
-const WB_PENDING = {};   // gameId -> [{ 微博作者, 微博正文, 回谁, 评论, 时 }]
-
+// **不能取出就清空**：玩家点「重新生成」时，同一轮要能再取到这条，
+// 否则重发之后他「评论过」这个动作在正文里凭空消失。改成按轮次存、按轮次取。
+const WB_PENDING = {};   // gameId -> [{ 微博作者, 微博正文, 回谁, 评论, 时, 轮次 }]
 /** 记一条待发评论。回谁 为空表示直接评那条微博，否则是评某条评论。 */
 reg('queueWeiboComment', async ({ gameId, 微博作者, 微博正文, 回谁, 评论 }) => {
   const gid = String(gameId || '');
   const txt = String(评论 || '').trim();
   if (!txt) return { ok: false, why: '空的' };
+  // 绑到「下一轮」—— 重发同一轮时还要能取到，所以不能取出即清空。
+  let 轮次 = null;
+  try {
+    const st0 = await loadState(gid);
+    轮次 = st0 && st0.story && st0.story.current_message_index != null ? Number(st0.story.current_message_index) : null;
+  } catch (e) { 轮次 = null; }
   if (!WB_PENDING[gid]) WB_PENDING[gid] = [];
   WB_PENDING[gid].push({
     微博作者: String(微博作者 || ''),
@@ -10744,6 +10750,7 @@ reg('queueWeiboComment', async ({ gameId, 微博作者, 微博正文, 回谁, �
     回谁: String(回谁 || ''),
     评论: txt,
     时: Date.now(),
+    轮次,
   });
   if (WB_PENDING[gid].length > 6) WB_PENDING[gid].shift();
   await turnLog('[微博] 记下一条待发评论，共 ' + WB_PENDING[gid].length + ' 条');
@@ -10751,11 +10758,13 @@ reg('queueWeiboComment', async ({ gameId, 微博作者, 微博正文, 回谁, �
 });
 
 /** 取出并清空待发队列。正文提示词拼装时调它；拼完就等于用掉了。 */
-function 取待发评论(gid) {
+function 取待发评论(gid, seq) {
   const g = String(gid || '');
   const list = WB_PENDING[g] || [];
-  WB_PENDING[g] = [];
-  return list;
+  // 没传轮次（老调用）：全给，保持原来行为
+  if (seq == null) return list.slice();
+  // 按轮次取。轮次不明的（内存补录过）也给，宁多勿漏。
+  return list.filter((w) => w.轮次 == null || Number(w.轮次) === Number(seq));
 }
 
 /**
