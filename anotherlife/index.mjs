@@ -11271,10 +11271,32 @@ async function getHotsearch(s, gid, opts) {
       赞: String((x && x.赞) || ''),
       相关: !!(x && x.相关),
     });
-    const 时间线 = Array.isArray(obj && obj.时间线) ? obj.时间线.filter((x) => x && x.正文).map(时间线对) : [];
-    // 时间由代码分配：第一批发自 4 分钟前，往后每条间隔 35~95 分钟
-    分配时间(时间线, 4);
-    const 剧情 = Array.isArray(obj && obj.剧情热搜) ? obj.剧情热搜.map(String).filter(Boolean) : [];
+    let 时间线 = Array.isArray(obj && obj.时间线) ? obj.时间线.filter((x) => x && x.正文).map(时间线对) : [];
+    // 时间由代码分配：第一批发自 4 分钟前，往后每条间隔 35~95 分钟。
+    // 但「玩家评论过」和「有人回过他」的微博不能跟着旧时间线一起丢 ——
+    // 游戏内过一天就会重生成（缓存只在同一天命中），那些微博会凭空消失，
+    // 连着底下的评论和回复全没了，玩家回头找不到自己刚说过的话。
+    const 旧线 = Array.isArray(cache && cache.时间线) ? cache.时间线 : [];
+    const 我评过的 = Array.isArray(s.wbMine) ? s.wbMine : [];
+    const 要留 = 旧线.filter((w) => {
+      if (!w || !String(w.正文 || '').trim()) return false;
+      const 有回过 = (Array.isArray(w.评论列表) ? w.评论列表 : []).some((c) => c && c.回复);
+      const 我评了 = 我评过的.some((m) => m
+        && String(m.作者 || '') === String(w.作者 || '')
+        && String(w.正文 || '').slice(0, 60) === String(m.正文 || '').slice(0, 60));
+      return 有回过 || 我评了;
+    });
+    if (要留.length) {
+      // 这几条「刚刚还在你手机上」，排在最新；新生成的那批接在后面
+      const 留正文 = new Set(要留.map((w) => String(w.正文 || '').slice(0, 20)));
+      时间线 = 时间线.filter((w) => !留正文.has(String(w.正文 || '').slice(0, 20)));
+      分配时间(要留, 1);
+      分配时间(时间线, 下一批起点(要留));
+      时间线 = 要留.concat(时间线);
+      await turnLog('[微博] 保留 ' + 要留.length + ' 条互动过的旧微博');
+    } else {
+      分配时间(时间线, 4);
+    }
     const 世界 = Array.isArray(obj && obj.世界热搜) ? obj.世界热搜.map(String).filter(Boolean) : [];
     if (!时间线.length && !剧情.length && !世界.length) throw new Error('模型没给热搜（原文前 80 字：' + txt.slice(0, 80) + '）');
 
