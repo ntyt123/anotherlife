@@ -3994,6 +3994,8 @@ function App({ gameId, close }) {
         const [wbMine, setWbMine] = React.useState([]);
         // 「我」那一页的数据（主角资料 + 最近 10 轮的微博）
         const [phoneMe, setPhoneMe] = React.useState(null);
+        // 重建历史小结的进行中标记
+        const [rebuildBusy, setRebuildBusy] = React.useState(false);
         const [phoneContacts, setPhoneContacts] = React.useState(null);
         const [phoneThreadId, setPhoneThreadId] = React.useState('');
         const [phoneMsgs, setPhoneMsgs] = React.useState([]);
@@ -12511,6 +12513,29 @@ function thinkDrifted(t) {
             'div',
             null,
             h('div', { className: 'sim-hint', style: { marginBottom: 10 } }, '模型与注入规则跨故事共用，新开一局会带上；每局独立的只有剧情本身。'),
+
+            /* ── 历史小结 ── */
+            h('div', { className: 'sim-card', style: { marginTop: 14 } },
+              h('div', { style: { fontSize: 'var(--sim-fs-4)', fontWeight: 600, marginBottom: 6 } }, '重建历史小结'),
+              h('div', { className: 'sim-hint', style: { lineHeight: 1.8, marginBottom: 12 } }, '把每一轮的小结按「时间／地点／发生的事」重写一遍。' + String((state && state.transcript ? state.transcript.filter(function (t) { return t && t.role !== 'user' && String(t.body || '').trim(); }).length : 0)) + ' 轮，会跑一会儿。'),
+              h(Btn, {
+                primary: true,
+                disabled: !!rebuildBusy,
+                onClick: function () {
+                  ask('重写全部历史小结？会先备份一份 .bak，能回滚。').then(function (o) {
+                    if (o !== true) return;
+                    setRebuildBusy(true);
+                    Promise.resolve(call('rebuildSummaries', {}, gameId))
+                      .then(function (r) {
+                        setNote('重建完成：' + (r && r.已重写 != null ? r.已重写 : '?') + ' / ' + (r && r.总轮数 != null ? r.总轮数 : '?') + ' 条');
+                        return load(true);
+                      })
+                      .catch(function (e) { setNote('重建失败：' + String((e && e.message) || e)); })
+                      .then(function () { setRebuildBusy(false); });
+                  });
+                },
+              }, rebuildBusy ? '正在重建…' : '开始重建')
+            ),
 
             /* ── 外观与正文 ── */
             /* ── 人称 ── */

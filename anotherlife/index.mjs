@@ -11091,6 +11091,62 @@ reg('setStarMode', async ({ gameId, on }) => {
   return await loadState(gameId);   // 返回完整状态，界面用 run() 吸收
 });
 
+/** 把历史每轮的 summary 按新格式重跑。每批 5 轮，先备份再动。 */
+reg('rebuildSummaries', async ({ gameId }) => {
+  const s = await loadState(gameId);
+  const 助 = (s.transcript || []).filter((t) => t && t.role !== 'user' && String(t.body || '').trim());
+  if (!助.length) throw new Error('这局还没有正文');
+  try {
+    fs.writeText(fs.resolve('simulator-' + String(gameId) + '.json.bak'), JSON.stringify(s, null, 2));
+    await turnLog('[重建] 已备份');
+  } catch (e) { await turnLog('[重建] 备份失败：' + String((e && e.message) || e)); }
+  const 系统 = [
+    '你是剧情记录员。为下面每一轮写一条小结。',
+    '',
+    '输出严格 JSON 数组，不要任何其他文字、不要代码块标记：',
+    '[{"轮次": 0, "时间": "2010年9月1日 上午", "地点": "东棉花胡同39号中戏正门", "发生的事": "……"}]',
+    '',
+    '要求：',
+    '· 时间 —— 正文里能找到就照抄，写成「年月日 + 时段」；找不到按前后文推断，不许留空。',
+    '· 地点 —— 具体到房间或街道（「东楼302宿舍」），不要只写「北京」。',
+    '· 发生的事 —— 150~220 字，必须带具体名词：人名、剧组名、地名、金额、数字。',
+    '· 不要写「发生了一些事」「进行了交流」这种空话 —— 这一条是给几十轮之后看的，它得能替代正文。',
+    '· 只记录正文里真实发生的事，不推测。',
+  ].join('\n');
+  const 每批 = 5;
+  let 改 = 0, 错 = 0;
+  for (let k = 0; k < 助.length; k += 每批) {
+    const 批 = 助.slice(k, k + 每批);
+    const 输入 = 批.map((t) => '【第' + t.seq + '轮正文】\n' + String(t.body).slice(0, 4000)).join('\n\n');
+    try {
+      const 回 = await callSlot(s, 'settle', [
+        { role: 'system', content: 系统 },
+        { role: 'user', content: 输入 },
+      ], { maxTokens: 5000, temperature: 0.2, timeoutMs: 180000, tag: '重建小结' });
+      const 数 = parseJsonLoose(String(回 == null ? '' : 回));
+      if (Array.isArray(数)) {
+        数.forEach((x) => {
+          if (!x) return;
+          const t = 助.find((y) => y.seq === Number(x.轮次));
+          if (!t) return;
+          const 段s = [];
+          if (String(x.时间 || '').trim()) 段s.push('· 时间：' + String(x.时间).trim());
+          if (String(x.地点 || '').trim()) 段s.push('· 地点：' + String(x.地点).trim());
+          if (String(x.发生的事 || '').trim()) 段s.push('· 发生的事：' + String(x.发生的事).trim());
+          if (段s.length >= 2) { t.summary = 段s.join('\n'); 改++; }
+        });
+      } else 错++;
+      await turnLog('[重建] ' + (k + 1) + '~' + (k + 批.length) + ' 轮 → 已写 ' + 改);
+    } catch (e) {
+      错++;
+      await turnLog('[重建] 第 ' + (k + 1) + ' 批失败：' + String((e && e.message) || e));
+    }
+  }
+  await saveState(gameId, s);
+  await turnLog('[重建] 完成 ' + 改 + '/' + 助.length + '，失败批 ' + 错);
+  return { 总轮数: 助.length, 已重写: 改, 失败批: 错 };
+});
+
   reg('galleryList', async () => {
     const items = await readGallery();
     return {
