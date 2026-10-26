@@ -11189,8 +11189,24 @@ reg('rebuildSummaries', async ({ gameId }) => {
         { role: 'system', content: 系统 },
         { role: 'user', content: 输入 },
       ], { maxTokens: 9000, temperature: 0.2, timeoutMs: 900000, stallMs: 600000, tag: '重建小结' });
-      const 文 = String(回 == null ? '' : 回);
-      const 数 = 抠JSON数组(文);
+      let 文 = String(回 == null ? '' : 回);
+      // callSlot 有个兜底：正文为空但有 reasoning 时，会把「（这一轮模型只输出了思考过程…）」
+      // + 整段思维链冒充答案。思维链里偶尔恰好带了 JSON，先试抠一次。
+      let 数 = 抠JSON数组(文);
+      const 只给了思考 = /^（这一轮模型只输出了思考过程/.test(文);
+      if (!数 && 只给了思考) {
+        await turnLog('[重建] 第 ' + (Math.floor(k / 每批) + 1) + ' 批只给了思考过程，重试一次（强制只输出 JSON）…');
+        try {
+          const 回2 = await callSlot(s, 'summary', [
+            { role: 'system', content: '只输出 JSON 数组。不要输出任何思考过程、说明、前言或代码块标记。第一个字符必须是 [，最后一个必须是 ]。' },
+            { role: 'user', content: 系统 + '\n\n' + 输入 },
+          ], { maxTokens: 9000, temperature: 0.2, timeoutMs: 900000, stallMs: 600000, tag: '重建小结·重试' });
+          文 = String(回2 == null ? '' : 回2);
+          数 = 抠JSON数组(文);
+        } catch (e) {
+          await turnLog('[重建] 重试也失败：' + String((e && e.message) || e));
+        }
+      }
       if (!数) await turnLog('[重建] 返回不是数组，前 300 字：' + 文.slice(0, 300).replace(/\s+/g, ' '));
       if (Array.isArray(数)) {
         数.forEach((x, 序) => {
