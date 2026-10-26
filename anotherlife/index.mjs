@@ -12027,10 +12027,17 @@ function recentBodies(s, rounds) {
    * 和以前的区别：不再塞「最近 6 条正文」—— 它现在有工具，需要什么自己去查。
    * 塞进去反而会诱导它只依据那几条作答，答不全还编。
    */
-  function buildOracleSystem(s) {
+async function buildOracleSystem(s, gameId) {
     const w = s.world || {};
     const p = s.protagonist || {};
     const who = [p.姓名, p.年龄 ? p.年龄 + '岁' : '', p.身份].filter(Boolean).join(' · ');
+// 笔记数：有就点一句。光靠工具列表，模型不一定想到去查笔记 ——
+// 实测它会先去搜正文，搜不到就回「没找到」，玩家的笔记明明在。
+let 笔记数 = 0;
+try {
+  const ns = await readNotes(gameId || s.gameId);
+  笔记数 = Array.isArray(ns) ? ns.length : 0;
+} catch (e) { /* 读不到就当没有 */ }
     return [
       '你是「故事神谕」，一个为正在进行的角色扮演/故事服务的“戏外”分析者。',
       '',
@@ -12041,6 +12048,13 @@ function recentBodies(s, rounds) {
       '· 先看下方【正文目录】判断哪几轮可能相关，再决定搜什么、读哪几轮。',
       '· 不要为了「搜全」把所有关键词都试一遍；搜两次没结果就换个角度，或直接说明没找到。',
       '· 拿到足够信息就直接回答，不要反复确认。',
+        '',
+        ...(笔记数 > 0 ? [
+          '【笔记】这一局已经有 ' + 笔记数 + ' 篇笔记（玩家自己存下来的回答和整理）。',
+          '玩家问「时间线」「之前记的」「我写的那条」「按我们说好的」这类 —— 先 list_notes 看标题，再 search_notes 搜关键词，**不要只搜正文**。',
+          '笔记是玩家自己写的/存下来的，比正文更可信；正文和笔记冲突时以笔记为准。',
+          '',
+        ] : []),
       '',
       '规则：',
       '· 你没有任何修改能力 —— 不能改正文、不能改角色、不能写文件。',
@@ -12557,7 +12571,7 @@ reg('importCommit', async ({ gameId }) => {
       }))
     );
 
-    const msgs = [{ role: 'system', content: buildOracleSystem(s) }];
+    const msgs = [{ role: 'system', content: await buildOracleSystem(s, s.gameId || gameId) }];
     hist.forEach((m) => { if (String(m.content || '').trim()) msgs.push(m); });
     // 每次提问都带一份正文目录，让模型知道该搜哪里
     msgs.push({ role: 'user', content: say + '\n\n' + transcriptIndex(s) });
