@@ -4713,6 +4713,23 @@ function guessSockStrength(txt, scent, seed) {
     return null;
   }
 
+  /**
+   * 从文本里抠一个 JSON 数组。
+   * ★ 不能用 parseJsonLoose —— 它最后一句是 `!Array.isArray(v)`，
+   * 只接受对象，数组永远返回 null。重建小结要的正是数组，
+   * 于是每批「已写 0」却不抛异常，静默失败。
+   */
+  function 抠JSON数组(txt) {
+    const t = String(txt == null ? '' : txt).replace(/```json/gi, '').replace(/```/g, '');
+    const a = t.indexOf('[');
+    const b = t.lastIndexOf(']');
+    if (a < 0 || b <= a) return null;
+    const 段 = t.slice(a, b + 1);
+    try { const v = JSON.parse(段); if (Array.isArray(v)) return v; } catch (e) { /* 补一次 */ }
+    try { const v = JSON.parse(repairJson(段)); if (Array.isArray(v)) return v; } catch (e) { /* 放弃 */ }
+    return null;
+  }
+
   // ────────────────────────────── 模型调用 ──────────────────────────────
 
   /**
@@ -11160,7 +11177,9 @@ reg('rebuildSummaries', async ({ gameId }) => {
         { role: 'system', content: 系统 },
         { role: 'user', content: 输入 },
       ], { maxTokens: 9000, temperature: 0.2, timeoutMs: 900000, stallMs: 600000, tag: '重建小结' });
-      const 数 = parseJsonLoose(String(回 == null ? '' : 回));
+      const 文 = String(回 == null ? '' : 回);
+      const 数 = 抠JSON数组(文);
+      if (!数) await turnLog('[重建] 返回不是数组，前 300 字：' + 文.slice(0, 300).replace(/\s+/g, ' '));
       if (Array.isArray(数)) {
         数.forEach((x) => {
           if (!x) return;
