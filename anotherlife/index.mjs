@@ -5071,6 +5071,12 @@ function pickToolCall(r) {
             {
               type: 'tool-result',
               toolCallId: m.toolCallId,
+              // tool-call 的写法是 { type, id, name, arguments }（AI SDK 风格），
+              // tool-result 对应就该是 { type, toolCallId, toolName, result }。
+              // 原来缺 toolName、且把结果放在 content 数组里 —— 上游认不出来就静默忽略，
+              // 表现正是「工具调了、回灌日志也有字，但模型说接口返回为空」。
+              toolName: String(m.toolName || 'tool'),
+              result: String(m.content == null ? '' : m.content),
               content: [{ type: 'text', text: String(m.content == null ? '' : m.content) }],
             },
           ],
@@ -5396,7 +5402,7 @@ const STYLE_NOTES_DEFAULT = [
         // 工具侧已经保证体积。原来这里再砍到 3000，等于把刚读到的正文又切掉一截。
         const body = String(out);
         await turnLog('[神谕·回灌] ' + tc.name + ' id=' + String(tc.id || '(无)') + ' 给了 ' + body.length + ' 字：' + body.slice(0, 100).replace(/\s+/g, ' ')).catch(() => {});
-        messages.push({ role: 'tool', toolCallId: tc.id, content: body });
+        messages.push({ role: 'tool', toolCallId: tc.id, toolName: tc.name, content: body });
       }
       r = await callMainModel(messages, 带工具);
     }
@@ -12000,7 +12006,7 @@ function recentBodies(s, rounds) {
               '\n（共 ' + String(out).length + ' 字，已截断）'
             : String(out);
         await turnLog('[神谕·回灌] ' + tc.name + ' id=' + String(tc.id || '(无)') + ' 给了 ' + body.length + ' 字：' + body.slice(0, 100).replace(/\s+/g, ' ')).catch(() => {});
-        messages.push({ role: 'tool', toolCallId: tc.id, content: body });
+        messages.push({ role: 'tool', toolCallId: tc.id, toolName: tc.name, content: body });
       }
     }
     return {
