@@ -10945,8 +10945,10 @@ async function 处理微博回复(s, gid, body, 待发, seq) {
     if (命中 < 0) return;
     const 条 = cache.时间线[命中];
     if (!Array.isArray(条.评论列表)) 条.评论列表 = [];
-    // 重发同一轮时这段会再跑一次 —— 先把本轮写过的回复清掉，否则会叠两条一模一样的。
-    if (seq != null) 条.评论列表 = 条.评论列表.filter((c) => !(c && c.回复 && Number(c.轮次) === Number(seq)));
+    // 重发同一轮时这段会再跑一次，所以要删掉本轮的旧回复。
+    // 只删「同一个人的那一条」—— 按轮次整批删会把同一轮里**其他人**刚写进来的也清掉
+    //（三个回复落在同一条微博下时，最后一条会把前两条吃掉）。
+    if (seq != null) 条.评论列表 = 条.评论列表.filter((c) => !(c && c.回复 && Number(c.轮次) === Number(seq) && String(c.谁 || '') === String(o.谁 || '')));
     条.评论列表.push({ 谁: o.谁, 内容: o.内容, 回谁: o.回谁 || '', 回复: true, 轮次: seq == null ? undefined : Number(seq) });
     成功++;
   });
