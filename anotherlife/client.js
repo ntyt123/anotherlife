@@ -6711,43 +6711,60 @@ function phoneDoComment(id) {
                                   ? h(
                                     'div',
                                     { className: 'sim-wb-cmts' },
-                                    // 评论列表里的两种条目分开处理：
-                                    // ① 普通评论 + 「你回复了他」
-                                    // ② 「他回复了你」（回复:true 且 回谁=玩家）—— 这类原来混在普通评论里，
-                                    //    排在列表末尾，看着像他自己发的一条评论，看不出是在回你。
-                                    (w.评论列表 || []).filter((c) => !(c && c.回复 && String(c.回谁 || '') === '玩家')).map((c, ci) => {
-                                      const 我对他的 = wbMine.filter((m) => m.作者 === w.作者
-                                        && m.正文 === String(w.正文 || '').slice(0, 60)
-                                        && String(m.回谁 || "") === String(c.谁 || ""));
-                                      return h(
-                                        'div',
-                                        { key: 'c' + ci },
-                                        h(
-                                          'div',
-                                          { className: 'sim-wb-cmt', onClick: (e) => { e.stopPropagation(); setWbTarget({ 作者: w.作者, 正文: String(w.正文 || '').slice(0, 60), 回谁: c.谁, 回内容: String(c.内容 || '') }); } },
-                                          h('span', { className: 'who' }, c.谁 + '：'),
-                                          h('span', { className: 'txt' }, c.内容)
+                                    // 评论分三种：普通评论、「你回复了他」、「他回复了你」。
+                                    // 第三种要跟着「你那条回复」走 —— 否则它掉在列表末尾，
+                                    // 看不出是在应你哪句话（玩家原话：回复我的回复没和我的回复在一起）。
+                                    // 这里用立即执行函数，因为 h(...) 的参数位置不能写语句。
+                                    (function () {
+                                      const 截断正文 = String(w.正文 || '').slice(0, 60);
+                                      const 我的 = wbMine.filter((m) => m.作者 === w.作者 && m.正文 === 截断正文);
+                                      const 回我的 = (w.评论列表 || []).filter((c) => c && c.回复 && String(c.回谁 || '') === '玩家');
+                                      const 普通评论 = (w.评论列表 || []).filter((c) => !(c && c.回复 && String(c.回谁 || '') === '玩家'));
+                                      // 一条微博只把「回你的」放一次，别每条评论下面都重复一遍
+                                      const 已放 = { v: false };
+                                      // 模型有时把名字写成「@某人」，别叠成 @@
+                                      const 名字 = (s) => {
+                                        const t = String(s || '');
+                                        return t.charAt(0) === '@' ? t : '@' + t;
+                                      };
+                                      return [
+                                        普通评论.map((c, ci) => {
+                                          const 我对他的 = 我的.filter((m) => String(m.回谁 || '') === String(c.谁 || ''));
+                                          const 这段回我的 = 已放.v ? [] : 回我的;
+                                          if (这段回我的.length) 已放.v = true;
+                                          return h(
+                                            'div',
+                                            { key: 'c' + ci },
+                                            h(
+                                              'div',
+                                              { className: 'sim-wb-cmt', onClick: (e) => { e.stopPropagation(); setWbTarget({ 作者: w.作者, 正文: 截断正文, 回谁: c.谁, 回内容: String(c.内容 || '') }); } },
+                                              h('span', { className: 'who' }, c.谁 + '：'),
+                                              h('span', { className: 'txt' }, c.内容)
+                                            ),
+                                            我对他的.map((m, mi) => h('div', { className: 'sim-wb-cmt mine sub', key: 'my' + ci + '_' + mi },
+                                              h('span', { className: 'who' }, '你 回复 ' + 名字(c.谁) + '：'),
+                                              h('span', { className: 'txt' }, m.评论)
+                                            )),
+                                            这段回我的.map((c2, ri) => h('div', { className: 'sim-wb-cmt mine sub', key: 're' + ci + '_' + ri },
+                                              h('span', { className: 'who' }, 名字(c2.谁) + ' 回复了你：'),
+                                              h('span', { className: 'txt' }, c2.内容)
+                                            ))
+                                          );
+                                        }),
+                                        // 直接评微博本身的（没回某条评论）
+                                        我的.filter((m) => !String(m.回谁 || '')).map((m, mi) =>
+                                          h('div', { className: 'sim-wb-cmt mine', key: 'myw' + mi },
+                                            h('span', { className: 'who' }, '你：'),
+                                            h('span', { className: 'txt' }, m.评论)
+                                          )
                                         ),
-                                        我对他的.map((m, mi) => h('div', { className: 'sim-wb-cmt mine sub', key: 'my' + ci + '_' + mi },
-                                          h('span', { className: 'who' }, '你 回复 @' + c.谁 + '：'),
-                                          h('span', { className: 'txt' }, m.评论)
+                                        // 你没回复过任何评论时，别人的回复只能落在最后
+                                        已放.v ? null : 回我的.map((c, ri) => h('div', { className: 'sim-wb-cmt mine sub', key: 're' + ri },
+                                          h('span', { className: 'who' }, 名字(c.谁) + ' 回复了你：'),
+                                          h('span', { className: 'txt' }, c.内容)
                                         ))
-                                      );
-                                    }),
-                                    // 直接评微博本身的（没回某条评论），追加在末尾
-                                    wbMine.filter((m) => m.作者 === w.作者
-                                      && m.正文 === String(w.正文 || '').slice(0, 60)
-                                      && !String(m.回谁 || "")).map((m, mi) =>
-                                      h('div', { className: 'sim-wb-cmt mine', key: 'myw' + mi },
-                                        h('span', { className: 'who' }, '你：'),
-                                        h('span', { className: 'txt' }, m.评论)
-                                      )
-                                    ),
-                                    // 「回你」的那些，跟在你这句话后面 —— 玩家才看得出谁在应他
-                                    (w.评论列表 || []).filter((c) => c && c.回复 && String(c.回谁 || '') === '玩家').map((c, ci) => h('div', { className: 'sim-wb-cmt mine sub', key: 're' + ci },
-                                      h('span', { className: 'who' }, '@' + c.谁 + ' 回复了你：'),
-                                      h('span', { className: 'txt' }, c.内容)
-                                    ))
+                                      ];
+                                    })()
                                     )
                                 : null
                               )
