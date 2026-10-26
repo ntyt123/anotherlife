@@ -10844,7 +10844,7 @@ async function 处理微博回复(s, gid, body, 待发, seq) {
     return out;
   }
 
-  // 写回缓存：按作者名模糊匹配那条微博，把回复追加进它自己的评论列表
+  // 写回缓存：先按「玩家回的那条微博的正文」定位，定位不到再按作者名找最近的一条。
   const p = weiboCachePath(gid);
   let cache = null;
   try { cache = await readJson(p); } catch (e) { cache = null; }
@@ -10868,8 +10868,15 @@ async function 处理微博回复(s, gid, body, 待发, seq) {
       if (!正) continue;
       for (let j = 0; j < 待发正文s.length; j++) {
         const 想要 = 待发正文s[j];
-        // 正文常被截过，两边都取前 20 字比对
-        if (正.slice(0, 20) === 想要.slice(0, 20) || 正.indexOf(想要.slice(0, 16)) >= 0) { 命中 = k; break; }
+        // 太短的不比 —— 「收工了」这种三个字跟谁都能撞上
+        if (!想要 || 想要.length < 4) continue;
+        const 头对上 = 正.slice(0, 20) === 想要.slice(0, 20);
+        const 含对上 = 想要.length >= 8 && 正.indexOf(想要.slice(0, 16)) >= 0;
+        if (!头对上 && !含对上) continue;
+        // 正文对上还不够 —— 玩家可能一次评了好几条，得确认回复者就是这条微博的作者，
+        // 否则同一句话会被别的博主的微博抢走。
+        const 作者正 = 归一(w && w.作者);
+        if (!谁 || !作者正 || 作者正.indexOf(谁) >= 0 || 谁.indexOf(作者正) >= 0) { 命中 = k; break; }
       }
     }
     // ② 退一步：该作者「最近」的一条 —— 索引 0 是最新的，从 0 往后扫
@@ -11740,7 +11747,14 @@ reg('rebuildSummaries', async ({ gameId }) => {
     const hit = (s.transcript || []).find((t) => Number(t.seq) === Number(seq) && t.role === role);
     if (!hit) throw new Error('找不到这一段（可能已被删除或重算）');
     hit.body = String(body == null ? '' : body);
-    if (role === 'user') hit.sent = hit.body;
+    if (role === 'user') {
+      // 编辑玩家那一轮时，微博说明跟着 body 一起被清掉就丢了 ——
+      // 它不在界面上显示，但模型需要它。把「【你这一轮之前…】」之后的部分接回去。
+      const 旧sent = String(hit.sent || '');
+      const 标记 = '【你这一轮之前，刚在微博上做过这些】';
+      const k2 = 旧sent.indexOf(标记);
+      hit.sent = hit.body + (k2 >= 0 ? '\n' + 旧sent.slice(k2) : '');
+    }
     await saveState(s);
     return withKeyStatus(s);
   });
