@@ -11651,17 +11651,28 @@ reg('rebuildSummaries', async ({ gameId }) => {
       description: '列出这一局的笔记（标题 + 摘要 + 字数）。',
       parameters: { type: 'object', properties: {} },
     },
-    {
-      name: 'search_notes',
-      description: '在笔记正文里按关键词搜索。',
-      parameters: {
-        type: 'object',
-        properties: {
-          query: { type: 'string', description: '要搜的词' },
+      {
+        name: 'search_notes',
+        description: '在笔记正文里按关键词搜索。搜不到不代表笔记不存在 —— 可以用 list_notes 看标题、read_note 读全文。',
+        parameters: {
+          type: 'object',
+          properties: {
+            query: { type: 'string', description: '要搜的词' },
+          },
+          required: ['query'],
         },
-        required: ['query'],
       },
-    },
+      {
+        name: 'read_note',
+        description: '按 id 读一篇笔记的全文。id 从 list_notes 的方括号里拿。',
+        parameters: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', description: 'list_notes 返回的方括号里那串' },
+          },
+          required: ['id'],
+        },
+      },
   {
     name: 'web_search',
     description:
@@ -11841,6 +11852,16 @@ function recentBodies(s, rounds) {
         const txt = typeof v === 'string' ? v : JSON.stringify(v, null, 2);
         return txt.length > 3000 ? txt.slice(0, 3000) + '\n（已截断）' : txt;
       }
+      if (name === 'read_note') {
+        const id = String(a.id || '').trim();
+        const ns = await readNotes(gameId);
+        const it = ns.find((x) => String(x.id) === id);
+        if (!it) return '（没有这篇笔记。先 list_notes 看有哪些 id。）';
+        const body = String(it.body || '');
+        const 头 = '【' + String(it.title || '无标题') + '】' + body.length + ' 字';
+        // 单篇最多给 6000 字 —— 再长就截，避免一次吃掉整个预算
+        return 头 + String.fromCharCode(10, 10) + (body.length > 6000 ? body.slice(0, 6000) + String.fromCharCode(10) + '（已截断）' : body);
+      }
       if (name === 'list_notes') {
         const items = await readNotes(gameId);
         // 留证据：读的哪个文件、拿到几条。神谕说「没有笔记」时靠这行判断。
@@ -11849,7 +11870,9 @@ function recentBodies(s, rounds) {
         return items
           .map((x) => {
             const body = String(x.body || '').replace(/\s+/g, ' ');
-            return '· ' + String(x.title || '无标题') + '（' + body.length + '字）：' + body.slice(0, 80);
+            // 只给 80 字，模型看到开头就跟没看到一样 —— 而且不给 id，它没法再往下读。
+            // 改成：id + 标题 + 字数 + 前 300 字。
+            return '· [' + String(x.id) + '] ' + String(x.title || '无标题') + '（' + body.length + '字）：' + body.slice(0, 300) + (body.length > 300 ? '…' : '');
           })
           .join('\n');
       }
@@ -11869,7 +11892,11 @@ function recentBodies(s, rounds) {
             idx = body.indexOf(q, idx + q.length);
           }
         }
-        return hits.length ? hits.join('\n') : '（笔记里没有「' + q + '」）';
+        // 搜不到词 ≠ 看不到笔记。模型会把「没搜到」当成「读不到」，
+        // 于是回玩家「系统没有返回笔记文字」。这里明确告诉它笔记是在的。
+        return hits.length
+          ? hits.join('\n')
+          : '（「' + q + '」这个词在笔记里没出现。但这一局有 ' + items.length + ' 篇笔记，内容是在的 —— 用 list_notes 看标题，或用 read_note 按 id 读全文。）';
       }
       // ── 联网（DSH 的 web 服务，不需要额外配 API key）──
       if (name === 'web_search' || name === 'read_url') {
