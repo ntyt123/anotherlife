@@ -11145,11 +11145,20 @@ reg('setStarMode', async ({ gameId, on }) => {
   return await loadState(gameId);   // 返回完整状态，界面用 run() 吸收
 });
 
-/** 把历史每轮的 summary 按新格式重跑。每批 5 轮，先备份再动。 */
+/** 把历史每轮的 summary 按新格式重跑。每批 12 轮，先备份再动；只补还不是三段式的。 */
 reg('rebuildSummaries', async ({ gameId }) => {
   const s = await loadState(gameId);
-  const 助 = (s.transcript || []).filter((t) => t && t.role !== 'user' && String(t.body || '').trim());
-  if (!助.length) throw new Error('这局还没有正文');
+  // 只挑还不是三段式的轮次 —— 中途失败后再点，只补剩下的，不重复烧调用。
+  // 判据：时间/地点/发生的事 三项齐全就算已完成。
+  const 已是三段式 = (t) => {
+    const c = String(t.summary || '');
+    return c.indexOf('时间：') >= 0 && c.indexOf('地点：') >= 0 && c.indexOf('发生的事：') >= 0;
+  };
+  const 全助 = (s.transcript || []).filter((t) => t && t.role !== 'user' && String(t.body || '').trim());
+  const 助 = 全助.filter((t) => !已是三段式(t));
+  const 跳过 = 全助.length - 助.length;
+  if (!全助.length) throw new Error('这局还没有正文');
+  if (!助.length) return { 总轮数: 全助.length, 已重写: 0, 失败批: 0, 说明: '全部已是三段式，无需重跑' };
   try {
     fs.writeText(fs.resolve('simulator-' + String(gameId) + '.json.bak'), JSON.stringify(s, null, 2));
     await turnLog('[重建] 已备份');
@@ -11168,7 +11177,7 @@ reg('rebuildSummaries', async ({ gameId }) => {
     '· 不要写「发生了一些事」「进行了交流」这种空话 —— 这一条是给几十轮之后看的，它得能替代正文。',
     '· 只记录正文里真实发生的事，不推测。',
   ].join('\n');
-  const 每批 = 8;   // 82 轮 → 11 次调用。走 summary 槽位（deepseek-flash），比 gemini 快一个量级
+  const 每批 = 12;   // 服务端实测 12 轮/批 跑完 84 条全成，82 轮 → 7 次调用
   let 改 = 0, 错 = 0;
   for (let k = 0; k < 助.length; k += 每批) {
     const 批 = 助.slice(k, k + 每批);
@@ -11206,6 +11215,7 @@ reg('rebuildSummaries', async ({ gameId }) => {
   }
   await saveState(s);
   await turnLog('[重建] 完成 ' + 改 + '/' + 助.length + '，失败批 ' + 错);
+  await turnLog('[重建] 已保存（跳过已是三段式的 ' + 跳过 + ' 条）');
   return { 总轮数: 助.length, 已重写: 改, 失败批: 错 };
 });
 
