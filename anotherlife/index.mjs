@@ -7866,10 +7866,23 @@ if (微博待发.length) {
     // 按轮次排好，界面和合并都依赖顺序
     s.summaries.sort(function (a, b) { return Number(a.start) - Number(b.start); });
     // summarised_through 直接取所有段的最大 end —— 替换后可能变小，不能只取 Math.max(old, to)
-    s.story.summarised_through = s.summaries.reduce(function (m, x) {
-      const v = Number(x.end);
-      return isFinite(v) && v > m ? v : m;
-    }, -1);
+    // 取「连续覆盖到哪」，不是「所有段的最大 end」。
+    // 原写法：段 0-9, 28-37, 38-47, 48-57, 67-76 → max(end)=76，
+    // 系统就以为覆盖到 76，于是 10~27 和 58~66 这两个缺口永远补不上，
+    // 那十几轮的正文从此对模型彻底不可见（实测 #117 说了「甄嬛传」，
+    // 36 轮后 #153 写成「抗战戏」—— 因为它压根看不到 #117）。
+    s.story.summarised_through = (function () {
+      const 段 = s.summaries.slice().sort(function (a, b) { return Number(a.start) - Number(b.start); });
+      let 到 = -1;
+      for (let k = 0; k < 段.length; k++) {
+        const a = Number(段[k].start);
+        const b = Number(段[k].end);
+        if (!isFinite(a) || !isFinite(b)) continue;
+        if (a > 到 + 1) break;          // 出现缺口，就停在这儿，下次从这里补
+        if (b > 到) 到 = b;
+      }
+      return 到;
+    })();
     appendLog('summary', 'block', '第' + from + '-' + to + '轮 → ' + clean.length + ' 字');
     return clean;
   }
