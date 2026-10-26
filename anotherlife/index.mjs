@@ -10866,7 +10866,21 @@ async function 处理微博回复(s, gid, body, 待发, seq) {
   抓到.forEach((o) => {
     const 谁 = 归一(o.谁);
     let 命中 = -1;
-    // ① 先按「玩家回的那条微博的正文」定位（最准）
+    // ⓪ 先看「回复者」是不是某条待发微博的作者 —— 是就锁那一条。
+    // 玩家可能连着评论了两条不同微博，而卡片里只有一个「谁」（回复者），
+    // 光看正文会把两条都吸到第一条上（模型写「官微回复你」，结果挂到罗伊微博下）。
+    for (let j = 0; j < 待发带作者.length && 命中 < 0; j++) {
+      const 想要 = 待发带作者[j];
+      if (!想要.作 || !谁) continue;
+      if (想要.作.indexOf(谁) < 0 && 谁.indexOf(想要.作) < 0) continue;
+      for (let k = 0; k < cache.时间线.length; k++) {
+        const 正 = 归一(cache.时间线[k] && cache.时间线[k].正文);
+        if (!正 || !想要.正) continue;
+        if (正.slice(0, 20) === 想要.正.slice(0, 20) || (想要.正.length >= 8 && 正.indexOf(想要.正.slice(0, 16)) >= 0)) { 命中 = k; break; }
+      }
+    }
+    
+    // ① 回复者是粉丝/路人（不是任何一条待发微博的作者）→ 按正文全量匹配
     for (let k = 0; k < cache.时间线.length && 命中 < 0; k++) {
       const w = cache.时间线[k];
       const 正 = 归一(w && w.正文);
