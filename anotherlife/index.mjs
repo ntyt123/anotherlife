@@ -7505,10 +7505,15 @@ if (微博新条.length) {
     行s.push('某个人这回没回你，就跳过不写他那块 —— 但别只写第一个就停。');
     行s.push('这些块不会给玩家看见，是用来把回复写回他手机里的。');
   }
-  if (行s.length) userContent += 行s.join(String.fromCharCode(10));
-  // 同步进 sent：body 保持玩家原本打的字（界面上只显示那句），
-  // sent 才是真正发给模型的。这样重发、回退再回来，评论都还在。
-  if (userContent !== 拼前内容 && userEntry) userEntry.sent = userContent;
+  const 微博说明 = 行s.length ? 行s.join(String.fromCharCode(10)) : '';
+  if (微博说明) {
+    userContent += 微博说明;
+    // sent 只存「玩家原话 + 微博说明」。userContent 里前面还有 recent（最近 14 条对话全文），
+    // 那是每轮都重新拼的，不能存进 sent —— 否则重发时 input 带着一整段历史，
+    // runTurn 又拼一次 recent，越滚越大，微博说明也被埋进中间。
+    if (userEntry) userEntry.sent = String(sendText || '') + 微博说明;
+  }
+
 }
 
       // 近场提醒：把「自己的调整」再贴一遍到离当前对话最近的位置。
@@ -11738,7 +11743,15 @@ reg('rebuildSummaries', async ({ gameId }) => {
     const s = await loadState(gameId);
     const n = Number(seq);
     const userEntry = (s.transcript || []).find((t) => Number(t.seq) === n && t.role === 'user');
-    const input = userEntry ? String(userEntry.sent || userEntry.body || '').trim() : '';
+    // 老数据里 sent 可能是「recent + 玩家话 + 微博说明」的整段（以「叙事：」「玩家：」开头）。
+    // 那种不能直接当输入 —— 会跟本轮重新拼的 recent 重复。抠出玩家原话，再把微博说明接回去。
+    let input = userEntry ? String(userEntry.sent || userEntry.body || '').trim() : '';
+    if (userEntry && /^(叙事：|玩家：)/.test(input)) {
+      const 标记 = '【你这一轮之前，刚在微博上做过这些】';
+      const k2 = input.indexOf(标记);
+      const 尾巴 = k2 >= 0 ? input.slice(k2) : '';
+      input = String(userEntry.body || '').trim() + (尾巴 ? '\n\n' + 尾巴 : '');
+    }
     // 显示用和发送用要分开：userEntry.body 是玩家自己打的字（干净的），
     // sent 里可能还带着微博行为说明 —— 那段只该进提示词，不该显示在对话里。
     const 显示text = userEntry ? String(userEntry.body || '').trim() : '';
