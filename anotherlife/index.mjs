@@ -7985,9 +7985,11 @@ if (微博待发.length) {
   /** 附带最近几轮：配置里有就用配置，否则跟着总结频率走（总结覆盖到哪儿，原文就接到哪儿）。 */
   function recentRounds(s) {
     const cfg = Number(s && s.config && s.config.recentRounds);
-    if (Number.isFinite(cfg) && cfg > 0) return Math.floor(cfg);
+  if (Number.isFinite(cfg) && cfg > 0) return Math.max(25, Math.floor(cfg));   // 保底 25 轮
     // 总结设置存在 config.summaryOpts（不是 config.summary —— 那个是总结模型的槽位）
-    return summaryOpts(s).every || SUMMARY_EVERY;
+    // 默认给 25 轮原文（约 3 万字）。原来跟摘要间隔走（10 轮 ≈ 1.2 万字），
+    // 实测太窄：#117 说的事到 #153 就完全走样了，因为它只看得见最近 10 条。
+    return Math.max(25, Number(summaryOpts(s).every) || SUMMARY_EVERY || 0);
   }
 
   /**
@@ -8000,27 +8002,59 @@ if (微博待发.length) {
    * 只带「玩家输入」与「叙事正文」，**不带每一轮的状态注入快照**（t.ctx）——
    * 那是当时的档案，里头的值与当前状态不一致，塞进来只会跟【本轮相关状态】打架。
    */
+  /**
+   * 最近剧情。两级：
+   *   · 最近 n 轮 —— 逐轮全文（模型需要知道上一轮到底怎么收的、语气什么样）
+   *   · 更早的   —— 每轮只给一句话 summary（transcript 里每条 assistant 自带，
+   *                 是正文模型自己写的，不额外花一次调用）
+   *
+   * 为什么这么改：原来只给最近 n 轮全文，更早的靠「每 10 轮一块」的分段摘要，
+   * 而分段摘要会出缺口（实测 10~27、58~66 两块被跳过，那 27 轮彻底不可见 ——
+   * #117 明说「甄嬛传」，36 轮后 #153 写成「抗战戏」）。
+   * 轮级 summary 每条 100~150 字，164 轮也才两万字，可以全给。
+   */
   function recentSection(s, n) {
     const rounds = Math.max(0, Math.floor(Number(n) || 0));
-    if (!rounds) return '';
     const list = Array.isArray(s.transcript) ? s.transcript : [];
+    if (!list.length) return '';
     // 一轮 = 同一个 seq 下的「玩家行动 + 叙事」两条
     const seqs = [];
     list.forEach((t) => {
       if (t && t.seq != null && seqs.indexOf(t.seq) < 0) seqs.push(t.seq);
     });
     // 最后一轮就是本轮（它的玩家输入会单独给），所以多取一轮再砍掉
-    const take = seqs.slice(-(rounds + 1)).slice(0, -1);
-    if (!take.length) return '';
-    const out = ['【最近剧情（逐轮原文）】'];
-    take.forEach((sq) => {
-      const inRound = list.filter((t) => t && t.seq === sq);
-      const user = inRound.filter((t) => t.role === 'user').map((t) => String(t.body || '').trim()).filter(Boolean);
-      const narr = inRound.filter((t) => t.role !== 'user').map((t) => String(t.body || '').trim()).filter(Boolean);
-      if (user.length) out.push('【第' + sq + '轮·玩家】' + user.join('\n'));
-      if (narr.length) out.push('【第' + sq + '轮·叙事】' + narr.join('\n'));
+    const 最近 = rounds ? seqs.slice(-(rounds + 1)).slice(0, -1) : [];
+    const 更早 = rounds ? seqs.slice(0, -(rounds + 1)) : seqs;
+    const out = [];
+  
+    // 一、更早的：每轮一句话
+    const 早行 = [];
+    更早.forEach((sq) => {
+      const t = list.find((x) => x && x.seq === sq && x.role !== 'user' && String(x.summary || '').trim());
+      if (t) 早行.push('第' + sq + '轮：' + String(t.summary).trim().replace(/\s+/g, ' '));
     });
-    return out.length > 1 ? out.join('\n') : '';
+    if (早行.length) {
+      out.push('【更早的剧情（每轮一句话，越往下越近）】');
+      out.push(早行.join('\n'));
+    }
+  
+    // 二、最近 n 轮：逐轮原文
+    if (最近.length) {
+      const 近行 = ['【最近剧情（逐轮原文）】'];
+      最近.forEach((sq) => {
+        const inRound = list.filter((t) => t && t.seq === sq);
+        const user = inRound.filter((t) => t.role === 'user').map((t) => String(t.body || '').trim()).filter(Boolean);
+        const narr = inRound.filter((t) => t.role !== 'user').map((t) => String(t.body || '').trim()).filter(Boolean);
+        if (user.length) 近行.push('【第' + sq + '轮·玩家】' + user.join('\n'));
+        if (narr.length) 近行.push('【第' + sq + '轮·叙事】' + narr.join('\n'));
+      });
+      if (近行.length > 1) {
+        if (out.length) out.push('');
+        out.push(...近行);
+      }
+    }
+  
+    return out.join('\n');
   }
 
   // ────────────────────────────── handle ──────────────────────────────
