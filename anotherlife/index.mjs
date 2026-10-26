@@ -7455,6 +7455,7 @@ if (微博待发.length) {
     if (w.回谁) {
       // 回复某条评论
       行s.push('· 你在 @' + w.微博作者 + ' 发的那条微博下面，回复了「' + w.回谁 + '」的评论：');
+      if (w.回内容) 行s.push('  那条评论说的是：' + w.回内容);
       行s.push('  你说的：' + w.评论);
       行s.push('  （那条微博说的是：' + w.微博正文 + '）');
     } else {
@@ -10733,7 +10734,7 @@ reg('feedDelComment', async ({ gameId, 平台, id, 索引 }) => {
 // 否则重发之后他「评论过」这个动作在正文里凭空消失。改成按轮次存、按轮次取。
 const WB_PENDING = {};   // gameId -> [{ 微博作者, 微博正文, 回谁, 评论, 时, 轮次 }]
 /** 记一条待发评论。回谁 为空表示直接评那条微博，否则是评某条评论。 */
-reg('queueWeiboComment', async ({ gameId, 微博作者, 微博正文, 回谁, 评论 }) => {
+reg('queueWeiboComment', async ({ gameId, 微博作者, 微博正文, 回谁, 回内容, 评论 }) => {
   const gid = String(gameId || '');
   const txt = String(评论 || '').trim();
   if (!txt) return { ok: false, why: '空的' };
@@ -10748,6 +10749,7 @@ reg('queueWeiboComment', async ({ gameId, 微博作者, 微博正文, 回谁, �
     微博作者: String(微博作者 || ''),
     微博正文: String(微博正文 || '').slice(0, 120),
     回谁: String(回谁 || ''),
+    回内容: String(回内容 || '').slice(0, 80),
     评论: txt,
     时: Date.now(),
     轮次,

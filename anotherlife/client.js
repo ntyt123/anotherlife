@@ -5658,6 +5658,7 @@ function wbSendComment() {
     作者: wbTarget.作者,
     正文: wbTarget.正文,
     回谁: wbTarget.回谁 || '',
+    回内容: wbTarget.回内容 || '',
     评论: t,
   };
   setWbMine((prev) => prev.concat([记]));
@@ -5667,6 +5668,7 @@ function wbSendComment() {
     微博作者: 记.作者,
     微博正文: 记.正文,
     回谁: 记.回谁,
+    回内容: 记.回内容,
     评论: 记.评论,
   }, gameId)).catch(() => {});
 }
@@ -6697,7 +6699,7 @@ function phoneDoComment(id) {
                                     w.评论列表.map((c, ci) =>
                                       h(
                                         'div',
-                                        { className: 'sim-wb-cmt', key: ci, onClick: (e) => { e.stopPropagation(); setWbTarget({ 作者: w.作者, 正文: String(w.正文 || '').slice(0, 60), 回谁: c.谁 }); } },
+                                        { className: 'sim-wb-cmt', key: ci, onClick: (e) => { e.stopPropagation(); setWbTarget({ 作者: w.作者, 正文: String(w.正文 || '').slice(0, 60), 回谁: c.谁, 回内容: String(c.内容 || '') }); } },
                                         h('span', { className: 'who' }, c.谁 + '：'),
                                         h('span', { className: 'txt' }, c.内容)
                                       )
