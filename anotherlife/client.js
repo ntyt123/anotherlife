@@ -12690,7 +12690,7 @@ function thinkDrifted(t) {
                       var 补 = r && r.已补 != null ? r.已补 : '?';
                       var 待 = r && r.待补 != null ? r.待补 : '?';
                       var 空 = r && r.留空 != null ? r.留空 : 0;
-                      setPhoneFillInfo({ 补: 补, 待: 待, 空: 空, 文件: (r && r.文件) || '' });
+                      setPhoneFillInfo({ 补: 补, 待: 待, 空: 空, 文件: (r && r.文件) || '', 说明: (r && r.说明) || '' });
                       setNote(待 === 0 ? '所有人都有电话了' : '补了 ' + 补 + ' / ' + 待 + ' 人' + (空 ? '，' + 空 + ' 人留空' : ''));
                       try { load(); } catch (e) {}
                     })
@@ -12703,6 +12703,7 @@ function thinkDrifted(t) {
               // 结果和存档路径 —— 留空的人要玩家自己去那份 JSON 里填
               phoneFillInfo ? h('div', { style: { marginTop: 10, fontSize: 12, lineHeight: 1.9, color: '#888' } },
                 h('div', null, '补了 ' + phoneFillInfo.补 + ' / ' + phoneFillInfo.待 + ' 人' + (phoneFillInfo.空 ? '，' + phoneFillInfo.空 + ' 人留空' : '')),
+                phoneFillInfo.说明 ? h('div', { style: { color: '#b26a00' } }, phoneFillInfo.说明) : null,
                 phoneFillInfo.空 ? h('div', null, '留空的人已经建好空号位，可以到下面这份文件里手填：') : null,
                 phoneFillInfo.文件 ? h('div', { style: { wordBreak: 'break-all', color: '#666', marginTop: 2 } }, phoneFillInfo.文件) : null
               ) : null,

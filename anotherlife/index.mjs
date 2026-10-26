@@ -11227,12 +11227,28 @@ reg('backfillPhones', async ({ gameId }) => {
   const 回 = await callSlot(s, 'phone', [
     { role: 'system', content: 系统 },
     { role: 'user', content: '按上面的要求给他们补电话。只输出那个 JSON。' },
-  ], { maxTokens: 4000, temperature: 0.7, timeoutMs: 300000, stallMs: 180000, tag: '补电话' });
+  ], { maxTokens: 12000, temperature: 0.3, timeoutMs: 300000, stallMs: 180000, tag: '补电话' });
 
-  const 文 = String(回 && typeof 回 === 'object' && 回.text != null ? 回.text : 回 == null ? '' : 回);
-  const obj = parseJsonLoose(文);
+  let 文 = String(回 && typeof 回 === 'object' && 回.text != null ? 回.text : 回 == null ? '' : 回);
+  let obj = parseJsonLoose(文);
+  // deepseek 这类推理模型偶尔思考完就不给正文，callSlot 会把整段思维链冒充成答案。
+  // 命中这个前缀就再问一次，明确要求「不要思考、直接给 JSON」。
+  if (!obj && /^（这一轮模型只输出了思考过程/.test(文)) {
+    await turnLog('[补电话] 模型只给了思考过程（' + 文.length + ' 字），重试一次');
+    try {
+      const 回2 = await callSlot(s, 'phone', [
+        { role: 'system', content: '不要输出任何思考过程、说明或前言。直接输出 JSON 对象，第一个字符是 {，最后一个字符是 }。' },
+        { role: 'user', content: 系统 + '\n\n直接给 JSON，不要解释。' },
+      ], { maxTokens: 12000, temperature: 0.2, timeoutMs: 300000, stallMs: 180000, tag: '补电话·重试' });
+      文 = String(回2 && typeof 回2 === 'object' && 回2.text != null ? 回2.text : 回2 == null ? '' : 回2);
+      obj = parseJsonLoose(文);
+    } catch (e) {
+      await turnLog('[补电话] 重试也失败：' + String((e && e.message) || e));
+    }
+  }
+  // 拿不到 JSON 也不中断 —— 空位照建，玩家自己填
   if (!obj || typeof obj !== 'object') {
-    throw new Error('模型没给出 JSON：' + 文.slice(0, 80));
+    await turnLog('[补电话] 没拿到 JSON，只建空位。前 200 字：' + 文.slice(0, 200).replace(/\s+/g, ' '));
   }
 
   // 已有的号先占位，新的不能撞上
@@ -11244,6 +11260,7 @@ reg('backfillPhones', async ({ gameId }) => {
 
   let 补 = 0;
   const 明细 = [];
+  if (obj && typeof obj === 'object') {
   Object.keys(obj).forEach((名) => {
     const 号 = String(obj[名] == null ? '' : obj[名]).replace(/[^0-9-]/g, '');
     const 人 = 缺.find((n) => String(n.姓名 || '').trim() === String(名).trim());
@@ -11259,6 +11276,7 @@ reg('backfillPhones', async ({ gameId }) => {
     补++;
     明细.push(名 + '：' + 号);
   });
+  }
 
   // 模型判定「不该有号码」的人，也要在存档里留出位置 ——
   // 不然玩家想手填，还得自己在角色条目里翻地方插字段。
@@ -11272,7 +11290,7 @@ reg('backfillPhones', async ({ gameId }) => {
 
   await saveState(s);
   await turnLog('[补电话] ' + 补 + '/' + 缺.length + ' 人：' + 明细.slice(0, 12).join('，') + (明细.length > 12 ? ' …' : ''));
-  return { 总数: npcs.length, 待补: 缺.length, 已补: 补, 留空: 缺.length - 补, 文件: statePath(gameId), 明细 };
+  return { 总数: npcs.length, 待补: 缺.length, 已补: 补, 留空: 缺.length - 补, 文件: statePath(gameId), 说明: 补 ? '' : (obj ? '模型判断这些人都没有号码' : '模型没给出号码，已建好空位'), 明细 };
 });
 
 reg('setStarMode', async ({ gameId, on }) => {
