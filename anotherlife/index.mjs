@@ -12007,6 +12007,11 @@ function recentBodies(s, rounds) {
             : String(out);
         await turnLog('[神谕·回灌] ' + tc.name + ' id=' + String(tc.id || '(无)') + ' 给了 ' + body.length + ' 字：' + body.slice(0, 100).replace(/\s+/g, ' ')).catch(() => {});
         messages.push({ role: 'tool', toolCallId: tc.id, toolName: tc.name, content: body });
+        // 再补一条纯文本。tool-result 这个块上游不一定认（实测给了 800 字、
+        // 模型仍回答「接口返回为空」，而且同一轮反复重调工具），
+        // 那就改用最笨也最稳的办法：把结果当成一条普通的 user 消息塞进去。
+        // 两条都发 —— 认 tool-result 的实现走结构化，不认的也能从文本里读到。
+        messages.push({ role: 'user', content: '【工具结果 · ' + tc.name + '】' + String.fromCharCode(10) + body });
       }
     }
     return {
