@@ -1210,6 +1210,13 @@ async function activeWritingSkill() {
   function applyDiffs(s, diffs) {
     for (const d of diffs || []) {
       if (!d || !Array.isArray(d.path) || !d.path.length) continue;
+      // 顶层白名单。模型偶尔把路径写成 [身体] 而不是 [protagonist, 身体]，
+      // 那样会在存档根上凭空多一个键，界面读不到，等于这条更新静默丢了。
+      // 这里直接挡掉并记一笔，好过留一堆垃圾键。
+      if (['world', 'protagonist', 'npcs', 'relationships', 'story'].indexOf(d.path[0]) < 0) {
+        try { turnLog('[diff] 丢掉异常顶层：' + d.path.join('.')); } catch (e) {}
+        continue;
+      }
       if (d._had === undefined) {
         const prev = getByPath(s, d.path);
         d._had = prev !== undefined;
@@ -6271,6 +6278,10 @@ let aiPickFail = '';
     head.push('   ③ 意图与边界：玩家这一轮要什么；哪件事我不能替他做决定');
     head.push('   ④ 因果：谁做了什么 → 谁受影响 → 下一步自然怎么走（不是「剧情需要」怎么走）');
     head.push('   ⑤ 人物自检：在场每个人这一轮最自然的反应（不是「按规则该怎样」）；谁对他的称呼该改；谁不该知道这件事');
+    // 实测：模型自己编了「中戏严禁大一大二接戏、查出来记大过」这条校规，
+    // 然后在 140 多轮里反复引用，玩家每轮都先过一遍「这算不算违规」。
+    // 学生跟组、打杂、演小角色在现实中不违规 —— 别拿假禁令制造冲突。
+    head.push('  · **虚构禁令制造冲突** —— 不要给院校／公司／行业编一条并不存在的规矩（「大一严禁接戏」「擅自外出直接开除」），然后让人物反复拿它吓唬主角。你需要冲突，就在人物关系和具体处境里找，不要凭空立法。');
     head.push('   ⑥ 反模式：这一轮要避开的写法（见下面的清单）');
     head.push('   ⑦ 收在哪：停在事情正在往前走的当口 —— 一个动作做到一半、一句话说到一半、一个场面自然收拢。');
     head.push('      **不要每轮都安排「有人看着主角等他说什么」。** 那样每一轮都像在等他表态，很假。大多数轮次里，场面应该自己往前走，主角只是其中一个人。');
@@ -7578,6 +7589,13 @@ if (微博待发.length) {
     // 正文里如果有 :::weibo_reply 块，剥出来写回微博缓存（不给玩家看见）
     try {
       sp.body = await 处理微博回复(s, gid, sp.body);
+      // 剥掉末尾分节符（*** / --- / ===）。模型爱在收尾时加，看着像没写完。
+      // 用 split 判断，避开正则转义 —— 只处理末尾，中间的分节符是排版用的，留着。
+      剥末尾分节符: {
+        let 行 = String(sp.body || '').split(/\r?\n/);
+        while (行.length && /^(\*{3,}|-{3,}|={3,})$/.test(行[行.length - 1].trim())) 行.pop();
+        sp.body = 行.join('\n').trimEnd();
+      }
     } catch (e) {
       await turnLog('[微博] 回复处理失败：' + String((e && e.message) || e));
     }
