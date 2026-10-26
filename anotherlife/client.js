@@ -305,7 +305,7 @@ window.__ModuleLoader__.load({
   '.sim-wbfeed{display:flex;flex-direction:column;height:100%;background:#fff}',
   '.sim-wbf-top{display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid #eee;flex:0 0 auto}',
   '.sim-wbf-back{border:0;background:none;font-size:22px;line-height:1;color:#333;padding:0 2px;cursor:pointer}',
-  '.sim-wbf-tab{flex:1;text-align:center;font-weight:700;font-size:15px;color:#1a1a1a}',
+  '.sim-wbf-tab{flex:1;min-width:0;text-align:center;font-weight:700;font-size:15px;color:#1a1a1a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:0 4px}',
   '.sim-wbf-more{font-size:18px;color:#999}',
   '.sim-wbapp{display:flex;flex-direction:column;height:100%;background:#fff}',
   '.sim-wb-body{flex:1;min-height:0;overflow-y:auto}',
@@ -355,6 +355,24 @@ window.__ModuleLoader__.load({
   '.sim-wbf-row.hot .sim-wbf-word{color:#1a1a1a;font-weight:600}',
   '.sim-wbf-tag{flex:0 0 auto;font-size:10px;line-height:1;padding:2px 4px;border-radius:3px;background:#FFF1E8;color:#FF6A2E}',
   '.sim-wbf-heat{flex:0 0 auto;font-size:11px;color:#bbb;font-variant-numeric:tabular-nums}',
+  // 热搜详情页 + 标签分级配色
+  '.sim-hd{padding:0 14px 24px}',
+  '.sim-hd-hd{padding:14px 0 12px;border-bottom:1px solid #f0f0f0}',
+  '.sim-hd-t{display:flex;gap:6px;font-size:17px;font-weight:700;line-height:1.45;color:#1a1a1a}',
+  '.sim-hd-no{flex:0 0 auto;font-size:15px;color:#999;font-weight:600;font-variant-numeric:tabular-nums}',
+  '.sim-hd-no.top{color:#FF6A2E}',
+  '.sim-hd-meta{display:flex;align-items:center;gap:10px;margin-top:9px;font-size:12px;color:#999}',
+  '.sim-hd-rel{color:#FF6A2E}',
+  '.sim-hd-sec{padding:14px 0 4px;font-size:13px;font-weight:600;color:#333}',
+  '.sim-hd-wb{padding:12px 0;border-bottom:1px solid #f5f5f5}',
+  '.sim-wbf-row{cursor:pointer}',
+  '.sim-wbf-row:active{background:#fafafa}',
+  '.sim-wbf-tag.is-boom{background:#FDE8EB;color:#E6162D}',
+  '.sim-wbf-tag.is-boil{background:#FFF1E2;color:#F08519}',
+  '.sim-wbf-tag.is-new{background:#E8F2FD;color:#4A90D9}',
+  '.sim-wbf-tag.is-variety{background:#F6EBF8;color:#B06AB3}',
+  '.sim-wbf-tag.is-show{background:#E6F7F1;color:#2BAE85}',
+  '.sim-wbf-tag.is-biz{background:#F2F2F2;color:#999}',
   '.sim-wbf-list{flex:1;overflow-y:auto;padding:0 12px}',
   '.sim-wbf-item{padding:14px 0;border-bottom:1px solid #f2f2f2}',
   '.sim-wbf-head{display:flex;align-items:flex-start;gap:10px}',
@@ -1152,6 +1170,8 @@ window.__ModuleLoader__.load({
       '.sim-hs-tag.is-boil{color:#fff;background:#ff2c2c}',
       '.sim-hs-tag.is-boom{color:#fff;background:#d0021b}',
       '.sim-hs-tag.is-biz{color:#3f6fd8;background:#eef3ff}',
+      '.sim-hs-tag.is-variety{color:#9b4fb0;background:#f8eefb}',
+      '.sim-hs-tag.is-show{color:#159c74;background:#e8f8f2}',
       '.sim-hs-tag.is-top{color:#ff2c2c;background:#fff0f0;border:1px solid #ffd0d0}',
       '.sim-hs-more{padding:11px 14px;text-align:center;color:#b4b4b4;font-size:var(--sim-fs-2);border-top:1px solid #f5f5f5}',
       // ── 现代工作一族 ──
@@ -2289,6 +2309,8 @@ const WARN_FALLBACK = {
             const s = String(t == null ? '' : t);
             if (s.indexOf('爆') >= 0) return 'boom';
             if (s.indexOf('沸') >= 0) return 'boil';
+            if (s.indexOf('综艺') >= 0) return 'variety';
+            if (s.indexOf('演出') >= 0) return 'show';
             if (s.indexOf('新') >= 0) return 'new';
             if (s.indexOf('热') >= 0) return 'hot';
             if (s.indexOf('商') >= 0 || s.indexOf('荐') >= 0) return 'biz';
@@ -3984,6 +4006,8 @@ function App({ gameId, close }) {
         // 微博热搜：打开时拉一次（宿主按游戏内日期缓存，同一天不会重复生成）
         const [phoneHot, setPhoneHot] = React.useState(null);
         const [phoneHotBusy, setPhoneHotBusy] = React.useState(false);
+        // 点开的那条热搜。非空时「发现」页显示详情，顶栏返回键先回列表
+        const [hotDetail, setHotDetail] = React.useState(null);
         const [phoneWbWho, setPhoneWbWho] = React.useState('');
         const [phoneWbTab, setPhoneWbTab] = React.useState('home');   // 微博底部的三个 tab
         // 「加载更多」进行中
@@ -6594,6 +6618,18 @@ function phoneDoComment(id) {
 
             // album：iOS 风格 —— 按日期分节、3 列贴满、点一张进全屏
             if (phoneView === 'weibo') {
+              // 热搜标签的颜色分级。uiHotsearch 里那份在另一个函数作用域，这里取不到，另写一份。
+              const 标类 = (t) => {
+                const s = String(t == null ? '' : t);
+                if (s.indexOf('爆') >= 0) return 'boom';
+                if (s.indexOf('沸') >= 0) return 'boil';
+                if (s.indexOf('新') >= 0) return 'new';
+                if (s.indexOf('综艺') >= 0) return 'variety';
+                if (s.indexOf('演出') >= 0) return 'show';
+                if (s.indexOf('荐') >= 0 || s.indexOf('商') >= 0) return 'biz';
+                if (s.indexOf('热') >= 0) return 'hot';
+                return 'plain';
+              };
               const hs = phoneHot || { ok: false, 时间线: [], 热搜: [], 来源: '', 提示: '' };
               const 线 = Array.isArray(hs.时间线) ? hs.时间线 : [];
               const 热 = Array.isArray(hs.热搜) ? hs.热搜 : [];
@@ -6605,8 +6641,8 @@ function phoneDoComment(id) {
                 h(
                   'div',
                   { className: 'sim-wb-top' },
-                  h('button', { className: 'sim-wbf-back', onClick: () => setPhoneView('home') }, '‹'),
-                  h('div', { className: 'sim-wbf-tab' }, tab === 'home' ? '微博' : (tab === 'explore' ? '发现' : '我的主页')),
+                  h('button', { className: 'sim-wbf-back', onClick: () => { if (hotDetail && tab === 'explore') setHotDetail(null); else setPhoneView('home'); } }, '‹'),
+                  h('div', { className: 'sim-wbf-tab' }, hotDetail && tab === 'explore' ? String(hotDetail.标题 || '') : (tab === 'home' ? '微博' : (tab === 'explore' ? '发现' : '我的主页'))),
                   h('span', { className: 'sim-wbf-more', title: '刷新', onClick: () => { if (!phoneHotBusy) phoneLoadHot(true); } }, phoneHotBusy ? '…' : '↻')
                 ),
                 // 内容区
@@ -6687,22 +6723,89 @@ function phoneDoComment(id) {
                           )
                         : h('div', { className: 'sim-wbf-empty' }, '还没有内容。', hs.提示 ? h('div', { style: { marginTop: 8, fontSize: 12, color: '#b0b0b0' } }, hs.提示) : null))
                     : tab === 'explore'
-                    ? (热.length
+                    ? (hotDetail
                         ? h(
                             'div',
-                            { className: 'sim-wbf-list' },
-                            热.map((x, i) =>
+                            { className: 'sim-hd' },
+                            h(
+                              'div',
+                              { className: 'sim-hd-hd' },
                               h(
                                 'div',
-                                { className: 'sim-wbf-row' + (x.剧情 ? ' hot' : ''), key: 'h' + i },
-                                h('span', { className: 'sim-wbf-no' + (i < 3 ? ' top' : '') }, String(x.序号 || i + 1)),
-                                h('span', { className: 'sim-wbf-word' }, String(x.标题 || '')),
-                                x.标签 ? h('span', { className: 'sim-wbf-tag' }, String(x.标签)) : null,
-                                h('span', { className: 'sim-wbf-heat' }, Number(x.热度) >= 10000 ? (Number(x.热度) / 10000).toFixed(1) + '万' : String(x.热度 || ''))
+                                { className: 'sim-hd-t' },
+                                hotDetail.序号
+                                  ? h('span', { className: 'sim-hd-no' + (hotDetail.序号 <= 3 ? ' top' : '') }, String(hotDetail.序号))
+                                  : null,
+                                h('span', null, String(hotDetail.标题 || ''))
+                              ),
+                              h(
+                                'div',
+                                { className: 'sim-hd-meta' },
+                                (function () {
+                                  const n = Number(hotDetail.热度) || 0;
+                                  return h('span', null, '热度 ' + (n >= 10000 ? (n / 10000).toFixed(1) + ' 万' : String(n)));
+                                })(),
+                                hotDetail.标签 ? h('span', { className: 'sim-wbf-tag is-' + 标类(hotDetail.标签) }, String(hotDetail.标签)) : null,
+                                hotDetail.剧情 ? h('span', { className: 'sim-hd-rel' }, '与你有关') : null
                               )
-                            )
+                            ),
+                            h('div', { className: 'sim-hd-sec' }, '相关微博'),
+                            (function () {
+                              // 从这一屏的微博里挑正文含标题关键词的。不额外调模型 ——
+                              // 热搜本来就是从这些内容里生出来的，能对上的就在里面。
+                              const 词 = String(hotDetail.标题 || '').replace(/#/g, ' ').split(/[\s·、，,]+/).filter((x) => x.length >= 2);
+                              const 命中 = 线.filter(function (w) {
+                                const t = String(w.正文 || '');
+                                return 词.some(function (k) { return t.indexOf(k) >= 0; });
+                              });
+                              if (!命中.length) return h('div', { className: 'sim-wbf-empty' }, '这个话题下还没有相关微博。');
+                              return 命中.slice(0, 8).map(function (w, i2) {
+                                return h(
+                                  'div',
+                                  { className: 'sim-hd-wb', key: 'd' + i2 },
+                                  h(
+                                    'div',
+                                    { className: 'sim-wb-hd' },
+                                    h('span', { className: 'sim-wb-av' }, String(w.作者 || '微')[0]),
+                                    h(
+                                      'div',
+                                      { className: 'sim-wb-nb' },
+                                      h('div', { className: 'sim-wb-nm' }, w.作者 || '', w.认证 ? h('span', { className: 'sim-wb-v' }, 'V') : null),
+                                      h('div', { className: 'sim-wb-tm' }, [w.认证, wbWhen(w.分钟前) || w.时间].filter(Boolean).join(' · '))
+                                    )
+                                  ),
+                                  h('div', { className: 'sim-wb-tx' }, w.正文 || ''),
+                                  h(
+                                    'div',
+                                    { className: 'sim-wb-acts' },
+                                    h('span', null, '↻ ' + (w.转发 || '转发')),
+                                    h('span', null, '💬 ' + (w.评论数 || '评论')),
+                                    h('span', null, '☆ ' + (w.赞 || '赞'))
+                                  )
+                                );
+                              });
+                            })()
                           )
-                        : h('div', { className: 'sim-wbf-empty' }, '还没有热搜。'))
+                        : (热.length
+                            ? h(
+                                'div',
+                                { className: 'sim-wbf-list' },
+                                热.map((x, i) =>
+                                  h(
+                                    'div',
+                                    {
+                                      className: 'sim-wbf-row' + (x.剧情 ? ' hot' : ''),
+                                      key: 'h' + i,
+                                      onClick: () => setHotDetail(x),
+                                    },
+                                    h('span', { className: 'sim-wbf-no' + (i < 3 ? ' top' : '') }, String(x.序号 || i + 1)),
+                                    h('span', { className: 'sim-wbf-word' }, String(x.标题 || '')),
+                                    x.标签 ? h('span', { className: 'sim-wbf-tag is-' + 标类(x.标签) }, String(x.标签)) : null,
+                                    h('span', { className: 'sim-wbf-heat' }, Number(x.热度) >= 10000 ? (Number(x.热度) / 10000).toFixed(1) + '万' : String(x.热度 || ''))
+                                  )
+                                )
+                              )
+                            : h('div', { className: 'sim-wbf-empty' }, '还没有热搜。')))
                     : h('div', { className: 'sim-wb-me' },
                       (function () {
                         const d = (phoneMe && phoneMe.资料) || {};
@@ -6758,9 +6861,9 @@ function phoneDoComment(id) {
                   h('button', { className: 'wb-send', disabled: !wbTarget || !phoneIn.trim(), onClick: () => wbSendComment() }, '发送')
                 ) : null,
                 h('div', { className: 'sim-wb-nav' },
-                  h('button', { className: 'sim-wb-nv' + (tab === 'home' ? ' on' : ''), onClick: () => setPhoneWbTab('home') }, h('span', { className: 'i' }, '🏠'), h('span', { className: 'l' }, '首页')),
-                  h('button', { className: 'sim-wb-nv' + (tab === 'explore' ? ' on' : ''), onClick: () => setPhoneWbTab('explore') }, h('span', { className: 'i' }, '🔍'), h('span', { className: 'l' }, '发现')),
-                  h('button', { className: 'sim-wb-nv' + (tab === 'me' ? ' on' : ''), onClick: () => { setPhoneWbTab('me'); loadMyWeibo(false); } }, h('span', { className: 'i' }, '👤'), h('span', { className: 'l' }, '我'))
+                  h('button', { className: 'sim-wb-nv' + (tab === 'home' ? ' on' : ''), onClick: () => { setPhoneWbTab('home'); setHotDetail(null); } }, h('span', { className: 'i' }, '🏠'), h('span', { className: 'l' }, '首页')),
+                  h('button', { className: 'sim-wb-nv' + (tab === 'explore' ? ' on' : ''), onClick: () => { setPhoneWbTab('explore'); setHotDetail(null); } }, h('span', { className: 'i' }, '🔍'), h('span', { className: 'l' }, '发现')),
+                  h('button', { className: 'sim-wb-nv' + (tab === 'me' ? ' on' : ''), onClick: () => { setPhoneWbTab('me'); setHotDetail(null); loadMyWeibo(false); } }, h('span', { className: 'i' }, '👤'), h('span', { className: 'l' }, '我'))
                 )
               );
             }

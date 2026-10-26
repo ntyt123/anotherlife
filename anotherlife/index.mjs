@@ -11000,15 +11000,38 @@ async function getHotsearch(s, gid, opts) {
     const 世界 = Array.isArray(obj && obj.世界热搜) ? obj.世界热搜.map(String).filter(Boolean) : [];
     if (!时间线.length && !剧情.length && !世界.length) throw new Error('模型没给热搜（原文前 80 字：' + txt.slice(0, 80) + '）');
 
-    // 拼成一屏：剧情置顶，世界补满 18 条
+    // 标签池：真实热搜顶部常见「爆」「沸」，中间「热」「新」，
+    // 娱乐类会给「综艺」「演出」，偶尔有「荐」。原来只给了「热」和「新」，
+    // 一屏看下去颜色全一样，不像真的。
+    const 挑标签 = (i, 是剧情, 标题) => {
+      const t = String(标题 || '');
+      if (是剧情) {
+        // 剧情热搜顶在最前面，前两条给最重的两个
+        if (i === 0) return Math.random() < 0.5 ? '爆' : '沸';
+        if (i === 1) return Math.random() < 0.4 ? '沸' : '热';
+        return '热';
+      }
+      // 世界热搜：先按内容判类型，再按位置和概率补常规标签
+      if (/演唱|巡演|音乐节|live|舞台剧|话剧/i.test(t)) return '演出';
+      if (/综艺|真人秀|节目|访谈/.test(t)) return '综艺';
+      const r = Math.random();
+      if (i <= 2 && r < 0.3) return '沸';
+      if (r < 0.25) return '新';
+      if (r < 0.45) return '热';
+      if (r < 0.5) return '荐';
+      return '';
+    };
+    
     const 一屏 = [];
-    let 热度 = 1480000;
-    剧情.forEach((t) => {
-      一屏.push({ 标题: t, 热度, 标签: '热', 剧情: true });
+    // 榜首热度不再固定 148 万 —— 每次生成落在 90 万~260 万，
+    // 同一天看是同一个数（结果会缓存），换一天才变。
+    let 热度 = 900000 + Math.floor(Math.random() * 1700000);
+    剧情.forEach((t, i) => {
+      一屏.push({ 标题: t, 热度, 标签: 挑标签(i, true, t), 剧情: true });
       热度 -= 90000 + Math.floor(Math.random() * 40000);
     });
-    世界.slice(0, 18).forEach((t) => {
-      一屏.push({ 标题: t, 热度, 标签: Math.random() < 0.35 ? '新' : '', 剧情: false });
+    世界.slice(0, 18).forEach((t, i) => {
+      一屏.push({ 标题: t, 热度, 标签: 挑标签(i, false, t), 剧情: false });
       热度 -= 40000 + Math.floor(Math.random() * 60000);
     });
     一屏.forEach((x, i) => {
