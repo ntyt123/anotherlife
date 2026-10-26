@@ -4025,6 +4025,12 @@ function App({ gameId, close }) {
         const [wbTarget, setWbTarget] = React.useState(null);
         // 我发过的评论（只在界面上显示，重启就丢）
         const [wbMine, setWbMine] = React.useState([]);
+        // wbMine 只活在前端内存，刷新就空 —— 玩家回头看不到自己刚发的那句。
+        // 宿主侧 queueWeiboComment 已经把它写进存档（state.wbMine），这里跟着同步回来。
+        const wbMineKey = state && Array.isArray(state.wbMine) ? state.wbMine.length : 0;
+        React.useEffect(() => {
+          if (state && Array.isArray(state.wbMine)) setWbMine(state.wbMine);
+        }, [wbMineKey]);
         // 「我」那一页的数据（主角资料 + 最近 10 轮的微博）
         const [phoneMe, setPhoneMe] = React.useState(null);
         // 重建历史小结的进行中标记

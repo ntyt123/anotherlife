@@ -10785,9 +10785,23 @@ reg('queueWeiboComment', async ({ gameId, 微博作者, 微博正文, 回谁, �
   if (!txt) return { ok: false, why: '空的' };
   // 绑到「下一轮」—— 重发同一轮时还要能取到，所以不能取出即清空。
   let 轮次 = null;
+  // 一次 loadState 干两件事：取轮次、把这条评论顺手存进存档。
+  // 原来「我的评论」只活在前端内存里（wbMine），刷新一下就没了 ——
+  // 玩家回头看不到自己刚说过的话，只剩对方那条回复，很怪。
   try {
     const st0 = await loadState(gid);
     轮次 = st0 && st0.story && st0.story.current_message_index != null ? Number(st0.story.current_message_index) : null;
+    if (!Array.isArray(st0.wbMine)) st0.wbMine = [];
+    st0.wbMine.push({
+      作者: String(微博作者 || ''),
+      正文: String(微博正文 || '').slice(0, 60),
+      回谁: String(回谁 || ''),
+      回内容: String(回内容 || ''),
+      评论: txt,
+      时: Date.now(),
+    });
+    if (st0.wbMine.length > 200) st0.wbMine = st0.wbMine.slice(-200);
+    await saveState(st0);
   } catch (e) { 轮次 = null; }
   if (!WB_PENDING[gid]) WB_PENDING[gid] = [];
   WB_PENDING[gid].push({
