@@ -1095,6 +1095,7 @@ window.__ModuleLoader__.load({
       '.sim-wb-cmts{margin-top:10px;padding:10px 12px;background:#f7f8fa;border-radius:8px;display:flex;flex-direction:column;gap:7px}',
       '.sim-wb-cmt{font-size:13px;line-height:1.55;color:#333;word-break:break-word}',
   '.sim-wb-cmt.mine .who{color:#FF6A2E}',
+'.sim-wb-cmt.mine.sub{margin-left:16px;border-left:2px solid rgba(255,106,46,.35);padding-left:8px;background:#fff8f4;border-radius:0 4px 4px 0}',
   '.sim-wb-item{cursor:pointer}',
   '.sim-wb-cmt{cursor:pointer}',
       '.sim-wb-cmt .who{color:#5a7fa6;font-weight:600}',
@@ -6696,21 +6697,37 @@ function phoneDoComment(id) {
                                   ? h(
                                     'div',
                                     { className: 'sim-wb-cmts' },
-                                    w.评论列表.map((c, ci) =>
-                                      h(
+                                    // 评论列表：每条下面紧跟「你回复了他」的那条，回复别人微博评论时才看得出层级关系。
+                                    // 原来所有我的评论都堆在末尾，只显示「你：xxx」，看不出是回谁的。
+                                    w.评论列表.map((c, ci) => {
+                                      const 我对他的 = wbMine.filter((m) => m.作者 === w.作者
+                                        && m.正文 === String(w.正文 || '').slice(0, 60)
+                                        && String(m.回谁 || "") === String(c.谁 || ""));
+                                      return h(
                                         'div',
-                                        { className: 'sim-wb-cmt', key: ci, onClick: (e) => { e.stopPropagation(); setWbTarget({ 作者: w.作者, 正文: String(w.正文 || '').slice(0, 60), 回谁: c.谁, 回内容: String(c.内容 || '') }); } },
-                                        h('span', { className: 'who' }, c.谁 + '：'),
-                                        h('span', { className: 'txt' }, c.内容)
-                                      )
-                                    ),
-                                    wbMine.filter((m) => m.作者 === w.作者 && m.正文 === String(w.正文 || '').slice(0, 60)).map((m, mi) =>
-                                      h('div', { className: 'sim-wb-cmt mine', key: 'my' + mi },
+                                        { key: 'c' + ci },
+                                        h(
+                                          'div',
+                                          { className: 'sim-wb-cmt', onClick: (e) => { e.stopPropagation(); setWbTarget({ 作者: w.作者, 正文: String(w.正文 || '').slice(0, 60), 回谁: c.谁, 回内容: String(c.内容 || '') }); } },
+                                          h('span', { className: 'who' }, c.谁 + '：'),
+                                          h('span', { className: 'txt' }, c.内容)
+                                        ),
+                                        我对他的.map((m, mi) => h('div', { className: 'sim-wb-cmt mine sub', key: 'my' + ci + '_' + mi },
+                                          h('span', { className: 'who' }, '你 回复 @' + c.谁 + '：'),
+                                          h('span', { className: 'txt' }, m.评论)
+                                        ))
+                                      );
+                                    }),
+                                    // 直接评微博本身的（没回某条评论），追加在末尾
+                                    wbMine.filter((m) => m.作者 === w.作者
+                                      && m.正文 === String(w.正文 || '').slice(0, 60)
+                                      && !String(m.回谁 || "")).map((m, mi) =>
+                                      h('div', { className: 'sim-wb-cmt mine', key: 'myw' + mi },
                                         h('span', { className: 'who' }, '你：'),
                                         h('span', { className: 'txt' }, m.评论)
                                       )
                                     )
-                                    )
+                                  )
                                 : null
                               )
                             ),
