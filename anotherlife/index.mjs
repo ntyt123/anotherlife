@@ -10184,7 +10184,30 @@ const HUMAN_MSG = [
       added.push(it);
     });
 
-    s.手机.动态[p] = arr;
+    // 动态只增不减，点几次「刷新」就囤几百条，存档会一直变大。
+    // 到上限就清一批最老的 —— 但**互动过的那几条永不删**：
+    // 自己发的、自己赞过的、自己评论过的，这些都是玩家做过的事，
+    // 清掉就等于把他昨天的动作抹了（微博那边踩过一模一样的坑）。
+    const 上限条数 = 300;
+    let 结果数组 = arr;
+    if (arr.length > 上限条数) {
+      const 互动过 = new Set();
+      arr.forEach((x) => {
+        if (!x) return;
+        const 我赞过 = Array.isArray(x.赞) && x.赞.indexOf(me) >= 0;
+        const 我评过 = Array.isArray(x.评论) && x.评论.some((c) => c && String(c.谁 || '') === me);
+        if (x.自己发的 || 我赞过 || 我评过) 互动过.add(x);
+      });
+      const 可删 = arr.filter((x) => x && !互动过.has(x));
+      const 要删 = Math.min(arr.length - 上限条数, 可删.length);
+      if (要删 > 0) {
+        const 删掉 = new Set(可删.slice(0, 要删));
+        // 只算结果，别在这里 return —— 下面还要 saveState，提前返回等于没删也没存。
+        结果数组 = arr.filter((x) => !删掉.has(x));
+        await turnLog('[动态] 清理 ' + 要删 + ' 条老动态，互动过的都留着');
+      }
+    }
+    s.手机.动态[p] = 结果数组;
     await turnLog('[动态] ' + p + ' 新增 ' + added.length + ' 条');
     await saveState(s);
     return { ok: true, 平台: p, added };
