@@ -12646,69 +12646,6 @@ function thinkDrifted(t) {
             null,
             h('div', { className: 'sim-hint', style: { marginBottom: 10 } }, '模型与注入规则跨故事共用，新开一局会带上；每局独立的只有剧情本身。'),
 
-            /* ── 历史小结 ── */
-            h('div', { className: 'sim-card', style: { marginTop: 14 } },
-              h('div', { style: { fontSize: 'var(--sim-fs-4)', fontWeight: 600, marginBottom: 6 } }, '重建历史小结'),
-              h('div', { className: 'sim-hint', style: { lineHeight: 1.8, marginBottom: 12 } }, '把每一轮的小结按「时间／地点／发生的事」重写一遍。' + String((state && state.transcript ? state.transcript.filter(function (t) { return t && t.role !== 'user' && String(t.body || '').trim(); }).length : 0)) + ' 轮，会跑一会儿。'),
-              h(Btn, {
-                primary: true,
-                disabled: !!rebuildBusy,
-                onClick: function () {
-                  ask('重写全部历史小结？会先备份一份 .bak，能回滚。').then(function (o) {
-                    if (o !== true) return;
-                    setRebuildBusy(true);
-                    // 先把按钮放开再刷新 —— 原来写的是 return load(true)，
-                    // 刷新一旦卡住或抛错，setRebuildBusy(false) 就轮不到执行，
-                    // 界面上那个按钮会一直停在「正在重建…」。
-                    call('rebuildSummaries', {}, gameId)
-                      .then(function (r) {
-                        setRebuildBusy(false);
-                        setNote('重建完成：' + (r && r.已重写 != null ? r.已重写 : '?') + ' / ' + (r && r.总轮数 != null ? r.总轮数 : '?') + ' 条');
-                        try { load(); } catch (e) {}
-                      })
-                      .catch(function (e) {
-                        setRebuildBusy(false);
-                        setNote('重建失败：' + String((e && e.message) || e));
-                      });
-                  });
-                },
-              }, rebuildBusy ? '正在重建…' : '开始重建')
-            ),
-
-            /* ── 旧档补电话 ── */
-            h('div', { className: 'sim-card', style: { marginTop: 14 } },
-              h('div', { style: { fontSize: 'var(--sim-fs-4)', fontWeight: 600, marginBottom: 6 } }, '补齐电话'),
-              h('div', { className: 'sim-hint', style: { lineHeight: 1.8, marginBottom: 12 } }, '旧存档没存号码的联系人，按正文推断补上。已经有号的不动。'),
-              h(Btn, {
-                disabled: !!phoneFillBusy,
-                onClick: function () {
-                  if (phoneFillBusy) return;
-                  setPhoneFillBusy(true);
-                  call('backfillPhones', {}, gameId)
-                    .then(function (r) {
-                      setPhoneFillBusy(false);
-                      var 补 = r && r.已补 != null ? r.已补 : '?';
-                      var 待 = r && r.待补 != null ? r.待补 : '?';
-                      var 空 = r && r.留空 != null ? r.留空 : 0;
-                      setPhoneFillInfo({ 补: 补, 待: 待, 空: 空, 文件: (r && r.文件) || '', 说明: (r && r.说明) || '' });
-                      setNote(待 === 0 ? '所有人都有电话了' : '补了 ' + 补 + ' / ' + 待 + ' 人' + (空 ? '，' + 空 + ' 人留空' : ''));
-                      try { load(); } catch (e) {}
-                    })
-                    .catch(function (e) {
-                      setPhoneFillBusy(false);
-                      setNote('补电话失败：' + String((e && e.message) || e));
-                    });
-                },
-              }, phoneFillBusy ? '正在补…' : '补齐电话'),
-              // 结果和存档路径 —— 留空的人要玩家自己去那份 JSON 里填
-              phoneFillInfo ? h('div', { style: { marginTop: 10, fontSize: 12, lineHeight: 1.9, color: '#888' } },
-                h('div', null, '补了 ' + phoneFillInfo.补 + ' / ' + phoneFillInfo.待 + ' 人' + (phoneFillInfo.空 ? '，' + phoneFillInfo.空 + ' 人留空' : '')),
-                phoneFillInfo.说明 ? h('div', { style: { color: '#b26a00' } }, phoneFillInfo.说明) : null,
-                phoneFillInfo.空 ? h('div', null, '留空的人已经建好空号位，可以到下面这份文件里手填：') : null,
-                phoneFillInfo.文件 ? h('div', { style: { wordBreak: 'break-all', color: '#666', marginTop: 2 } }, phoneFillInfo.文件) : null
-              ) : null,
-            ),
-
             /* ── 外观与正文 ── */
             /* ── 人称 ── */
             group(
@@ -13309,6 +13246,69 @@ function thinkDrifted(t) {
               'local',
               '本局与调试',
               stInfo ? fmtKB(stInfo.bytes) + ' · ' + (stInfo.turns || 0) + ' 轮' : '',
+              /* ── 历史小结 ── */
+              h('div', { className: 'sim-card' },
+                h('div', { style: { fontSize: 'var(--sim-fs-4)', fontWeight: 600, marginBottom: 6 } }, '重建历史小结'),
+                h('div', { className: 'sim-hint', style: { lineHeight: 1.8, marginBottom: 12 } }, '把每一轮的小结按「时间／地点／发生的事」重写一遍。' + String((state && state.transcript ? state.transcript.filter(function (t) { return t && t.role !== 'user' && String(t.body || '').trim(); }).length : 0)) + ' 轮，会跑一会儿。'),
+                h(Btn, {
+                  primary: true,
+                  disabled: !!rebuildBusy,
+                  onClick: function () {
+                    ask('重写全部历史小结？会先备份一份 .bak，能回滚。').then(function (o) {
+                      if (o !== true) return;
+                      setRebuildBusy(true);
+                      // 先把按钮放开再刷新 —— 原来写的是 return load(true)，
+                      // 刷新一旦卡住或抛错，setRebuildBusy(false) 就轮不到执行，
+                      // 界面上那个按钮会一直停在「正在重建…」。
+                      call('rebuildSummaries', {}, gameId)
+                        .then(function (r) {
+                          setRebuildBusy(false);
+                          setNote('重建完成：' + (r && r.已重写 != null ? r.已重写 : '?') + ' / ' + (r && r.总轮数 != null ? r.总轮数 : '?') + ' 条');
+                          try { load(); } catch (e) {}
+                        })
+                        .catch(function (e) {
+                          setRebuildBusy(false);
+                          setNote('重建失败：' + String((e && e.message) || e));
+                        });
+                    });
+                  },
+                }, rebuildBusy ? '正在重建…' : '开始重建')
+              ),
+
+              /* ── 旧档补电话 ── */
+              h('div', { className: 'sim-card', style: { marginTop: 14 } },
+                h('div', { style: { fontSize: 'var(--sim-fs-4)', fontWeight: 600, marginBottom: 6 } }, '补齐电话'),
+                h('div', { className: 'sim-hint', style: { lineHeight: 1.8, marginBottom: 12 } }, '旧存档没存号码的联系人，按正文推断补上。已经有号的不动。'),
+                h(Btn, {
+                  disabled: !!phoneFillBusy,
+                  onClick: function () {
+                    if (phoneFillBusy) return;
+                    setPhoneFillBusy(true);
+                    call('backfillPhones', {}, gameId)
+                      .then(function (r) {
+                        setPhoneFillBusy(false);
+                        var 补 = r && r.已补 != null ? r.已补 : '?';
+                        var 待 = r && r.待补 != null ? r.待补 : '?';
+                        var 空 = r && r.留空 != null ? r.留空 : 0;
+                        setPhoneFillInfo({ 补: 补, 待: 待, 空: 空, 文件: (r && r.文件) || '', 说明: (r && r.说明) || '' });
+                        setNote(待 === 0 ? '所有人都有电话了' : '补了 ' + 补 + ' / ' + 待 + ' 人' + (空 ? '，' + 空 + ' 人留空' : ''));
+                        try { load(); } catch (e) {}
+                      })
+                      .catch(function (e) {
+                        setPhoneFillBusy(false);
+                        setNote('补电话失败：' + String((e && e.message) || e));
+                      });
+                  },
+                }, phoneFillBusy ? '正在补…' : '补齐电话'),
+                // 结果和存档路径 —— 留空的人要玩家自己去那份 JSON 里填
+                phoneFillInfo ? h('div', { style: { marginTop: 10, fontSize: 12, lineHeight: 1.9, color: '#888' } },
+                  h('div', null, '补了 ' + phoneFillInfo.补 + ' / ' + phoneFillInfo.待 + ' 人' + (phoneFillInfo.空 ? '，' + phoneFillInfo.空 + ' 人留空' : '')),
+                  phoneFillInfo.说明 ? h('div', { style: { color: '#b26a00' } }, phoneFillInfo.说明) : null,
+                  phoneFillInfo.空 ? h('div', null, '留空的人已经建好空号位，可以到下面这份文件里手填：') : null,
+                  phoneFillInfo.文件 ? h('div', { style: { wordBreak: 'break-all', color: '#666', marginTop: 2 } }, phoneFillInfo.文件) : null
+                ) : null,
+              ),
+
               h('div', { className: 'sim-card' },
                 h('div', { style: { fontWeight: 600, marginBottom: 4 } }, '这一局的存档'),
                 stInfo
