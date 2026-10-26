@@ -3915,6 +3915,28 @@ function tickUnderScent(s, dh, body) {
         }
       }
 
+      // 老数据校正：导入的存档里，强度可能远高于「按穿着小时算出来该有的值」
+      // （旧版公式、或模型直接写进去的）。按小时反算一次，超了就压回来 ——
+      // 不然界面上永远卡在满格，穿 34 小时的内衣和内裤都是 100。
+      const hNow = Number(slot.穿着小时) || 0;
+      if (hNow > 0) {
+        const 合理 = Math.round((100 * Math.min(hNow, full) / full) * 10) / 10;
+        const 当前 = Number(slot.气味强度) || 0;
+        if (当前 > 合理 + 5) {
+          out.push(engineDiff(base.concat(['穿着', key, '气味强度']), 当前, 合理, 'underscent'));
+          slot.气味强度 = 合理;
+          // scentByAI 开着时气味文本归模型写，这里只压强度，不碰那句话。
+          if (!byAI) {
+            const t3 = scentTextOf(scentLevel(合理), mat, nm, String(owner.姓名 || ''), 'under', key);
+            const 旧文 = String(slot.气味 || '').trim();
+            if (t3 && t3 !== 旧文) {
+              out.push(engineDiff(base.concat(['穿着', key, '气味']), 旧文, t3, 'underscent'));
+              slot.气味 = t3;
+            }
+          }
+        }
+      }
+      
       // ① 累加：只在时间推进时
       if (!(dh > 0)) return;
       // 不在场就不跟时间走（跟袜子一个道理：我们不知道她换没换）
@@ -3941,6 +3963,28 @@ function tickUnderScent(s, dh, body) {
           slot.气味 = newText;
         }
       }
+      // 穿到该换的时长，就换了 —— 内衣内裤本来就是一天一换，
+      // 没有这一条的话，穿得越久强度越高，满了就永远是满格。
+      if (afterH >= full) {
+        const 新强度 = Math.round(Math.random() * 120) / 10;   // 0~12
+        const 新小时 = Math.round(Math.random() * 50) / 10;    // 0~5
+        out.push(engineDiff(base.concat(['穿着', key, '气味强度']), after, 新强度, 'underscent'));
+        out.push(engineDiff(base.concat(['穿着', key, '穿着小时']), afterH, 新小时, 'underscent'));
+        slot.气味强度 = 新强度;
+        slot.穿着小时 = 新小时;
+        if (!byAI) {
+          const 换文 = scentTextOf(scentLevel(新强度), mat, nm, who, 'under', key);
+          if (换文) {
+            out.push(engineDiff(base.concat(['穿着', key, '气味']), String(slot.气味 || ''), 换文, 'underscent'));
+            slot.气味 = 换文;
+          }
+        }
+        const 换Dur = humanSockHours(新小时);
+        out.push(engineDiff(base.concat(['穿着', key, '穿着时长']), String(slot.穿着时长 || ''), 换Dur, 'underscent'));
+        slot.穿着时长 = 换Dur;
+        return;
+      }
+      
       const newDur = humanSockHours(afterH);
       if (newDur !== String(slot.穿着时长 || '')) {
         out.push(engineDiff(base.concat(['穿着', key, '穿着时长']), String(slot.穿着时长 || ''), newDur, 'underscent'));
