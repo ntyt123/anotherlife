@@ -4777,7 +4777,7 @@ function guessSockStrength(txt, scent, seed) {
  */
 const SETTLE_TOOL = {
   name: 'emit_state_update',
-  description: '提交这一轮的全部变量变化与一句话小总结。只写变化的字段（值写新值），没变的字段不要写；没有任何变化时也要调用，只给 summary。',
+  description: '提交这一轮的全部变量变化与三段式小总结（时间／地点／发生的事）。只写变化的字段（值写新值），没变的字段不要写；没有任何变化时也要调用，只给 summary。',
   parameters: {
     type: 'object',
     properties: {
@@ -4793,7 +4793,7 @@ const SETTLE_TOOL = {
         description: '与主角有关的关系变化',
         items: { type: 'object', additionalProperties: true },
       },
-      summary: { type: 'string', description: '一句话小总结：这一轮发生了什么' },
+  summary: { type: 'string', description: '本轮小结，严格三段式，总共 200~300 字：\\n· 时间：游戏内日期 + 时段（如「2010年9月30日 傍晚至夜间」）\\n· 地点：具体到房间或街道（如「东棉花胡同39号东楼302宿舍」）\\n· 发生的事：谁做了什么、说了什么关键的话、结果如何（150~220 字，带具体名词：人名、剧组名、地名、数字，不要写「发生了一些事」这种空话）' },
     },
     required: ['summary'],
     additionalProperties: true,
@@ -4817,7 +4817,7 @@ const STORY_SUBMIT_TOOL = {
     properties: {
       think: { type: 'string', description: '导演笔记：按系统提示里那七节逐项写' },
       game_content: { type: 'string', description: '这一轮的正文，完整写在这里' },
-      summary: { type: 'string', description: '一百字左右的客观小结' },
+    summary: { type: 'string', description: '本轮小结，严格三段式，总共 200~300 字：\n· 时间：游戏内日期 + 时段（如「2010年9月30日 傍晚至夜间」）\n· 地点：具体到房间或街道（如「东棉花胡同39号东楼302宿舍」）\n· 发生的事：谁做了什么、说了什么关键的话、结果如何（150~220 字，带具体名词：人名、剧组名、地名、数字，不要写「发生了一些事」这种空话）' },
       options: { type: 'array', items: { type: 'string' }, description: '行动选项，每条一行带路线标签' },
     },
     required: ['game_content'],
@@ -6296,7 +6296,11 @@ let aiPickFail = '';
   head.push('【提交方式】这一轮的内容通过 game 工具交上来：');
   head.push('  · think —— 上面那七节的导演笔记');
   head.push('  · game_content —— 这一轮的正文，完整写在里面');
-  head.push('  · summary —— 一百字左右的客观小结');
+  head.push('  · summary —— 本轮小结，严格三段式，总共 200~300 字：');
+  head.push('      · 时间：游戏内日期 + 时段（「2010年9月30日 傍晚至夜间」）');
+  head.push('      · 地点：具体到房间或街道（「东棉花胡同39号东楼302宿舍」，不要只写「北京」）');
+  head.push('      · 发生的事：谁做了什么、说了什么关键的话、结果如何。150~220 字，**必须带具体名词** —— 人名、剧组名、地名、数字、金额。');
+  head.push('      **不要写「发生了一些事」「进行了交流」这种空话。** 这一条是给几十轮之后看的，它得能替代正文。');
   head.push('  · options —— 行动选项，每条一行，带上路线标签');
   head.push('  普通消息的位置留空就好。');
     }
@@ -8031,10 +8035,10 @@ if (微博待发.length) {
     const 早行 = [];
     更早.forEach((sq) => {
       const t = list.find((x) => x && x.seq === sq && x.role !== 'user' && String(x.summary || '').trim());
-      if (t) 早行.push('第' + sq + '轮：' + String(t.summary).trim().replace(/\s+/g, ' '));
+      if (t) 早行.push('—— 第' + sq + '轮 ——\n' + String(t.summary).trim());
     });
     if (早行.length) {
-      out.push('【更早的剧情（每轮一句话，越往下越近）】');
+      out.push('【更早的剧情（每轮一条小结：时间／地点／发生的事）】');
       out.push(早行.join('\n'));
     }
   
