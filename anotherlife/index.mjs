@@ -6940,6 +6940,21 @@ let aiPickFail = '';
     return { body, options: collectOptionLines(lines.slice(start + 1, end + 1)) };
   }
 
+  /**
+   * 剥掉导演笔记的壳。
+   *
+   * 提示词要求模型「输出一个 <导演笔记> 块」，于是它在工具参数 think 里、
+   * 甚至 reasoning 里也照抄了那对标签。标签不是内容，直接塞进「思考过程」面板
+   * 就是裸露的 <导演笔记>，看着像插件没解析干净。
+   */
+  function stripNoteTags(t) {
+    return String(t == null ? '' : t)
+      .replace(/<\s*\/?\s*(?:导演笔记|think|思考过程|思考)\s*>/gi, '')
+      .replace(/^\s*```[a-zA-Z]*\s*\n/, '')
+      .replace(/\n\s*```\s*$/, '')
+      .trim();
+  }
+  
   function splitStory(raw) {
     let think = '';
     let rest = String(raw || '').trim();
@@ -6948,6 +6963,29 @@ let aiPickFail = '';
     if (m) {
       think = m[1].trim();
       rest = rest.replace(m[0], '').trim();
+    }
+    // 没闭合就按行特征切 —— 模型偷懒不写 </导演笔记>，或者被长度上限截断时，
+    // 上面那条正则匹配不到，整块导演笔记会原样留在正文最前面。
+    if (!m) {
+      const 开m = rest.match(/<\s*(?:导演笔记|think)\s*>/);
+      if (开m) {
+        const 后 = rest.slice(开m.index + 开m[0].length);
+        const 行 = 后.split('\n');
+        // 导演笔记的每一行都以 ①..⑩ 或 · 开头；遇到第一行不是这样的，就当正文开始
+        const 像笔记 = (t) => /^[①②③④⑤⑥⑦⑧⑨⑩⑪⑫]|^[·•\-*](\s|$)|^\d+[.、)]|^$/.test(t);
+        let 止行 = 0;
+        for (let i2 = 0; i2 < 行.length; i2++) {
+          if (像笔记(行[i2].trim())) { 止行 = i2; continue; }
+          break;
+        }
+        const 切出 = 行.slice(0, 止行 + 1).join('\n').trim();
+        const 留下 = 行.slice(止行 + 1).join('\n').trim();
+        // 只有切出来确实像笔记（带编号或够长）才认，避免误伤正文里偶然出现的标签
+        if (留下 && /[①②③④⑤⑥⑦⑧⑨⑩]|^[·•]/m.test(切出)) {
+          think = 切出;
+          rest = 留下;
+        }
+      }
     }
     let body = rest;
     let options = [];
