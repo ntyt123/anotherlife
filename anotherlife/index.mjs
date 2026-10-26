@@ -7754,7 +7754,7 @@ if (微博待发.length) {
 
     // 正文里如果有 :::weibo_reply 块，剥出来写回微博缓存（不给玩家看见）
     try {
-      sp.body = await 处理微博回复(s, gid, sp.body);
+      sp.body = await 处理微博回复(s, gid, sp.body, 微博待发);
       // 剥掉末尾分节符（*** / --- / ===）。模型爱在收尾时加，看着像没写完。
       // 用 split 判断，避开正则转义 —— 只处理末尾，中间的分节符是排版用的，留着。
       剥末尾分节符: {
@@ -10782,7 +10782,7 @@ function 取待发评论(gid, seq) {
  *
  * 匹配不到对应微博就丢弃并记日志，不乱塞。
  */
-async function 处理微博回复(s, gid, body) {
+async function 处理微博回复(s, gid, body, 待发) {
   const txt = String(body || '');
   if (txt.indexOf(':::weibo_reply') < 0) return body;
   const re = /:::weibo_reply\s*\n([\s\S]*?)\n:::/g;
@@ -10812,19 +10812,40 @@ async function 处理微博回复(s, gid, body) {
   }
   const 归一 = (x) => String(x || '').replace(/[@＠]/g, '').replace(/[Vv]$/, '').replace(/\s+/g, '').trim();
   let 成功 = 0;
+  // 定位到「玩家真正回的那条微博」，不能只按作者名猜：
+  // 同一个人发过好几条时，按作者名会挂错（而且时间线是新的在前，
+  // 原来从末尾往前扫，命中的是最老的那条，正好反了）。
+  const 待发正文s = (Array.isArray(待发) ? 待发 : []).map((x) => 归一(x && x.微博正文)).filter(Boolean);
   抓到.forEach((o) => {
     const 谁 = 归一(o.谁);
-    // 挑最近的那条（时间线是新的在前，从后往前找更省事）
-    for (let k = cache.时间线.length - 1; k >= 0; k--) {
+    let 命中 = -1;
+    // ① 先按「玩家回的那条微博的正文」定位（最准）
+    for (let k = 0; k < cache.时间线.length && 命中 < 0; k++) {
       const w = cache.时间线[k];
-      const 作者 = 归一(w && w.作者);
-      if (!作者 || !谁) continue;
-      if (作者.indexOf(谁) < 0 && 谁.indexOf(作者) < 0) continue;
-      if (!Array.isArray(w.评论列表)) w.评论列表 = [];
-      w.评论列表.push({ 谁: o.谁, 内容: o.内容, 回谁: o.回谁 || '', 回复: true });
-      成功++;
-      break;
+      const 正 = 归一(w && w.正文);
+      if (!正) continue;
+      for (let j = 0; j < 待发正文s.length; j++) {
+        const 想要 = 待发正文s[j];
+        // 正文常被截过，两边都取前 20 字比对
+        if (正.slice(0, 20) === 想要.slice(0, 20) || 正.indexOf(想要.slice(0, 16)) >= 0) { 命中 = k; break; }
+      }
     }
+    // ② 退一步：该作者「最近」的一条 —— 索引 0 是最新的，从 0 往后扫
+    if (命中 < 0) {
+      for (let k = 0; k < cache.时间线.length; k++) {
+        const w = cache.时间线[k];
+        const 作者 = 归一(w && w.作者);
+        if (!作者 || !谁) continue;
+        if (作者.indexOf(谁) < 0 && 谁.indexOf(作者) < 0) continue;
+        命中 = k;
+        break;
+      }
+    }
+    if (命中 < 0) return;
+    const 条 = cache.时间线[命中];
+    if (!Array.isArray(条.评论列表)) 条.评论列表 = [];
+    条.评论列表.push({ 谁: o.谁, 内容: o.内容, 回谁: o.回谁 || '', 回复: true });
+    成功++;
   });
   if (成功) {
     try { await writeJson(p, cache); } catch (e) {
@@ -10867,9 +10888,17 @@ function 近轮梗概(s, n) {
 function 角色名单(s) {
   const out = [];
   const p = s.protagonist || {};
-  if (p.姓名) out.push(String(p.姓名) + '（主角' + (p.身份 ? '·' + p.身份 : '') + '）');
+  if (p.姓名) out.push(String(p.姓名) + '（主角 · ' + (p.身份 ? String(p.身份) : '') + '｜' + 主角位置(s) + '）');
+  // 之所以要标「公众人物」：提示词要求「只有这个时间点已经是公众人物的才能发博」，
+  // 但只给姓名和身份，模型无从判断 —— 它会让学生、路人随便发博。
   (s.npcs || []).forEach((n) => {
-    if (n && n.姓名) out.push(String(n.姓名) + (n.身份 ? '（' + n.身份 + '）' : ''));
+    if (!n || !n.姓名) return;
+    const 咖 = String(n.艺人咖位 || '').trim();
+    const 粉 = String(n.全网粉丝数 || '').trim();
+    const 作 = Array.isArray(n.代表作品) ? n.代表作品.length : 0;
+    const 账 = String(n.微博账号 || '').trim();
+    const 标 = (咖 || 粉 || 作 || 账) ? '｜公众人物' : '｜非公众人物';
+    out.push(String(n.姓名) + (n.身份 ? '（' + String(n.身份) + '）' : '') + 标);
   });
   return out.join('、');
 }
@@ -10969,7 +10998,8 @@ function 微博提示词(s, 已有) {
   L.push('  如果他是素人，**不要把他写成明星发博** —— 他没有粉丝、没有通稿、没人认识。');
   L.push('  素人最多出现在别人的评论区里被提到，或者干脆不出现。');
   L.push('  如果他是小有名气，可以有他的微博，但数据要小（几百赞那种），评论区也就几条。');
-  L.push('· 角色名单里的其他人也一样：只有在这个时间点已经是公众人物的才能发博。');
+  L.push('· 角色名单里每个名字后面标了「公众人物」或「非公众人物」，照着来 ——');
+  L.push('  标了非公众人物的，只能出现在别人的评论区里被提到，不能自己发博。');
   L.push('');
   L.push('【时间线怎么编】');
   L.push('这一屏是「推荐算法推给你的」。所以要有亲近感，也要有杂音。');
@@ -11229,7 +11259,9 @@ function 我的微博资料(s) {
       if (!o.正文) return;
       // 只留主角自己发的（作者名包含主角名）
       const 作者 = String(o.作者 || '');
-      if (me && 作者.indexOf(me) < 0) return;
+      // 卡片里的作者可能写成「@罗伊」「罗伊V」，直接比会漏 —— 先归一化。
+      const 净 = (x) => String(x || '').replace(/[@＠]/g, '').replace(/[Vv]$/, '').replace(/\s+/g, '').trim();
+      if (me && 净(作者).indexOf(净(me)) < 0 && 净(me).indexOf(净(作者)) < 0) return;
       线.push({
         作者: 作者 || me,
         时间: String(o.时间 || ''),
@@ -11262,7 +11294,11 @@ reg('refreshHotsearch', async ({ gameId }) => {
   const s = await loadState(gameId);
   try {
     const t = await fs.resolve(weiboCachePath(gameId));
-    await fs.writeText(t, JSON.stringify({ 日期: '', 热搜: [] }));
+    // 只清热搜，时间线留着 —— 原来这里直接写 { 日期:"", 热搜:[] }，
+    // 把「加载更多」翻出来的那一长串时间线一起抹了。
+    let 旧c = null;
+    try { 旧c = await readJson(t); } catch (e2) { 旧c = null; }
+    await fs.writeText(t, JSON.stringify(Object.assign({}, 旧c || {}, { 日期: '', 热搜: [] })));
   } catch (e) {
     /* 没有缓存就直接生成 */
   }
