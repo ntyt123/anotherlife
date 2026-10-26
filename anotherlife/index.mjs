@@ -11843,6 +11843,8 @@ function recentBodies(s, rounds) {
       }
       if (name === 'list_notes') {
         const items = await readNotes(gameId);
+        // 留证据：读的哪个文件、拿到几条。神谕说「没有笔记」时靠这行判断。
+        await turnLog('[神谕·笔记] 列 gameId=' + gameId + ' 文件=' + notesFile(gameId) + ' 条目=' + items.length).catch(() => {});
         if (!items.length) return '（还没有笔记）';
         return items
           .map((x) => {
@@ -11855,6 +11857,7 @@ function recentBodies(s, rounds) {
         const q = String(a.query || '').trim();
         if (!q) return '（关键词是空的）';
         const items = await readNotes(gameId);
+        await turnLog('[神谕·笔记] 搜「' + q + '」 条目=' + items.length).catch(() => {});
         const hits = [];
         for (const x of items) {
           const body = String(x.body || '');
