@@ -12525,13 +12525,19 @@ function thinkDrifted(t) {
                   ask('重写全部历史小结？会先备份一份 .bak，能回滚。').then(function (o) {
                     if (o !== true) return;
                     setRebuildBusy(true);
-                    Promise.resolve(call('rebuildSummaries', {}, gameId))
+                    // 先把按钮放开再刷新 —— 原来写的是 return load(true)，
+                    // 刷新一旦卡住或抛错，setRebuildBusy(false) 就轮不到执行，
+                    // 界面上那个按钮会一直停在「正在重建…」。
+                    call('rebuildSummaries', {}, gameId)
                       .then(function (r) {
+                        setRebuildBusy(false);
                         setNote('重建完成：' + (r && r.已重写 != null ? r.已重写 : '?') + ' / ' + (r && r.总轮数 != null ? r.总轮数 : '?') + ' 条');
-                        return load(true);
+                        try { load(); } catch (e) {}
                       })
-                      .catch(function (e) { setNote('重建失败：' + String((e && e.message) || e)); })
-                      .then(function () { setRebuildBusy(false); });
+                      .catch(function (e) {
+                        setRebuildBusy(false);
+                        setNote('重建失败：' + String((e && e.message) || e));
+                      });
                   });
                 },
               }, rebuildBusy ? '正在重建…' : '开始重建')

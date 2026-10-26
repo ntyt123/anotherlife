@@ -11140,7 +11140,7 @@ reg('setStarMode', async ({ gameId, on }) => {
   const s = await loadState(gameId);
   if (!s.protagonist) s.protagonist = {};
   s.protagonist.是否艺人 = !!on;
-  await saveState(gameId, s);
+  await saveState(s);
   await turnLog('[星途] 开关 → ' + (on ? '开' : '关'));
   return await loadState(gameId);   // 返回完整状态，界面用 run() 吸收
 });
@@ -11204,7 +11204,7 @@ reg('rebuildSummaries', async ({ gameId }) => {
       await turnLog('[重建] 第 ' + (k + 1) + ' 批失败：' + String((e && e.message) || e));
     }
   }
-  await saveState(gameId, s);
+  await saveState(s);
   await turnLog('[重建] 完成 ' + 改 + '/' + 助.length + '，失败批 ' + 错);
   return { 总轮数: 助.length, 已重写: 改, 失败批: 错 };
 });
