@@ -6753,11 +6753,36 @@ function phoneDoComment(id) {
                             (function () {
                               // 从这一屏的微博里挑正文含标题关键词的。不额外调模型 ——
                               // 热搜本来就是从这些内容里生出来的，能对上的就在里面。
-                              const 词 = String(hotDetail.标题 || '').replace(/#/g, ' ').split(/[\s·、，,]+/).filter((x) => x.length >= 2);
-                              const 命中 = 线.filter(function (w) {
-                                const t = String(w.正文 || '');
-                                return 词.some(function (k) { return t.indexOf(k) >= 0; });
-                              });
+                              // 把标题拆成能匹配正文的片段。
+                              // 只按空格/标点拆是不够的 —— 话题词常常是一整串（「罗伊通宵连熬大夜」），
+                              // 正文里不可能出现这个完整字符串，必须再往下切。
+                              // 切法：长词按 2 字滑窗（罗伊/伊通/通宵/宵连/连熬/熬大/大夜），
+                              // 判定要求**不同的片段 ≥2 个同时出现**，这样只撞到「罗伊」这种大众名字不算数。
+                              const 关键词 = (function () {
+                                const t = String(hotDetail.标题 || '').replace(/[#【】\[\]]/g, ' ');
+                                const 段 = t.split(/[\s·、，,。！？!?~～—\-－\/|]+/).filter(function (x) { return x.length >= 2; });
+                                const 出 = [];
+                                段.forEach(function (w) {
+                                  出.push(w);
+                                  if (w.length > 3) {
+                                    // 滑窗，末尾不足 2 字的那截也带上（「大夜」这种正好是 2 字）
+                                    for (let i = 0; i + 1 < w.length; i++) 出.push(w.slice(i, i + 2));
+                                  }
+                                });
+                                return 出.filter(function (x, i) { return x.length >= 2 && 出.indexOf(x) === i; });
+                              })();
+                              // 门槛：片段太少时（标题只有两三个字）放宽到 1，否则要求命中两个不同片段
+                              const 门槛 = 关键词.length >= 3 ? 2 : 1;
+                              const 命中 = 线
+                                .map(function (w) {
+                                  const t = String(w.正文 || '');
+                                  let 数 = 0;
+                                  关键词.forEach(function (k) { if (t.indexOf(k) >= 0) 数++; });
+                                  return { w: w, 数: 数 };
+                                })
+                                .filter(function (x) { return x.数 >= 门槛; })
+                                .sort(function (a, b) { return b.数 - a.数; })
+                                .map(function (x) { return x.w; });
                               if (!命中.length) return h('div', { className: 'sim-wbf-empty' }, '这个话题下还没有相关微博。');
                               return 命中.slice(0, 8).map(function (w, i2) {
                                 return h(
