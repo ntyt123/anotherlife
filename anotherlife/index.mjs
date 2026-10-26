@@ -11159,6 +11159,7 @@ reg('rebuildSummaries', async ({ gameId }) => {
     '',
     '输出严格 JSON 数组，不要任何其他文字、不要代码块标记：',
     '[{"轮次": 0, "时间": "2010年9月1日 上午", "地点": "东棉花胡同39号中戏正门", "发生的事": "……"}]',
+        '「轮次」必须**逐字照抄**【第N轮正文】里那个 N，不要从 1 开始重新数。',
     '',
     '要求：',
     '· 时间 —— 正文里能找到就照抄，写成「年月日 + 时段」；找不到按前后文推断，不许留空。',
@@ -11183,9 +11184,12 @@ reg('rebuildSummaries', async ({ gameId }) => {
       const 数 = 抠JSON数组(文);
       if (!数) await turnLog('[重建] 返回不是数组，前 300 字：' + 文.slice(0, 300).replace(/\s+/g, ' '));
       if (Array.isArray(数)) {
-        数.forEach((x) => {
+        数.forEach((x, 序) => {
           if (!x) return;
-          const t = 助.find((y) => y.seq === Number(x.轮次));
+          // 先按模型给的轮次找；找不到就按返回顺序对 —— 实测第一批只成 1 条，
+          // 就是因为模型从 1 开始数轮次，而 seq 从 0 起，只有「1」能对上。
+          let t = 助.find((y) => y.seq === Number(x.轮次));
+          if (!t) t = 批[序];
           if (!t) return;
           const 段s = [];
           if (String(x.时间 || '').trim()) 段s.push('· 时间：' + String(x.时间).trim());
