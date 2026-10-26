@@ -7446,12 +7446,24 @@ function seasonText(s) {
 
 // 微博上刚做过的事：只在真有未发的评论时才注入，注入完就清空（一次性）。
 // 不给它整屏微博，只给「他评的那一条」—— 上下文别被无关内容撑大。
+// 微博行为一旦拼进 sendText，就会跟着 user entry 一起存下去（sent 字段）。
+// 重发时 regenFrom 取的就是 sent —— 所以这里要判断「已经拼过就别再拼一次」，
+// 否则重发会叠一份一模一样的说明在提示词里。
+const 拼前内容 = String(userContent || '');
 const 微博待发 = 取待发评论(gid, seq);
-if (微博待发.length) {
+// 只拼「还没进过提示词」的那几条。整段跳过会在「重发前又补了一句评论」时丢新的，
+// 整段重拼又会把说明叠两份 —— 逐条判最稳。
+const 微博新条 = 微博待发.filter((w) => {
+  const 一句 = '你说的：' + String(w && w.评论 || '');
+  return 拼前内容.indexOf(一句) < 0;
+});
+if (微博新条.length) {
+  // 重发前又补了评论时，上面那份说明已经在了 —— 只追加条目，别把标题和规则再贴一遍。
+  const 已有微博段 = 拼前内容.indexOf('【你这一轮之前，刚在微博上做过这些】') >= 0;
   const 行s = [];
   行s.push('');
-  行s.push('【你这一轮之前，刚在微博上做过这些】');
-  微博待发.forEach((w) => {
+  if (!已有微博段) 行s.push('【你这一轮之前，刚在微博上做过这些】');
+  微博新条.forEach((w) => {
     if (w.回谁) {
       // 回复某条评论
       行s.push('· 你在 @' + w.微博作者 + ' 发的那条微博下面，回复了「' + w.回谁 + '」的评论：');
@@ -7466,32 +7478,37 @@ if (微博待发.length) {
     }
   });
   行s.push('');
-  行s.push('这是玩家主动做的动作，要让它在剧情里发生 —— 不一定要写得很重，');
-  行s.push('但至少要让相关的人有可能知道、有可能被影响。别完全当没发生过。');
-  行s.push('');
-  行s.push('【回复怎么写 —— 只能这样，不能写成微博】');
-  行s.push('玩家上面那几条都是**评论**，不是微博。**绝对不要用 :::weibo 去展示它们** ——');
-  行s.push('那会让界面上出现「某人发了条微博，正文就是玩家那句话」，完全不对。');
-  行s.push('');
-  行s.push('**给了几条评论，就该有几个回复** —— 上面列了 ' + 微博待发.length + ' 条，最多写 ' + 微博待发.length + ' 个块。');
-  行s.push('每个被评论的人各回一句，分别写，两个块连着写，中间不要夹正文：');
-  行s.push('');
-  行s.push(':::weibo_reply');
-  行s.push('谁|田曦薇');
-  行s.push('回谁|玩家');
-  行s.push('内容|你这张嘴比我的滤镜还狠');
-  行s.push(':::')
-  行s.push('');
-  行s.push(':::weibo_reply');
-  行s.push('谁|另一个人');
-  行s.push('回谁|玩家');
-  行s.push('内容|回他的那句话');
-  行s.push(':::')
-  行s.push('');
-  行s.push('「谁」写被玩家评论的那个人，「回谁」写「玩家」。');
-  行s.push('某个人这回没回你，就跳过不写他那块 —— 但别只写第一个就停。');
-  行s.push('这些块不会给玩家看见，是用来把回复写回他手机里的。');
+  if (!已有微博段) {
+    行s.push('这是玩家主动做的动作，要让它在剧情里发生 —— 不一定要写得很重，');
+    行s.push('但至少要让相关的人有可能知道、有可能被影响。别完全当没发生过。');
+    行s.push('');
+    行s.push('【回复怎么写 —— 只能这样，不能写成微博】');
+    行s.push('玩家上面那几条都是**评论**，不是微博。**绝对不要用 :::weibo 去展示它们** ——');
+    行s.push('那会让界面上出现「某人发了条微博，正文就是玩家那句话」，完全不对。');
+    行s.push('');
+    行s.push('**给了几条评论，就该有几个回复** —— 上面列了 ' + 微博新条.length + ' 条，最多写 ' + 微博新条.length + ' 个块。');
+    行s.push('每个被评论的人各回一句，分别写，两个块连着写，中间不要夹正文：');
+    行s.push('');
+    行s.push(':::weibo_reply');
+    行s.push('谁|田曦薇');
+    行s.push('回谁|玩家');
+    行s.push('内容|你这张嘴比我的滤镜还狠');
+    行s.push(':::')
+    行s.push('');
+    行s.push(':::weibo_reply');
+    行s.push('谁|另一个人');
+    行s.push('回谁|玩家');
+    行s.push('内容|回他的那句话');
+    行s.push(':::')
+    行s.push('');
+    行s.push('「谁」写被玩家评论的那个人，「回谁」写「玩家」。');
+    行s.push('某个人这回没回你，就跳过不写他那块 —— 但别只写第一个就停。');
+    行s.push('这些块不会给玩家看见，是用来把回复写回他手机里的。');
+  }
   if (行s.length) userContent += 行s.join(String.fromCharCode(10));
+  // 同步进 sent：body 保持玩家原本打的字（界面上只显示那句），
+  // sent 才是真正发给模型的。这样重发、回退再回来，评论都还在。
+  if (userContent !== 拼前内容 && userEntry) userEntry.sent = userContent;
 }
 
       // 近场提醒：把「自己的调整」再贴一遍到离当前对话最近的位置。
@@ -11722,6 +11739,9 @@ reg('rebuildSummaries', async ({ gameId }) => {
     const n = Number(seq);
     const userEntry = (s.transcript || []).find((t) => Number(t.seq) === n && t.role === 'user');
     const input = userEntry ? String(userEntry.sent || userEntry.body || '').trim() : '';
+    // 显示用和发送用要分开：userEntry.body 是玩家自己打的字（干净的），
+    // sent 里可能还带着微博行为说明 —— 那段只该进提示词，不该显示在对话里。
+    const 显示text = userEntry ? String(userEntry.body || '').trim() : '';
     await truncateFrom(s, n);
     if (!input) {
       // 第 0 轮（开场）没有玩家输入：和「生成开场」走同一条路
@@ -11729,10 +11749,10 @@ reg('rebuildSummaries', async ({ gameId }) => {
     } else if (rewrite) {
       // 点叙事那条的「重新生成」：提问照旧，只把这一轮叙事重写一遍
       // （行动与结果不变，只换写法）。
-      await runTurn(s, input, input, { gameId, rewrite: true });
+      await runTurn(s, input, 显示text || input, { gameId, rewrite: true });
     } else {
       // 点自己那条的「重发」：整轮重来，走向可能因此改变。
-      await runTurn(s, input, input, { gameId });
+      await runTurn(s, input, 显示text || input, { gameId });
     }
     await saveState(s);
     return withKeyStatus(s);
