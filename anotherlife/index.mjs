@@ -11150,7 +11150,7 @@ reg('rebuildSummaries', async ({ gameId }) => {
     '· 不要写「发生了一些事」「进行了交流」这种空话 —— 这一条是给几十轮之后看的，它得能替代正文。',
     '· 只记录正文里真实发生的事，不推测。',
   ].join('\n');
-  const 每批 = 20;   // 82 轮 → 5 次调用。1M 上下文撑得住（输入 5.5 万/批，输出 4400 字）
+  const 每批 = 12;   // 82 轮 → 7 次调用。20 轮时 prefill 要 2~3 分钟、120 秒超时全灭，这里降一档
   let 改 = 0, 错 = 0;
   for (let k = 0; k < 助.length; k += 每批) {
     const 批 = 助.slice(k, k + 每批);
@@ -11159,7 +11159,7 @@ reg('rebuildSummaries', async ({ gameId }) => {
       const 回 = await callSlot(s, 'settle', [
         { role: 'system', content: 系统 },
         { role: 'user', content: 输入 },
-      ], { maxTokens: 5000, temperature: 0.2, timeoutMs: 180000, tag: '重建小结' });
+      ], { maxTokens: 9000, temperature: 0.2, timeoutMs: 900000, stallMs: 600000, tag: '重建小结' });
       const 数 = parseJsonLoose(String(回 == null ? '' : 回));
       if (Array.isArray(数)) {
         数.forEach((x) => {
