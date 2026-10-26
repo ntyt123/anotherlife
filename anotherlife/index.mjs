@@ -11165,6 +11165,106 @@ reg('moreWeibo', async ({ gameId }) => {
 });
 
 /** 开关「星途模拟」。开了之后下一轮结算就会把演艺资料整批生成。 */
+/**
+ * 旧档补电话。
+ *
+ * 老版本不写「联系方式」，通讯录里一片空白、短信也发不出去。
+ * 这里用手机槽位按正文推断：谁跟主角互相存了号，号段还得卡那个年代。
+ * 只填空的 —— 已经有号的绝不动，撞号的直接丢。
+ */
+reg('backfillPhones', async ({ gameId }) => {
+  const s = await loadState(gameId);
+  const npcs = Array.isArray(s.npcs) ? s.npcs : [];
+  if (!npcs.length) throw new Error('这一局还没有角色');
+
+  const 缺 = npcs.filter((n) => n && String(n.姓名 || '').trim() && !phoneOf(n).电话);
+  if (!缺.length) return { 总数: npcs.length, 待补: 0, 已补: 0, 明细: ['所有人都有电话了'] };
+
+  const p = s.protagonist || {};
+  const w = s.world || {};
+
+  const 名单 = 缺.map((n) => {
+    const 关系 = String(n.与主角关系 || '').trim();
+    const 出场 = n.最近出场 != null ? '（第' + n.最近出场 + '轮出场）' : '';
+    return '· ' + String(n.姓名) + (n.性别 ? ' ｜ ' + n.性别 : '') + (n.身份 ? ' ｜ ' + n.身份 : '') + (关系 ? ' ｜ ' + 关系 : '') + 出场;
+  }).join('\n');
+
+  const 系统 = [
+    '你是手机通讯录的整理员。这一局已经跑了很多轮，但旧存档没有给角色存手机号。',
+    '任务：**只补「电话」这一项**。别的一概不许动 —— 不改身份、不加备注、不写微信和 QQ。',
+    '',
+    '【这一局】',
+    '年代：' + String(w.时代与年份 || w.当前日期时间 || '（没写，按现代处理）'),
+    '地点：' + String(w.起始地点 || ''),
+    '主角：' + [p.姓名, p.性别, p.年龄 ? p.年龄 + '岁' : '', p.身份].filter(Boolean).join(' · '),
+    '',
+    '【最近发生了什么】',
+    近轮梗概(s, 40) || '（没有正文摘要）',
+    '',
+    '【要补的人】' + 缺.length + ' 个：',
+    名单,
+    '',
+    '【谁该有号码】',
+    '两个人互相存了手机号，是因为彼此需要联系。判据：',
+    '· 一定有：父母、兄弟姐妹、子女、配偶、祖父母等家人；室友、同班同学、同事、上级、导师',
+    '· 通常有：长期往来的朋友、恋人、有合作关系的导演／制片／经纪人／搭档、常联系的客户',
+    '· **不给**：一面之缘的人、服务员、司机、群演、只在新闻里出现过的人、敌对但还没到交换号码地步的人',
+    '· 判断这个人不该有主角的号码，就**不要输出这个人的键** —— 不要编一个凑数。',
+    '',
+    '【号段要卡年代】',
+    '· 2010 年前后：13x、15x（151-159）、18x（186-189）',
+    '· 2000 年前后：139 开头，或座机「0513-8xxxxxx」这种',
+    '· 现代：13x / 15x / 18x 都行',
+    '· **不要写 19x / 16x / 17x** —— 那些是后来才有的号段',
+    '· 手机 11 位，不带横线和空格；座机按上面的格式',
+    '· **同一局里号码不许重复**，一个号只能给一个人',
+    '',
+    '【输出】只输出一个 JSON 对象，键是姓名，值是号码：',
+    '{"罗建国":"13812345678","周慧芬":"13905123456"}',
+    '拿不准的人就不要写进去。',
+  ].join('\n');
+
+  const 回 = await callSlot(s, 'phone', [
+    { role: 'system', content: 系统 },
+    { role: 'user', content: '按上面的要求给他们补电话。只输出那个 JSON。' },
+  ], { maxTokens: 4000, temperature: 0.7, timeoutMs: 300000, stallMs: 180000, tag: '补电话' });
+
+  const 文 = String(回 && typeof 回 === 'object' && 回.text != null ? 回.text : 回 == null ? '' : 回);
+  const obj = parseJsonLoose(文);
+  if (!obj || typeof obj !== 'object') {
+    throw new Error('模型没给出 JSON：' + 文.slice(0, 80));
+  }
+
+  // 已有的号先占位，新的不能撞上
+  const 已用 = new Set();
+  npcs.forEach((n) => {
+    const t = phoneOf(n).电话;
+    if (t) 已用.add(t);
+  });
+
+  let 补 = 0;
+  const 明细 = [];
+  Object.keys(obj).forEach((名) => {
+    const 号 = String(obj[名] == null ? '' : obj[名]).replace(/[^0-9-]/g, '');
+    const 人 = 缺.find((n) => String(n.姓名 || '').trim() === String(名).trim());
+    if (!人) return;                       // 名字对不上（模型自己加的）→ 丢
+    if (!号) { 明细.push(名 + '：空号，跳过'); return; }
+    if (已用.has(号)) { 明细.push(名 + '：撞号（' + 号 + '），跳过'); return; }
+    const 是手机 = /^1[0-9]{10}$/.test(号);
+    const 是座机 = /^0[0-9]{2,3}-[0-9]{6,8}$/.test(号);
+    if (!是手机 && !是座机) { 明细.push(名 + '：格式不对（' + 号 + '），跳过'); return; }
+    if (!人.联系方式 || typeof 人.联系方式 !== 'object') 人.联系方式 = {};
+    人.联系方式.电话 = 号;
+    已用.add(号);
+    补++;
+    明细.push(名 + '：' + 号);
+  });
+
+  await saveState(s);
+  await turnLog('[补电话] ' + 补 + '/' + 缺.length + ' 人：' + 明细.slice(0, 12).join('，') + (明细.length > 12 ? ' …' : ''));
+  return { 总数: npcs.length, 待补: 缺.length, 已补: 补, 明细 };
+});
+
 reg('setStarMode', async ({ gameId, on }) => {
   const s = await loadState(gameId);
   if (!s.protagonist) s.protagonist = {};

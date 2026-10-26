@@ -4020,6 +4020,8 @@ function App({ gameId, close }) {
         const [phoneMe, setPhoneMe] = React.useState(null);
         // 重建历史小结的进行中标记
         const [rebuildBusy, setRebuildBusy] = React.useState(false);
+        // 补电话进行中
+        const [phoneFillBusy, setPhoneFillBusy] = React.useState(false);
         const [phoneContacts, setPhoneContacts] = React.useState(null);
         const [phoneThreadId, setPhoneThreadId] = React.useState('');
         const [phoneMsgs, setPhoneMsgs] = React.useState([]);
@@ -12669,6 +12671,31 @@ function thinkDrifted(t) {
                   });
                 },
               }, rebuildBusy ? '正在重建…' : '开始重建')
+            ),
+
+            /* ── 旧档补电话 ── */
+            h('div', { className: 'sim-card', style: { marginTop: 14 } },
+              h('div', { style: { fontSize: 'var(--sim-fs-4)', fontWeight: 600, marginBottom: 6 } }, '补齐电话'),
+              h('div', { className: 'sim-hint', style: { lineHeight: 1.8, marginBottom: 12 } }, '旧存档没存号码的联系人，按正文推断补上。已经有号的不动。'),
+              h(Btn, {
+                disabled: !!phoneFillBusy,
+                onClick: function () {
+                  if (phoneFillBusy) return;
+                  setPhoneFillBusy(true);
+                  call('backfillPhones', {}, gameId)
+                    .then(function (r) {
+                      setPhoneFillBusy(false);
+                      var 补 = r && r.已补 != null ? r.已补 : '?';
+                      var 待 = r && r.待补 != null ? r.待补 : '?';
+                      setNote(待 === 0 ? '所有人都有电话了' : '补了 ' + 补 + ' / ' + 待 + ' 人');
+                      try { load(); } catch (e) {}
+                    })
+                    .catch(function (e) {
+                      setPhoneFillBusy(false);
+                      setNote('补电话失败：' + String((e && e.message) || e));
+                    });
+                },
+              }, phoneFillBusy ? '正在补…' : '补齐电话')
             ),
 
             /* ── 外观与正文 ── */
