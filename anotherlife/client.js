@@ -6711,9 +6711,11 @@ function phoneDoComment(id) {
                                   ? h(
                                     'div',
                                     { className: 'sim-wb-cmts' },
-                                    // 评论列表：每条下面紧跟「你回复了他」的那条，回复别人微博评论时才看得出层级关系。
-                                    // 原来所有我的评论都堆在末尾，只显示「你：xxx」，看不出是回谁的。
-                                    w.评论列表.map((c, ci) => {
+                                    // 评论列表里的两种条目分开处理：
+                                    // ① 普通评论 + 「你回复了他」
+                                    // ② 「他回复了你」（回复:true 且 回谁=玩家）—— 这类原来混在普通评论里，
+                                    //    排在列表末尾，看着像他自己发的一条评论，看不出是在回你。
+                                    (w.评论列表 || []).filter((c) => !(c && c.回复 && String(c.回谁 || '') === '玩家')).map((c, ci) => {
                                       const 我对他的 = wbMine.filter((m) => m.作者 === w.作者
                                         && m.正文 === String(w.正文 || '').slice(0, 60)
                                         && String(m.回谁 || "") === String(c.谁 || ""));
@@ -6740,8 +6742,13 @@ function phoneDoComment(id) {
                                         h('span', { className: 'who' }, '你：'),
                                         h('span', { className: 'txt' }, m.评论)
                                       )
+                                    ),
+                                    // 「回你」的那些，跟在你这句话后面 —— 玩家才看得出谁在应他
+                                    (w.评论列表 || []).filter((c) => c && c.回复 && String(c.回谁 || '') === '玩家').map((c, ci) => h('div', { className: 'sim-wb-cmt mine sub', key: 're' + ci },
+                                      h('span', { className: 'who' }, '@' + c.谁 + ' 回复了你：'),
+                                      h('span', { className: 'txt' }, c.内容)
+                                    ))
                                     )
-                                  )
                                 : null
                               )
                             ),
