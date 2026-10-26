@@ -4007,6 +4007,14 @@ function App({ gameId, close }) {
         // 微博热搜：打开时拉一次（宿主按游戏内日期缓存，同一天不会重复生成）
         const [phoneHot, setPhoneHot] = React.useState(null);
         const [phoneHotBusy, setPhoneHotBusy] = React.useState(false);
+        // 微博回复写的是缓存文件（simulator-weibo-cache-*.json），不在存档里。
+        // 所以每跑完一轮、而人又正停在微博页时，要把缓存重读一次 —— 否则
+        // 「某人回了你」在文件里有、界面上还是旧的，得像以前那样手动点刷新。
+        const wbReloadKey = state && state.transcript ? state.transcript.length : 0;
+        React.useEffect(() => {
+          if (phoneView !== 'weibo') return;
+          phoneLoadHot(false);
+        }, [wbReloadKey]);
         // 点开的那条热搜。非空时「发现」页显示详情，顶栏返回键先回列表
         const [hotDetail, setHotDetail] = React.useState(null);
         const [phoneWbWho, setPhoneWbWho] = React.useState('');
@@ -6980,7 +6988,10 @@ function phoneDoComment(id) {
               phoneApp('🖼️', '相册', () => { setPhoneView('album'); if (!phoneAlbumLoaded) phoneLoadAlbum(); }),
               phoneApp('📞', '电话', () => {}, true),
               phoneApp('💬', '微信', () => { setPhoneApp2('wechat'); setPhoneTab('chat'); setPhoneView('apphome'); phoneLoadThreads('wechat'); if (!phoneContacts) phoneLoadContacts('wechat'); }, !era.有微信),
-              phoneApp('🔥', '微博', () => { setPhoneView('weibo'); if (!phoneHot) phoneLoadHot(false); }),
+              // 每次进来都重读一次缓存 —— 回复是写进缓存文件的（simulator-weibo-cache-*.json），
+// 原来只在首次进入时读，于是「某人回了你」写完界面上也看不到，得手动点刷新。
+// getHotsearch 命中缓存时只读文件、不调模型，重进不花调用次数。
+phoneApp('🔥', '微博', () => { setPhoneView('weibo'); phoneLoadHot(false); }),
               ),
               // QQ 先不做 —— 它和微信共用同一套结构，做出来只是多一层皮（配色 + 底栏 + 顶栏）。
               // 要恢复就把下一行开头的 // 去掉。
