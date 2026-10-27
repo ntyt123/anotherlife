@@ -7593,8 +7593,15 @@ if (微博新条.length) {
       if (调用) {
         let a = {};
         try { a = parseToolArgs(调用.args) || {}; } catch (e) { a = {}; }
-        if (a.think) sp.think = String(a.think);
-        if (a.game_content) sp.body = String(a.game_content);
+        if (a.think) sp.think = stripNoteTags(a.think);
+        // 模型有时把「导演笔记」和「行动选项」一起塞进正文参数 —— 这里一并切走。
+        // （只管工具参数里多出来的那份；a.think / a.options 是独立参数，各走各的）
+        if (a.game_content) {
+          const sp2 = splitStory(String(a.game_content));
+          if (sp2.think && !sp.think) sp.think = sp2.think;
+          if (Array.isArray(sp2.options) && sp2.options.length && (!Array.isArray(sp.options) || !sp.options.length)) sp.options = sp2.options;
+          sp.body = sp2.body || String(a.game_content);
+        }
         if (Array.isArray(a.options) && a.options.length) sp.options = a.options.map((x) => String(x));
         await turnLog('[正文·工具] 取到正文 ' + String(sp.body || '').length + ' 字，思考 ' + String(sp.think || '').length + ' 字，选项 ' + sp.options.length + ' 条');
       } else {
