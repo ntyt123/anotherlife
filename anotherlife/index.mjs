@@ -13017,6 +13017,29 @@ async function applyImport(gameId, raw) {
   // 而 saveState 按 s.gameId 决定写哪个文件 —— 不覆盖就等于写到别处去了。
   next.gameId = String(gameId);
   await turnLog('[导入] 写入 ' + String(gameId) + '：' + (st.transcript || []).length + ' 轮，phase=' + String(st.phase || ''));
+  // 导入的存档可能来自旧版本：正文里还留着 <导演笔记> 和 [行动选项] 抬头。
+  // 这些本该在生成时就被 splitStory 剥掉，老档没剥过 —— 导入后界面上就是
+  // 一大段导演笔记 + 一串中括号选项混在故事里。这里补一刀。
+  try {
+    let 洗了 = 0;
+    (next.transcript || []).forEach((t) => {
+      if (!t || t.role === 'user') return;
+      const body = String(t.body || '');
+      if (!body) return;
+      const 有笔记 = body.indexOf('<导演笔记>') >= 0 || body.indexOf('<think>') >= 0;
+      const 有选项 = /\[行动选项\]|【行动选项】|行动选项\s*[:：]/.test(body);
+      if (!有笔记 && !有选项) return;
+      const sp = splitStory(body);
+      if (!String(t.think || '').trim() && sp.think) t.think = sp.think;
+      if (sp.body && sp.body !== body) t.body = sp.body;
+      if ((!Array.isArray(t.options) || !t.options.length) && Array.isArray(sp.options) && sp.options.length) t.options = sp.options;
+      洗了++;
+    });
+    if (洗了) await turnLog('[导入] 清洗 ' + 洗了 + ' 轮：剥掉导演笔记、切出行选项');
+  } catch (e) {
+    await turnLog('[导入] 清洗失败（不影响导入）：' + String((e && e.message) || e));
+  }
+  
   if (cur.config && st.config) next.config = Object.assign({}, cur.config, st.config);
   await saveState(next);
   return withKeyStatus(await loadState(gameId));
