@@ -30,7 +30,7 @@ import { normalizeWeiboCache, matchWeiboPost, mergeWeiboActions, findReplyAction
 import { createHash, randomUUID } from 'node:crypto';
 import { createSerialQueue, createReplyStore, readJsonFile, assertSafePath, isSafePath, assertSafeValue, waitForStreamStep, closeStreamIterator } from './lib/runtime-core.mjs';
 import {plainStoryFallback} from './lib/story-fallback.mjs';
-import { ROUTE_NAMES, stripNoteTags, optionLineText, isOptionLine, collectOptionLines, splitTrailingOptions, splitStory } from './lib/story-parser.mjs';
+import { ROUTE_NAMES, stripNoteTags, optionLineText, isOptionLine, collectOptionLines, splitTrailingOptions, splitStory, stripStoryPlaceholder } from './lib/story-parser.mjs';
 /**
  * 人生模拟器 — 宿主侧（stage 2a：完整数据层）
  *
@@ -6516,7 +6516,7 @@ let aiPickFail = '';
     head.push('   </导演笔记>');
     head.push('');
     head.push('   七行都要有，每行一两句，整块不超过 400 字。**用中文写。** 这一块要出现在回复正文里，读者能看见 —— 不要放进你看不见的内部思考通道。');
-    head.push('2) 正文（只叙事，不输出变量 JSON）；');
+    head.push('2) 正文（只叙事，不输出变量 JSON）。**正文必须写完，不许写「（后续文字将…）」「延伸至 N 字」「此处省略」「未完待续」这类占位或字数说明**；没写到下限就继续写具体场景，不要用括号交代写作计划；');
     head.push('3) 最后以 [行动选项] 开头，按下面的规则给出行动选项。');
     // 工具通道：告诉它这一轮的正文不走普通回复，走 submit_story 的参数。
     if (toolModeOf(s)) {
@@ -7832,6 +7832,12 @@ if (微博新条.length) {
         }
       }
     }
+    // 模型可能把「（后续文字将…）」这类写作说明当正文交上来 —— 先摘掉，再判空。
+    const placeholderClean = stripStoryPlaceholder(sp.body);
+    if (placeholderClean.removed) {
+      sp.body = placeholderClean.text;
+      await turnLog('[正文] 去掉模型占位说明 ' + placeholderClean.removed + ' 处');
+    }
     if (!String(sp.body || '').trim()) {
       sp.body =
         '⚠️ 这一轮没有正文。\n\n模型只返回了「思考过程」、没有返回正文（展开上面的思考过程可以看到它实际写了什么）。\n可能原因：中转/模型把内容放进了 reasoning 通道，或输出被长度上限截断。\n处理办法：点这一行右上角的 ⟳ 重新生成；若连续出现，换一个模型或降低思考强度。';
@@ -8059,6 +8065,9 @@ if (微博新条.length) {
         if (p && Array.isArray(p.warn) && p.warn.length) {
           const why0 = p.why || {};
           p.warn.forEach((k) => out.push({ step: k, why: String(why0[k] || ""), ...(k === "资料" && settlementDiagnostics.length ? {details:settlementDiagnostics} : {}) }));
+        }
+        if (placeholderClean.removed) {
+          out.push({ step: '正文', why: '这一轮模型写了「后续将…」这类占位说明，已从正文移除；建议重新生成这一轮。' });
         }
                // 出道检测：主角还不是艺人，但剧情里刚出道了 —— 提示一下，别自动改开关
         if (s.protagonist && s.protagonist.是否艺人 !== true) {

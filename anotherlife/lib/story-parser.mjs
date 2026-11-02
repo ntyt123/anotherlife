@@ -95,3 +95,25 @@ export function splitStory(raw) {
   if (trailing) { story = trailing.body; options.push(...trailing.options); }
   return { think: notes.join('\n\n'), body: story, options: [...new Set(options)] };
 }
+
+// 模型偶尔把「（后续文字将…延伸至 N 字）」这类写作说明当正文交上来。
+// 只删带这些特征的括注；正常括注（（三天后）、（她没回答））不动。
+const PLACEHOLDER_NOTE = /[（(][^（）()]{0,80}(?:后续文字|后续内容|后续情节|后续剧情|后续将|接着写|以下省略|此处省略|继续延伸|延伸至|篇幅所限|字数要求|字数约|未完待续|保持细节)[^（）()]{0,80}[）)]/g;
+const NOTE_LEFTOVER = /^[\s.·…\-—_]*$/u;
+export function stripStoryPlaceholder(value) {
+  const text = String(value == null ? '' : value).replace(/\r/g, '');
+  if (!text) return { text: '', removed: 0 };
+  let removed = 0;
+  const out = [];
+  for (const line of text.split('\n')) {
+    PLACEHOLDER_NOTE.lastIndex = 0;
+    if (!PLACEHOLDER_NOTE.test(line)) { out.push(line); continue; }
+    PLACEHOLDER_NOTE.lastIndex = 0;
+    const withoutNotes = line.replace(PLACEHOLDER_NOTE, () => { removed++; return ''; });
+    // 整行只剩占位和省略号：整行丢掉，不留下空壳标点。
+    if (!withoutNotes.trim() || NOTE_LEFTOVER.test(withoutNotes)) continue;
+    out.push(withoutNotes.replace(/[ \t]+$/u, ''));
+  }
+  const body = out.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  return { text: body, removed };
+}
