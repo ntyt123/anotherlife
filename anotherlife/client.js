@@ -10652,7 +10652,7 @@ onDoubleClick: () => {
                     badge: (function () {
                       if (lvl < 0) return '';
                       const v = Number(slot && slot.气味强度);
-                      return Number.isFinite(v) ? ScentRing(v) : '●'.repeat(lvl) + '○'.repeat(3 - lvl);
+                      return ScentRing(Number.isFinite(v) ? v : lvl * 33.34);
                     })(),
                     badgeCls: 'dots d' + lvl,
                     rarity: slot.稀有度,
@@ -12457,7 +12457,7 @@ function toggleFans(npc) {
                             badge: (function () {
                               if (lvl2 < 0) return '';
                               const v = Number(slot && slot.气味强度);
-                              return Number.isFinite(v) ? ScentRing(v) : '●'.repeat(lvl2) + '○'.repeat(3 - lvl2);
+                              return ScentRing(Number.isFinite(v) ? v : lvl2 * 33.34);
                             })(),
                             badgeCls: 'dots d' + lvl2,
                             rarity: slot.稀有度,
