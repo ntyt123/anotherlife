@@ -9609,6 +9609,7 @@ onDoubleClick: () => {
                 h(
                   'span',
                   { className: 'sim-acts-inline' },
+                  h('span', { className: 'sim-tok', title: '这一轮正文的字数（不含空白）' }, Array.from(String(t.body || '').replace(/\s/gu, '')).length + ' 字'),
                   h('span', { className: 'sim-tok', title: '按字数估算的 token 数，仅供参考' }, estTokens(t.body) + 'T'),
                   h('button', { className: 'sim-ibtn', title: '编辑这段文字', onClick: () => startEdit(t) }, '✏️'),
                   t.role === 'user'
