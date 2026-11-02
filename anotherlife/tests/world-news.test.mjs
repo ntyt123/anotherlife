@@ -1,0 +1,27 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import {cleanNewsContent,NEWS_RULES,NEWS_MIN_EACH} from '../lib/news-text.mjs';
+import {applyBackgroundResult,createSimulation,updateSimulationSettings,SIMULATION_BACKGROUND_TOOL,simulationBasis} from '../lib/generic-simulation.mjs';
+import {createGenericViews} from '../lib/generic-client.js';
+const rumor=i=>({kind:'rumor',time:'2024年10月'+(i+1)+'日',content:'圈内传出某男演员与同组女演员私下往来的消息，双方均未回应。'});
+const event=i=>({kind:'event',time:'2024年10月'+(i+1)+'日',content:'国庆假期正式开始，多地景区迎来客流高峰。'});
+const state=()=>({world:{世界观类型:'现代',时代与年份:'2024年'},transcript:[{role:'assistant',seq:3,textVersion:'v1',body:'正文'}],simulation:{profile:{id:'modern',description:''}}});
+const sim=()=>updateSimulationSettings(createSimulation(),{settings:{worldNewsEnabled:true}});
+const tasks=(st,sm)=>({news:true,units:[],basis:simulationBasis(st,sm)});
+const walk=(n,out=[])=>{if(Array.isArray(n))n.forEach(x=>walk(x,out));else if(n&&typeof n==='object'){out.push(n);walk(n.kids||[],out);}return out;};
+const words=n=>typeof n==='string'?n:Array.isArray(n)?n.map(words).join(''):n&&typeof n==='object'&&n.type!=='style'?words(n.kids||[]):'';
+function mount(props){
+ const hooks=[];let index=0;
+ const React={createElement:(type,p,...kids)=>({type,props:p||{},kids}),useState(init){const i=index++;if(!(i in hooks))hooks[i]=typeof init==='function'?init():init;return[hooks[i],v=>{hooks[i]=typeof v==='function'?v(hooks[i]):v;}];},useRef(init){const i=index++;if(!(i in hooks))hooks[i]={current:init};return hooks[i];},useEffect(){}};
+ const {GenericPanel}=createGenericViews(React);
+ index=0;return GenericPanel(props);
+}
+const key=JSON.stringify(['现代','','modern','']);
+const oldItems=[{id:'n1',kind:'rumor',title:'行业传闻',time:'2026-01-01 09:03:00',region:'上海 影视广告行业',source:'模拟行业传闻，未经独立核实',content:'模拟影视行业交流圈出现未经核实的说法：有品牌可能在元旦后接洽演员。目前没有证据表明罗伊收到邀约；此消息不构成合同、排期或收入。',worldKey:key},{id:'n2',kind:'event',title:'国庆',time:'2024年10月1日',content:'国庆假期正式开始。',worldKey:key}];
+test('传闻正文去掉“未经核实的说法”“没有证据”“不构成”等重复限定',()=>{assert.equal(cleanNewsContent(oldItems[0].content).includes('未经核实'),false);assert.equal(cleanNewsContent('有品牌接洽演员的消息未经独立核实。'),'');assert.equal(cleanNewsContent('有品牌可能在元旦后接洽演员拍摄新春主题短片。'),'有品牌可能在元旦后接洽演员拍摄新春主题短片。');assert.equal(cleanNewsContent('国庆假期正式开始，多地景区迎来客流高峰。'),'国庆假期正式开始，多地景区迎来客流高峰。');});
+test('生成规则要求传闻与大事各至少5条，只要时间与内容',()=>{assert.equal(NEWS_MIN_EACH,5);assert.match(NEWS_RULES,/传闻和大事各至少 5 条/);assert.match(NEWS_RULES,/只交 kind、time、content/);assert.match(NEWS_RULES,/不写来源、地区、确认状态/);assert.match(NEWS_RULES,/传闻就是传闻/);const schema=SIMULATION_BACKGROUND_TOOL.parameters.properties.news;assert.equal(schema.minItems,10);assert.deepEqual(Object.keys(schema.items.properties).sort(),['content','kind','time']);assert.deepEqual(schema.items.required.slice().sort(),['content','kind','time']);assert.equal(schema.items.additionalProperties,false);});
+test('写回只存时间与内容，传闻与大事各5条才接受',()=>{const s=state(),m=sim(),result={news:[...Array.from({length:5},(_,i)=>rumor(i)),...Array.from({length:5},(_,i)=>event(i))]};const out=applyBackgroundResult(s,m,tasks(s,m),result,4);const items=out.simulation.news.items;assert.equal(items.length,10);assert.equal(items.filter(x=>x.kind==='rumor').length,5);assert.equal(items.filter(x=>x.kind==='event').length,5);for(const it of items){assert.equal(Object.hasOwn(it,'region'),false);assert.equal(Object.hasOwn(it,'source'),false);assert.equal(Object.hasOwn(it,'title'),false);assert.ok(it.time&&it.content);}});
+test('任一类不足5条时明确失败并保留原记录，不静默变成少量',()=>{const s=state(),m=sim();m.news.items=[{id:'old',kind:'rumor',time:'2024年9月',content:'旧记录。'}];assert.throws(()=>applyBackgroundResult(s,m,tasks(s,m),{news:[...Array.from({length:5},(_,i)=>rumor(i)),...Array.from({length:3},(_,i)=>event(i))]},4),/各至少5条/);assert.equal(m.news.items.length,1);assert.equal(m.news.items[0].id,'old');});
+test('旧记录的地区来源标题不再展示，序号与时间内容成句',()=>{const st={gameId:'g',world:{世界观类型:'现代'},transcript:[],simulation:{enabled:true,settings:{worldNewsEnabled:true},profile:{id:'modern',description:''},news:{items:oldItems}}};const hk=[];let idx=0;const React={createElement:(t,p,...k)=>({type:t,props:p||{},kids:k}),useState(init){const i=idx++;if(!(i in hk))hk[i]=typeof init==='function'?init():init;return[hk[i],v=>{hk[i]=typeof v==='function'?v(hk[i]):v;}];},useRef(init){const i=idx++;if(!(i in hk))hk[i]={current:init};return hk[i];},useEffect(){}};const {GenericPanel}=createGenericViews(React);const render=()=>{idx=0;return GenericPanel({state:st,mode:'world',onCall:async()=>st,onStage:()=>{}});};let tree=render();assert.ok(walk(tree).some(n=>n.props.className==='sim-news-shell'));const 传闻文本=words(tree);assert.doesNotMatch(传闻文本,/上海 影视广告行业|模拟行业传闻|未经核实|行业传闻|没有证据|不构成/);assert.equal(walk(tree).filter(n=>n.props.className==='sim-news-item').length,0);const 大事=walk(tree).find(n=>n.props.className==='sim-news-tab'&&words(n).startsWith('大事'));大事.props.onClick();tree=render();const 文本=words(tree);assert.match(文本,/2024年10月1日/);assert.match(文本,/国庆假期正式开始。/);assert.equal(walk(tree).filter(n=>n.props.className==='sim-news-item').length,1);});
+test('样式是主题卡片、序号与窄屏适配，不再使用默认大标题卡',()=>{const src=fs.readFileSync(new URL('../client.js',import.meta.url),'utf8');assert.match(src,/const NEWS_CSS=/);assert.match(src,/\.sim-news-item\{/);assert.match(src,/\.sim-news-idx\{/);assert.match(src,/@media\(max-width:650px\)/);assert.match(src,/sim-news-tabs/);assert.doesNotMatch(src,/row\('地区',x\.region\)/);});

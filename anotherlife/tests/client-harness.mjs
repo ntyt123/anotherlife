@@ -1,0 +1,31 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import vm from 'node:vm';
+import { pluginRoot } from './harness.mjs';
+
+export function loadClient(callHost = async () => null) {
+  let source = fs.readFileSync(path.join(pluginRoot, 'client.js'), 'utf8');
+  source = source.replace('let currentGameId = null;', 'ctx.__audit = { call, App, get GenericPanel() { return GenericPanel; }, get GenericPending() { return GenericPending; }, get withActorIds() { return withActorIds; }, groupWeiboThreads, GitCfg, txFingerprint, getCSS: () => CSS, mergeParsedFields: (a,b) => mergeParsedFields(a,b) };\nlet currentGameId = null;');
+  source = source.replace(/function App\(([^)]*)\)\s*\{/, '$&\nglobalThis.__appAudit = { aiParse: (...args) => aiParse(...args), prepareDraftCreation: (...args) => prepareDraftCreation(...args), startGame: () => startGame(), getOpeningTexts: () => ({world:nlw,character:nl}), getOpeningDraft: () => draft, getOpeningError: () => err, updateOpeningDraft: patch => upd(patch), applyOpeningPreset: (id) => applyOpeningPreset(id), setOpeningBusy: (value) => setBusy(value), openNpcByActorId: (id) => setNpcOpen({kind:"npc",actorId:id,i:0,editing:false}), npcModalView, assetModalView, assetCardsView: (key) => objGrid(key), openAssetByIndex:(key,i)=>setAssetOpen({key,i}), actorSkillView, playerSkillView, skillFloatView, stageSimulationAction: (...args) => stageSimulationAction(...args), getGenericPending: () => genericPending, sendTurn: () => sendTurn(), setInput: (v) => setInput(v), getInput: () => input, openGenericTab: (v) => setTab(v), phoneDoPost, phoneDoGen, phoneDoComment, phoneDoLike, phoneDelComment, phoneLoadFeed, setPhonePlatform: (v) => setPhonePlatform(v), setPhoneCompose: (v) => setPhoneCompose(v), setPhoneFeed: (v) => setPhoneFeed(v), setPhoneFeedWho: (v) => setPhoneFeedWho(v), setPhoneCmtFor: (v) => setPhoneCmtFor(v), setPhoneCmtText: (v) => setPhoneCmtText(v), setPhoneCmtTarget: (v) => setPhoneCmtTarget(v), getFeedState: () => ({ phoneView, phoneCompose, phoneFeed, phoneCmtTarget, phoneCmtText, phonePlatform, phoneFeedWho, phonePosting, phoneCommentBusy }), pickBodyReason, renderWeiboComments, wbSendComment, phoneBody, phoneAnswerAsk: (...args) => phoneAnswerAsk(...args), getPhoneAsk: () => phoneAskState, phoneLoadContacts, phoneLoadThreads, phoneLoadGroups, phoneOpenThread, phoneOpenGroup, phoneSendNow, phoneShowAddContact, phoneAddSelected, setPhonePerson: (v) => setPhonePerson(v), setPhoneApp2: (v) => setPhoneApp2(v), setPhoneView: (v) => setPhoneView(v), setPhoneTab: (v) => setPhoneTab(v), setPhoneIn: (v) => setPhoneIn(v), setPhoneGroupPick: (v) => setPhoneGroupPick(v), getPhone: () => ({ phoneContacts, phoneThreadList, phoneGroups, phoneView, phonePerson, phoneIn, phoneMsgs, phoneBusy, phoneThreadId }), commit: (next) => setState(next), initLoaded: (next) => { setState(next); setDraft(JSON.parse(JSON.stringify(next))); setDps(JSON.parse(JSON.stringify(next))); }, openSettings: () => setTab("settings"), getState: () => state };');
+  const slots = []; let cursor = 0;
+  const sameDeps = (a, b) => a && b && a.length === b.length && a.every((x, i) => Object.is(x, b[i]));
+  const React = {
+    createElement: (type, props, ...kids) => ({ type, props, kids }), Fragment: 'fragment',
+    useState(initial) { const i = cursor++; if (!(i in slots)) slots[i] = typeof initial === 'function' ? initial() : initial; return [slots[i], (next) => { slots[i] = typeof next === 'function' ? next(slots[i]) : next; }]; },
+    useRef(initial) { const i = cursor++; if (!(i in slots)) slots[i] = { current: initial }; return slots[i]; },
+    useMemo(fn, deps) { const i = cursor++; if (!(i in slots) || !sameDeps(slots[i].deps, deps)) slots[i] = { value: fn(), deps }; return slots[i].value; },
+    useCallback(fn, deps) { return this.useMemo(() => fn, deps); },
+    useEffect() { cursor++; }, useLayoutEffect() { cursor++; }, useReducer: (r, initial) => [initial, () => {}], memo: (fn) => fn, forwardRef: (fn) => fn,
+    createContext: (value) => ({ Provider: 'provider', _value: value }), useContext: (ctx) => ctx._value,
+  };
+  const element = () => ({ style: { setProperty() {} }, appendChild: (child) => child, setAttribute() {}, remove() {}, addEventListener() {}, removeEventListener() {}, querySelector: () => null, querySelectorAll: () => [] });
+  const document = { head: element(), body: element(), documentElement: element(), getElementById: () => null, createElement: element, querySelector: () => null, querySelectorAll: () => [], addEventListener() {}, removeEventListener() {} };
+  const registered = []; let plugin;
+  const ui = new Proxy({}, { get: (_, key) => key === 'callHost' ? callHost : (...args) => { registered.push(String(key)); } });
+  const window = { __ModuleLoader__: { load({ factory }) { plugin = factory((key) => key === 'react' ? React : key === 'react-dom' ? { createPortal: (value) => value } : {}); } }, localStorage: { getItem: () => null, setItem() {}, removeItem() {} }, document, navigator: { userAgent: 'node' }, location: { href: 'http://test/' }, addEventListener() {}, removeEventListener() {}, setTimeout: () => 0, clearTimeout() {}, setInterval: () => 0, clearInterval() {}, requestAnimationFrame: () => 0, matchMedia: () => ({ matches: false, addEventListener() {} }), innerWidth: 1200, innerHeight: 800 };
+  const context = vm.createContext({ window, document, navigator: window.navigator, localStorage: window.localStorage, console, setTimeout: window.setTimeout, clearTimeout() {}, setInterval: window.setInterval, clearInterval() {}, requestAnimationFrame: window.requestAnimationFrame, performance: { now: () => 0 }, URL, URLSearchParams, AbortController });
+  vm.runInContext(source, context);
+  const ctx = { tavernUi: ui, tavern: { apiVersion: 2 }, get: () => null, on() {}, effect() {} };
+  plugin.apply(ctx);
+  return { api: ctx.__audit, registered, source, renderGeneric(props) { cursor=0; return ctx.__audit.GenericPanel(props); }, renderPending(props) { cursor=0; return ctx.__audit.GenericPending(props); }, render(gameId = 'test') { cursor = 0; const tree = ctx.__audit.App({ gameId, close() {} }); return { tree, functions: context.__appAudit }; } };
+}

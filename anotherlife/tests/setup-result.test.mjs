@@ -1,0 +1,36 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {createHarness} from './harness.mjs';
+import {fillOrdinaryCreation} from './creation-fixtures.mjs';
+import {createSimulation,updateSimulationSettings,SIMULATION_UPDATE_SCHEMA} from '../lib/generic-simulation.mjs';
+import {decodeSetupResult} from '../lib/setup-result.mjs';
+const skill={id:'writing',name:'写作',progressionMode:'narrative',levelLabel:'入门'},data={skills:[skill]},json=JSON.stringify(data),decode=r=>decodeSetupResult(r,SIMULATION_UPDATE_SCHEMA);
+const text=x=>(async function*(){yield{type:'text-delta',index:0,text:typeof x==='string'?x:JSON.stringify(x)};yield{type:'finish',reason:{kind:'stop'}};})();
+function fixture(e){const s=e.api.defaultState();s.gameId='test';s.phase='character';s.world.世界观类型='现代';s.world.当前日期时间='2026年1月1日';s.protagonist.姓名='样本主角';s.protagonist.性别='男';s.protagonist.金钱=1234;s.npcs=[];s.simulation=updateSimulationSettings(createSimulation(),{});s.config.settle={provider:'test',model:'test-model'};fillOrdinaryCreation(s);e.seed('test',s);return s;}
+async function actual(stream,{creation=false,source={}}={}){const e=await createHarness({stream}),s=fixture(e);if(Object.keys(source).length){Object.assign(s.protagonist,source);e.seed('test',s);}try{const r=await e.call(creation?'prepareCreation':'simulationPrepare',{gameId:'test',discover:false});return {e,s,r};}catch(err){e.cleanup();throw err;}}
+for(const [label,events]of [
+ ['只有最终工具块',[{type:'block-end',index:0,block:{type:'tool-call',id:'setup',name:'emit_simulation_setup',arguments:json}}]],
+ ['名称delta后在末块给参数',[{type:'tool-call-delta',index:0,id:'setup',name:'emit_simulation_setup',argumentsDelta:''},{type:'block-end',index:0,block:{type:'tool-call',id:'setup',name:'emit_simulation_setup',arguments:json}}]],
+ ['最终参数是对象',[{type:'block-end',index:0,block:{type:'tool-call',id:'setup',name:'emit_simulation_setup',arguments:data}}]],
+ ['完整delta后末块重复交完整参数',[{type:'tool-call-delta',index:0,id:'setup',name:'emit_simulation_setup',argumentsDelta:json},{type:'block-end',index:0,block:{type:'tool-call',id:'setup',name:'emit_simulation_setup',arguments:json}}]],
+ ['截半delta后最终块覆盖',[{type:'tool-call-delta',index:0,id:'setup',name:'emit_simulation_setup',argumentsDelta:'{"skills":['},{type:'block-end',index:0,block:{type:'tool-call',id:'setup',name:'emit_simulation_setup',arguments:json}}]],
+ ['最终块index不同但id一致',[{type:'tool-call-delta',index:0,id:'setup',name:'emit_simulation_setup',argumentsDelta:'{"skills":['},{type:'block-end',index:7,block:{type:'tool-call',id:'setup',name:'emit_simulation_setup',arguments:json}}]]
+])test('真实通用初值接收：'+label,async()=>{const {e,r}=await actual(()=> (async function*(){for(const event of events)yield event;yield{type:'text-delta',index:9,text:'已提交普通资料。'};yield{type:'finish',reason:{kind:'tool-calls'}};})());assert.equal(r.simulation.setupReady,true);assert.equal(r.simulation.skills[0].name,'写作');assert.equal(r.simulation.skills[0].id,'writing');assert.equal(r.simulation.setupDiagnostics.source,'tool');assert.equal(r.simulation.setupDiagnostics.toolCount,1);assert.equal(e.requests.length,1);e.cleanup();});
+test('工具参数不经中文键纠形，英语name和actorId不丢',()=>{const r=decode({toolCalls:[{name:'emit_simulation_setup',args:json}],text:'已提交。'});assert.equal(r.value.skills[0].name,'写作');assert.equal(r.value.skills[0].名字,undefined);});
+test('人话正文不遮住思考通道完整JSON',()=>{const r=decode({text:'已整理完毕。',reasoning:json,toolCalls:[]});assert.deepEqual(r.value,data);assert.equal(r.diagnostic.source,'reasoning');});
+test('空工具对象不遮住正文中实际资料',()=>{const r=decode({toolCalls:[{name:'emit_simulation_setup',args:'{}'}],text:json});assert.deepEqual(r.value,data);assert.equal(r.diagnostic.source,'text');});
+test('坏工具参数可以使用同次有效正文，不新增请求',async()=>{const {e,r}=await actual(()=> (async function*(){yield{type:'tool-call-delta',index:0,id:'bad',name:'emit_simulation_setup',argumentsDelta:'not-json'};yield{type:'text-delta',index:0,text:json};yield{type:'finish',reason:{kind:'tool-calls'}};})());assert.equal(r.simulation.skills[0].name,'写作');assert.equal(e.requests.length,1);e.cleanup();});
+test('文本代码围栏和少量前后说明可以读取闭合JSON',()=>{assert.deepEqual(decode({text:'提交如下：\n```json\n'+json+'\n```\n'}).value,data);});
+test('普通回合式simulationUpdates包装可兼容解包',()=>{assert.deepEqual(decode({text:JSON.stringify({simulationUpdates:data})}).value,data);});
+test('允许明确空更新，不把一句无需修改当作空更新',()=>{assert.deepEqual(decode({text:'{}'}).value,{});assert.equal(decode({text:'没有需要修改的内容。'}).value,null);});
+test('只说已提交不能假成功，诊断保留长度和模型回复',()=>{const r=decode({text:'已提交全部资料。',toolCalls:[],finish:{kind:'stop'}});assert.equal(r.value,null);assert.equal(r.diagnostic.textLength,8);assert.match(r.error,/模型回复：已提交全部资料/);assert.equal(r.diagnostic.accepted,false);});
+test('错误工具名称不能当成本次初值提交',()=>{assert.equal(decode({toolCalls:[{name:'another_tool',args:json}],text:'完成'}).value,null);});
+test('schema字段类型错误不静默当成空数组',()=>{const r=decode({text:'{"skills":"已填写"}'});assert.equal(r.value,null);assert.equal(r.diagnostic.rejectedShape,1);});
+test('只有未知字段不能标通用资料完成',()=>{assert.equal(decode({text:'{"summary":"完成了"}'}).value,null);});
+test('截断即使局部JSON可解析也不确认完成',()=>{const r=decode({text:json,truncated:true,finish:{kind:'length'}});assert.equal(r.value,null);assert.match(r.error,/截断/);assert.equal(r.diagnostic.reason,'truncated');});
+test('畸形半截JSON不靠补括号冒充完整交付',()=>{assert.equal(decode({text:'{"skills":[{"id":"x","name":"写作"}'}).value,null);});
+test('危险对象键仍被拒绝',()=>{assert.equal(decode({text:'{"skills":[],"__proto__":{"polluted":true}}'}).value,null);});
+test('错误诊断不会写出Bearer或密钥样式文本',()=>{const r=decode({text:'Bearer secret_value sk-test_1234567890'});assert.doesNotMatch(r.diagnostic.replyPreview,/secret_value|sk-test/);});
+test('创建页核对接收最终工具块，开局确认不再卡住',async()=>{const {e,r}=await actual(()=> (async function*(){yield{type:'tool-call-delta',index:0,id:'setup',name:'emit_simulation_setup',argumentsDelta:''};yield{type:'block-end',index:0,block:{type:'tool-call',id:'setup',name:'emit_simulation_setup',arguments:json}};yield{type:'text-delta',index:1,text:'已提交。'};yield{type:'finish',reason:{kind:'tool-calls'}};})(),{creation:true});assert.equal(r.simulation.creation.ready,true);assert.equal(r.simulation.skills[0].name,'写作');assert.equal(r.protagonist.金钱,1234);assert.equal(r.transcript.length,0);assert.equal(e.requests.length,1);e.cleanup();});
+test('创建核对纯文字失败保留已解析人物衣着与资产，不重试也不假完成',async()=>{const {e,s,r}=await actual(()=>text('已完成整理。'),{creation:true});assert.equal(r.simulation.creation.ready,false);assert.equal(r.simulation.setupReady,false);assert.equal(r.protagonist.金钱,1234);assert.equal(r.protagonist.穿着.上衣.物品,s.protagonist.穿着.上衣.物品);assert.equal(r.simulation.setupDiagnostics.toolCount,0);assert.ok(r.simulation.creation.issues.some(t=>t.includes('有效JSON')));assert.equal(e.requests.length,1);e.cleanup();});
+test('提交协议写进实际请求，只发普通通用所需主角字段',async()=>{const {e,r}=await actual(()=>text(data),{source:{身体:{testSecret:'不属于通用资料的测试内容'},性癖:['不应发给此模块的测试标签']}});const request=e.requests[0],input=JSON.parse(request.messages[0].content[0].text);assert.match(request.system,/必须调用emit_simulation_setup/);assert.match(request.system,/若接口不支持工具/);assert.equal(input.protagonist.身体,undefined);assert.equal(input.protagonist.性癖,undefined);assert.equal(input.protagonist.姓名,'样本主角');assert.equal(r.simulation.setupReady,true);e.cleanup();});

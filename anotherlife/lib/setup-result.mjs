@@ -1,0 +1,24 @@
+import {assertSafeValue} from './runtime-core.mjs';
+const obj=x=>!!x&&typeof x==='object'&&!Array.isArray(x),str=x=>typeof x==='string'?x:'',own=(x,k)=>!!x&&Object.prototype.hasOwnProperty.call(x,k);
+export const SETUP_OUTPUT_RULES=[
+ '【提交协议：这是结构化资料任务，不是对话】必须调用emit_simulation_setup，把实际资料直接写入工具参数。不能只说“已完成”“已提交”或解释无需修改。',
+ '若接口不支持工具，在正文直接输出一个完整JSON对象；不写前言、后记、思考或Markdown。字段必须位于对象根部，不套simulation或simulationUpdates。',
+ '可用根字段为profile、actorRecords、careers、skills、managementOperations、systemEvents、systemPersona、systemGuidance，以及仅在对应资产任务存在时提交的assetDetails、virtualAssetDetails、managementProfiles；各数组只提交有依据的条目。',
+ '空列表示例：{"actorRecords":[],"careers":[],"skills":[],"managementOperations":[],"systemEvents":[]}。示例只说明结构，不是让你忽略已有的职业、技能或单位；确实没有新增资料时也要交合法JSON，不能交一句说明。',
+ '只处理普通人物扩展、任职、技能、已声明实体资产及虚拟权益的描述、经营与绑定系统，不生成身体、私密或气味资料。已有信息优先，未知留空；不重置金钱或发放无依据奖励。'
+].join('\n');
+export function ordinarySetupProtagonist(p={}){const fields=['姓名','性别','年龄','生日','种族','身份','出生地','背景','人物关系','配偶','子女','技能','事业','住所','交通','物品','债务','凭证','金钱','货币名','收支','是否艺人','经纪公司','定位'];return Object.fromEntries(fields.filter(k=>own(p,k)).map(k=>[k,p[k]]));}
+function objects(text){const out=[],t=str(text).replace(/<think\b[^>]*>[\s\S]*?<\/think>/gi,'');try{out.push(JSON.parse(t.trim()));}catch{}let start=-1,depth=0,quoted=false,escaped=false;for(let i=0;i<t.length;i++){const c=t[i];if(start<0){if(c==='{'){start=i;depth=1;quoted=false;escaped=false;}continue;}if(quoted){if(escaped)escaped=false;else if(c==='\\')escaped=true;else if(c==='"')quoted=false;continue;}if(c==='"')quoted=true;else if(c==='{')depth++;else if(c==='}'&&--depth===0){try{out.push(JSON.parse(t.slice(start,i+1)));}catch{}start=-1;}}return [...new Map(out.map(value=>[JSON.stringify(value),value])).values()];}
+function parse(value){if(obj(value))return [value];if(typeof value!=='string')return [];const out=objects(value);for(const decoded of out.slice())if(typeof decoded==='string')out.push(...objects(decoded));return out;}
+function preview(text){return str(text).replace(/<think\b[^>]*>[\s\S]*?<\/think>/gi,'').replace(/Bearer\s+[^\s"']+|sk-[A-Za-z0-9_-]{8,}/gi,'[凭据已隐藏]').replace(/\s+/g,' ').trim().slice(0,160);}
+export function decodeSetupResult(result,schema){
+ const properties=schema?.properties||{},allowed=new Set(Object.keys(properties)),candidates=[],calls=Array.isArray(result?.toolCalls)?result.toolCalls:[],diagnostic={textLength:typeof result==='string'?result.length:str(result?.text).length,reasoningLength:str(result?.reasoning).length,toolCount:calls.length,tools:[],chunkTypes:Array.isArray(result?.chunkTypes)?result.chunkTypes:[],finish:result?.finish?.kind||result?.finish||'',accepted:false,source:'',keys:[]};
+ const add=(value,source,depth=0)=>{if(depth>3)return;for(const raw of parse(value)){if(!obj(raw))continue;try{assertSafeValue(raw);}catch{continue;}if(obj(raw.simulationUpdates)){add(raw.simulationUpdates,source+':simulationUpdates',depth+1);continue;}if(obj(raw.arguments)&&(raw.name==='emit_simulation_setup'||raw.function?.name==='emit_simulation_setup')){add(raw.arguments,source+':arguments',depth+1);continue;}const keys=Object.keys(raw),known=keys.filter(k=>allowed.has(k));const wrong=known.some(k=>{const type=properties[k]?.type,value=raw[k];return type==='array'?!Array.isArray(value):type==='object'?!obj(value):type==='string'?typeof value!=='string':false;});if(wrong){diagnostic.rejectedShape=(diagnostic.rejectedShape||0)+1;continue;}if(!keys.length||known.length)candidates.push({value:Object.fromEntries(known.map(k=>[k,raw[k]])),source,keys:known});}};
+ for(const call of calls){const name=str(call?.name||call?.function?.name),args=call?.args??call?.arguments??call?.function?.arguments;diagnostic.tools.push({name,argumentLength:typeof args==='string'?args.length:obj(args)?JSON.stringify(args).length:0});if(!name||name==='emit_simulation_setup')add(args,'tool');}
+ if(typeof result==='string')add(result,'text');else{add(result?.text,'text');add(result?.reasoning,'reasoning');if(obj(result)&&Object.keys(result).some(k=>allowed.has(k)))add(result,'direct');}
+ const truncated=result?.truncated===true||/length|max.?tokens?|token.?limit|truncat/i.test(String(diagnostic.finish));
+ if(truncated){diagnostic.reason='truncated';return {value:null,diagnostic,error:'通用资料输出被截断，未确认完成。现有资料已保留，请检查解析模型的输出额度后重试核对。'};}
+ const chosen=candidates.find(c=>c.keys.length)||candidates[0];if(chosen){diagnostic.accepted=true;diagnostic.source=chosen.source;diagnostic.keys=chosen.keys;return {value:chosen.value,diagnostic,error:''};}
+ diagnostic.reason=calls.length?'invalid-tool-arguments':'no-structured-result';diagnostic.replyPreview=preview(typeof result==='string'?result:result?.text);
+ return {value:null,diagnostic,error:'通用资料未提交有效JSON（工具'+calls.length+'次，正文'+diagnostic.textLength+'字）。现有资料已保留。'+(diagnostic.replyPreview?'模型回复：'+diagnostic.replyPreview:'请重试核对；详细返回摘要见插件轮次日志。')};
+}

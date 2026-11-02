@@ -1,0 +1,16 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import {createHarness} from './harness.mjs';
+import {createSimulation,updateSimulationSettings} from '../lib/generic-simulation.mjs';
+import {initialDataIssues} from '../lib/initial-data.mjs';
+const profile={表性格:'待人平和有礼，交流时会认真倾听对方',里性格:'重视承诺与生活秩序，做决定时先考虑家人的需要',背景:'在普通家庭生活中成长，成年后通过日常工作结识主角，已有职业和关系保持原样。'};
+const text=v=>(async function*(){yield{type:'text-delta',index:0,text:typeof v==='string'?v:JSON.stringify(v)};yield{type:'finish',reason:{kind:'stop'}};})();
+function initial(e){const s=e.api.defaultState();s.gameId='test';s.phase='character';s.config.settle={provider:'test',model:'test-model'};s.world.世界观类型='现代';s.world.当前日期时间='2026年1月1日';Object.assign(s.protagonist,{姓名:'罗伊',性别:'男',生日:'1990-01-01',身份:'演员',金钱:1234,人物关系:'父亲罗建国，公务员；母亲徐惠芳，退休教师。'});s.simulation=updateSimulationSettings(createSimulation(),{});s.npcs=[{姓名:'罗建国',性别:'男',与主角关系:'父亲'},{姓名:'徐惠芳',性别:'女',与主角关系:'母亲'},{姓名:'罗晴',性别:'女',与主角关系:'妹妹'}];return s;}
+async function run(cast){const e=await createHarness({stream:o=>{const n=(o.tools||[]).map(x=>x.name);if(n.includes('emit_parsed_json'))return text(cast);if(n.includes('complete_records'))return text({chars:[],profiles:[]});return text({});}}),s=initial(e);e.seed('test',s);let result=null;try{result=await e.call('prepareCreation',{gameId:'test',sourceText:'罗伊和父母同住。',discover:true});}catch(err){result={error:String(err.message)};}return {e,result};}
+test('名册把父亲母亲改用“罗父／罗母”称呼时合并到已有姓名，不再重复建档',async()=>{const {e}=await run({角色:[{姓名:'罗父',性别:'男',与主角关系:'父亲',...profile},{姓名:'罗母',性别:'女',与主角关系:'母亲',...profile},{姓名:'罗小宝',性别:'男',与主角关系:'儿子',身份:'幼童'}]});try{const st=e.getState('test'),names=st.npcs.map(n=>n.姓名);assert.equal(names.filter(n=>n==='罗父'||n==='罗母').length,0,JSON.stringify(names));assert.equal(names.filter(n=>n==='罗建国').length,1);assert.equal(names.filter(n=>n==='徐惠芳').length,1);assert.ok(names.includes('罗小宝'));}finally{e.cleanup();}});
+test('名册用同一个正式姓名重复提交时只保留一条',async()=>{const {e}=await run({角色:[{姓名:'罗建国',与主角关系:'父亲',...profile},{姓名:'罗父',与主角关系:'父亲',背景:'另一段背景。'}]});try{const names=e.getState('test').npcs.map(n=>n.姓名);assert.equal(names.filter(n=>n==='罗建国').length,1);assert.equal(names.length,new Set(names).size);}finally{e.cleanup();}});
+test('住所不再因缺少每层设施或户型阻挡开局，只要求名称或位置',()=>{const issues=initialDataIssues({住所:[{名称:'上海江景豪宅',位置:'上海',每一层的设施:''},{名称:'北京四合院',位置:'北京'}]},'主角在上海和北京各有房产');assert.equal(issues.some(x=>/每一层的设施|户型|楼层/.test(x)),false);assert.equal(initialDataIssues({住所:[{名称:'',位置:''}]},'有房产').some(x=>/缺少名称或位置/.test(x)),true);});
+
+test('界面在再次解析前调用重置接口，把角色、资产与主角列表清空并写盘',()=>{const src=fs.readFileSync(new URL('../client.js',import.meta.url),'utf8');assert.match(src,/await call\('resetCreation'/);assert.ok(src.indexOf("await call('resetCreation'")<src.indexOf("return call('parseNatural'"));});
+test('同关系的不同人物不硬删，职业谓语不能覆盖正式姓名',async()=>{const {e}=await run({角色:[{姓名:'罗晴',与主角关系:'妹妹',...profile},{姓名:'罗婉',与主角关系:'妹妹',...profile},{姓名:'罗玥',与主角关系:'妹妹',...profile},{姓名:'是小学老师',与主角关系:'母亲',...profile},{姓名:'徐惠芳',与主角关系:'母亲',...profile}]});try{const names=e.getState('test').npcs.map(n=>n.姓名);assert.equal(names.filter(n=>n==='罗晴'||n==='罗婉'||n==='罗玥').length,3,'不同妹妹不能被强制删除：'+JSON.stringify(names));assert.equal(names.filter(n=>n==='徐惠芳'||n==='是小学老师').length,1,'母亲只留一个');}finally{e.cleanup();}});

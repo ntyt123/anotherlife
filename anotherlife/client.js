@@ -817,7 +817,7 @@ window.__ModuleLoader__.load({
       '.sim-fz2 .sim-btn{font-size:var(--sim-fs-4)}',
       '.sim-fz2 .sim-when-row .v{font-size:var(--sim-fs-7)}',
       '.sim-fz2 .sim-when-row.sub .v{font-size:var(--sim-fs-6)}',
-      // 资产卡（卡片墙，点开看详情）：只显示 名称 / 运营状态 / 位置
+      // 资产卡：公司只显示全名，以红绿底色标状态；其他资产保留概览。
       '.sim-agrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px}',
       '.sim-acard{background:var(--sim-bg);border:1.5px solid rgba(139,92,246,.45);border-radius:12px;padding:12px;cursor:pointer;transition:box-shadow .12s,border-color .12s}',
       '.sim-acard:hover{box-shadow:0 4px 14px rgba(0,0,0,.13);border-color:rgba(139,92,246,.85)}',
@@ -826,6 +826,7 @@ window.__ModuleLoader__.load({
       '.sim-acard-h .nm{font-weight:700;font-size:var(--sim-fs-5);min-width:0;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;white-space:normal;line-height:1.35;word-break:break-word}',
       '.sim-acard-h .tag{flex:0 0 auto;font-size:var(--sim-fs-2);padding:2px 9px;border-radius:99px;background:var(--sim-bg2);border:1px solid var(--sim-bd);color:var(--sim-t2)}',
       '.sim-acard-d{font-size:var(--sim-fs-2);color:var(--sim-t2);line-height:1.55;word-break:break-word}',
+      ".sim-acard.sim-company-card{display:flex;align-items:center;min-height:76px;padding:16px;color:var(--sim-t);background:#e8f3eb;background:color-mix(in srgb,var(--sim-good,#2e7d32)22%,var(--sim-bg2,#fff));border-color:color-mix(in srgb,var(--sim-good,#2e7d32)48%,var(--sim-bd,#e0dbd2))}.sim-acard.sim-company-card.is-closed{background:#f9e9e8;background:color-mix(in srgb,var(--sim-err,#b3261e)22%,var(--sim-bg2,#fff));border-color:color-mix(in srgb,var(--sim-err,#b3261e)48%,var(--sim-bd,#e0dbd2))}.sim-company-name{display:block;width:100%;min-width:0;font-weight:700;font-size:var(--sim-fs-5);line-height:1.45;white-space:normal;overflow-wrap:anywhere;word-break:normal}.sim-acard.sim-company-card:focus-visible{outline:2px solid var(--sim-ac);outline-offset:3px}",
       '.sim-tip{font-size:var(--sim-fs-4)}',
       '.sim-tip-name{font-size:var(--sim-fs-4)}',
       '.sim-tip-k{font-size:var(--sim-fs-3);flex:0 0 64px}',
@@ -871,10 +872,10 @@ window.__ModuleLoader__.load({
       '.sim-input textarea{flex:1;min-width:0;min-height:48px;background:var(--sim-bg);border:1px solid var(--sim-bd);border-radius:8px;color:var(--sim-t);padding:8px;font-size:var(--sim-fs-3);font-family:inherit}',
       // 报错条：fixed 在底部，不跟内容滚动 —— 在页面底部点按钮时也能立刻看到
       '.sim-err-toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:10000;max-width:min(640px,calc(100vw - 40px));display:flex;align-items:flex-start;gap:10px;padding:10px 14px;border-radius:10px;background:var(--sim-bg2);border:1px solid var(--sim-err);color:var(--sim-err);font-size:var(--sim-fs-3);line-height:1.5;box-shadow:0 10px 28px rgba(0,0,0,.22)}',
-      '.sim-err-toast .t{flex:1 1 auto;min-width:0;word-break:break-word}',
+      '.sim-err-toast .t{flex:1 1 auto;min-width:0;word-break:break-word;white-space:pre-wrap;max-height:min(45vh,480px);overflow-y:auto;overflow-wrap:anywhere}',
       '.sim-err-toast .x{flex:none;border:0;background:transparent;color:var(--sim-err);cursor:pointer;font-size:var(--sim-fs-4);line-height:1;opacity:.65;padding:0 2px}',
       '.sim-err-toast .x:hover{opacity:1}',
-      '.sim-err{color:var(--sim-err);font-size:var(--sim-fs-2);padding:4px 0;word-break:break-word}',
+      '.sim-err{color:var(--sim-err);font-size:var(--sim-fs-2);padding:4px 0;word-break:break-word;white-space:pre-wrap;max-height:40vh;overflow-y:auto;overflow-wrap:anywhere}',
       '.sim-pre{white-space:pre-wrap;font-family:monospace;font-size:var(--sim-fs-1);background:var(--sim-bg);border:1px solid var(--sim-bd);border-radius:8px;padding:8px;max-height:320px;overflow:auto;color:var(--sim-t2)}',
       '.sim-hero{display:flex;align-items:center;gap:14px;padding:16px;border-radius:12px;margin-bottom:14px;background:var(--sim-bg);border:1px solid var(--sim-bd);border-left:4px solid var(--sim-ac)}',
       '.sim-hero .ic{font-size:var(--sim-fs-7);line-height:1}',
@@ -1298,6 +1299,9 @@ window.__ModuleLoader__.load({
       '.sim-call-note{margin-top:14px;color:#a9b0c0;font-size:var(--sim-fs-2);white-space:pre-wrap}',
       // ── 聊天里的媒体消息（图片/语音/转账/红包/位置/链接）──
       '.sim-wx-img,.sim-qq-img,.sim-sms-img{padding:5px!important;display:flex;flex-direction:column;gap:4px}',
+      '.sim-wx-row .sim-wx-bub.is-image{padding:0;background:transparent;box-shadow:none}',
+      '.sim-wx-row .sim-wx-bub.is-image:before{display:none}',
+      '.sim-wx-bub.is-image>.sim-wx-img{padding:0!important}',
       '.sim-wx-imgbox,.sim-qq-imgbox,.sim-sms-imgbox{width:132px;height:100px;border-radius:4px;background:linear-gradient(135deg,#dfe3ea,#c9cfda);color:#6d7480;display:flex;align-items:center;justify-content:center;font-size:var(--sim-fs-2)}',
       '.sim-wx-imgtxt,.sim-qq-imgtxt,.sim-sms-imgtxt{font-size:var(--sim-fs-2);color:#8a9099}',
       '.sim-wx-voice,.sim-qq-voice,.sim-sms-voice{display:inline-flex;align-items:center;gap:8px;min-width:96px}',
@@ -1321,6 +1325,7 @@ window.__ModuleLoader__.load({
       '.sim-acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}',
       '.sim-note{background:var(--sim-bg);border:1px solid var(--sim-bd);border-left:3px solid var(--sim-ac);border-radius:0 8px 8px 0;padding:6px 10px;font-size:var(--sim-fs-1);color:var(--sim-t2);margin-bottom:10px}',
       '.sim-hint{color:var(--sim-t2);font-size:var(--sim-fs-1);margin-bottom:4px}',
+      ".sim-creation-checklist{margin:18px 0;border:1px solid var(--sim-bd);border-radius:14px;background:var(--sim-bg2);overflow:hidden;color:var(--sim-t)}.sim-check-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;border-bottom:1px solid var(--sim-bd)}.sim-check-heading{display:flex;align-items:center;gap:9px;min-width:0}.sim-check-emblem{display:grid;place-items:center;width:26px;height:26px;border:1px solid var(--sim-bd);border-radius:8px;color:var(--sim-ac);font-size:14px}.sim-check-title{font-size:var(--sim-fs-md,14px);font-weight:650;line-height:1.4}.sim-check-counts{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:5px 10px;color:var(--sim-t2);font-size:var(--sim-fs-xs,12px);white-space:nowrap}.sim-check-counts .is-done{color:var(--sim-good)}.sim-check-scroll{list-style:none;margin:0;padding:8px;display:flex;flex-direction:column;gap:6px;scrollbar-width:thin;scrollbar-color:var(--sim-bd) transparent}.sim-check-scroll:focus-visible{outline:2px solid var(--sim-ac);outline-offset:-2px}.sim-check-scroll::-webkit-scrollbar{width:6px}.sim-check-scroll::-webkit-scrollbar-thumb{background:var(--sim-bd);border-radius:8px}.sim-check-row{display:grid;grid-template-columns:24px minmax(0,1fr) auto;align-items:center;gap:10px;padding:9px 10px;background:var(--sim-bg);border:1px solid var(--sim-bd);border-radius:10px;min-width:0}.sim-check-mark{display:grid;place-items:center;width:22px;height:22px;border:1px solid var(--sim-bd);border-radius:7px;color:var(--sim-mut);font-size:14px;line-height:1}.sim-check-copy{display:flex;flex-direction:column;gap:2px;min-width:0}.sim-check-group{color:var(--sim-t2);font-size:var(--sim-fs-xs,11px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.sim-check-field{color:var(--sim-t);font-size:var(--sim-fs-sm,13px);line-height:1.45;overflow-wrap:anywhere}.sim-check-status{font-size:var(--sim-fs-xs,11px);padding:3px 7px;border-radius:6px;border:1px solid var(--sim-bd);white-space:nowrap;color:var(--sim-mut);line-height:1.5}.sim-check-row.is-done .sim-check-mark,.sim-check-row.is-done .sim-check-status{color:var(--sim-good)}.sim-check-row.is-done .sim-check-field{color:var(--sim-t2)}.sim-check-row.is-removed{opacity:.55}.sim-check-empty{padding:16px;color:var(--sim-t2);font-size:var(--sim-fs-sm,13px)}@media(max-width:480px){.sim-check-head{padding:10px;gap:8px}.sim-check-row{padding:8px;gap:8px}.sim-check-status{padding:2px 5px}}",
       '.skin-paper{--sim-bg:#faf8f4;--sim-bg2:#fff;--sim-bd:#e0dbd2;--sim-t:#2f2b26;--sim-t2:#8a8175;--sim-t3:#b8af9f;--sim-ac:#8b3a2e;--sim-acfg:#fff;--sim-mut:#b3542e;--sim-good:#2e7d32;--sim-err:#b3261e;--sim-say:#2f6fd0}',
       '.skin-parchment{--sim-bg:#141013;--sim-bg2:#1c1619;--sim-bd:#5c4630;--sim-t:#f1e2c8;--sim-t2:#c9a86a;--sim-t3:#9b8a6b;--sim-ac:#f0b357;--sim-acfg:#141013;--sim-mut:#c77b3a;--sim-good:#8fbf6f;--sim-err:#e06c5a;--sim-say:#8fb4f0}',
       '.skin-neon{--sim-bg:#141726;--sim-bg2:#1a1d2e;--sim-bd:rgba(255,255,255,.09);--sim-t:#e6e8f2;--sim-t2:#9aa0b8;--sim-t3:#5c6080;--sim-ac:#7c5cff;--sim-acfg:#fff;--sim-mut:#f0a35e;--sim-good:#31d0d8;--sim-err:#ff5c7a;--sim-say:#8ea8ff}',
@@ -1386,6 +1391,24 @@ window.__ModuleLoader__.load({
       }
     }
 
+    function groupWeiboThreads(post, allMine) {
+      const comments = (Array.isArray(post.评论列表) ? post.评论列表 : []).filter((comment) => comment && !(comment.回复 && String(comment.回谁 || '') === '玩家'));
+      const replies = (Array.isArray(post.评论列表) ? post.评论列表 : []).filter((comment) => comment && comment.回复 && String(comment.回谁 || '') === '玩家');
+      const mine = (Array.isArray(allMine) ? allMine : []).filter((action) => action && (action.postId && post.id ? action.postId === post.id : action.作者 === post.作者 && action.正文 === String(post.正文 || '').slice(0, 60)));
+      const groups = comments.map((comment) => ({ comment, mine: [] }));
+      const direct = [];
+      const unplaced = [];
+      const used = new Set();
+      for (const action of mine) {
+        const item = { action, replies: replies.filter((reply) => action.id && reply.replyToActionId === action.id) };
+        item.replies.forEach((reply) => used.add(reply));
+        if (!action.parentCommentId && !action.回谁) { direct.push(item); continue; }
+        const matches = groups.filter(({ comment }) => action.parentCommentId ? comment.id === action.parentCommentId : String(comment.谁 || '') === String(action.回谁 || '') && (!action.回内容 || String(comment.内容 || '') === String(action.回内容)));
+        if (matches.length === 1) matches[0].mine.push(item); else unplaced.push(item);
+      }
+      return { groups, direct, unplaced, orphanReplies: replies.filter((reply) => !used.has(reply)) };
+    }
+
     return {
       name: 'dsh-tavern-simulator',
       inject: ['tavernUi'],
@@ -1400,8 +1423,38 @@ window.__ModuleLoader__.load({
         // Tavern 的 handle 名不允许大写字母：内部写 getState，实际调用 get-state。
         // 必须和宿主侧 index.mjs 的 toApi 完全一致。
         const toApi = (n) => String(n).replace(/[A-Z]/g, (m) => '-' + m.toLowerCase());
-        const call = (name, args, gameId) =>
-          ui.callHost(NS + toApi(name), Object.assign({ gameId: gameId || currentGameId }, args || {}));
+        let hostCompatibility = null;
+        const call = async (name, args, gameId) => {
+          const payload = Object.assign({ gameId: gameId || currentGameId }, args || {});
+          if (name !== 'ping') {
+            if (!hostCompatibility) hostCompatibility = Promise.resolve(ui.callHost(NS + 'ping', { gameId: payload.gameId })).then((host) => {
+              if (!host || host.protocol !== 15) throw new Error('模拟器已更新，请重启 DSH');
+            }).catch((error) => { hostCompatibility = null; throw error; });
+            await hostCompatibility;
+          }
+          const response = await ui.callHost(NS + toApi(name), payload);
+          const receipt = response && response.__simulatorReply;
+          if (!receipt) return response;
+          if (!receipt.id || !Number.isSafeInteger(receipt.parts) || receipt.parts < 1 || !Number.isSafeInteger(receipt.length)) throw new Error('存档传输格式错误');
+          const pieces = new Array(receipt.parts);
+          let cursor = 0;
+          try {
+            await Promise.all(Array.from({ length: Math.min(4, receipt.parts) }, async () => {
+              for (;;) {
+                const index = cursor++;
+                if (index >= receipt.parts) return;
+                const part = await ui.callHost(NS + 'reply-chunk', { gameId: payload.gameId, id: receipt.id, index });
+                if (!part || part.index !== index || part.parts !== receipt.parts || typeof part.data !== 'string') throw new Error('存档分片不完整，请重试');
+                pieces[index] = part.data;
+              }
+            }));
+            const json = pieces.join('');
+            if (json.length !== receipt.length) throw new Error('存档传输不完整，请重试');
+            return JSON.parse(json);
+          } finally {
+            try { await ui.callHost(NS + 'release-reply', { gameId: payload.gameId, id: receipt.id }); } catch (_) {}
+          }
+        };
 
         let currentGameId = null;
 
@@ -1412,16 +1465,15 @@ window.__ModuleLoader__.load({
          * 只看条数不够 —— 「重新生成」覆盖同一轮时条数不变、内容全换，
          * 靠条数判断的滚动定位与提示音都会被跳过。
          */
-        function txFingerprint(st) {
-          const list = st && Array.isArray(st.transcript) ? st.transcript : [];
-          return list
-            .map((t) => {
-              if (!t) return 'x';
-              const b = String(t.body || '');
-              const mid = b.length > 36 ? b.slice((b.length >> 1) - 6, (b.length >> 1) + 6) : '';
-              return t.seq + '.' + (t.role === 'user' ? 'u' : 'a') + '.' + b.length + '.' + b.slice(0, 12) + '.' + mid + '.' + b.slice(-12);
-            })
-            .join('丨');
+        function txFingerprint(state) {
+          const list = state && Array.isArray(state.transcript) ? state.transcript : [];
+          return list.map((entry) => {
+            if (entry.textVersion) return String(entry.seq) + ':' + entry.role + ':' + entry.textVersion;
+            const text = String(entry.body || '');
+            let hash = 2166136261;
+            for (let index = 0; index < text.length; index++) hash = Math.imul(hash ^ text.charCodeAt(index), 16777619);
+            return String(entry.seq) + ':' + entry.role + ':' + text.length + ':' + (hash >>> 0).toString(36);
+          }).join('|');
         }
 
         /**
@@ -3876,13 +3928,510 @@ const WARN_FALLBACK = {
     }
   }
 
-function App({ gameId, close }) {
-          const [state, setState] = React.useState(null);
+function GitCfg({ ask }) {
+          const [info, setInfo] = React.useState(null);
+          const [chk, setChk] = React.useState(null);
+          const [busy, setBusy] = React.useState('');
+          const [out, setOut] = React.useState('');
+          const [repo, setRepo] = React.useState('');
+          const [url, setUrl] = React.useState('');
+
+          function pull() {
+            Promise.resolve(call('gitStatus'))
+              .then((r) => {
+                setInfo(r);
+                if (r && r.repo) setRepo((v) => v || r.repo);
+              })
+              .catch((e) => setOut('读取版本失败：' + String((e && e.message) || e)));
+          }
+          React.useEffect(() => {
+            pull();
+          }, []);
+
+          function act(name, args, label, confirmText) {
+            if (confirmText) {
+              ask(confirmText).then((ok) => {
+                if (ok) act(name, args, label, '');
+              });
+              return;
+            }
+            setBusy(label);
+            setOut('');
+            Promise.resolve(call(name, args))
+              .then((r) => {
+                setBusy('');
+                if (!r || !r.ok) {
+                  setOut('✗ ' + ((r && r.error) || '失败'));
+                  return;
+                }
+                if (name === 'checkUpdate') {
+                  setChk(r);
+                  setOut(r.behind ? '有 ' + r.behind + ' 个新提交' : '已是最新');
+                  return;
+                }
+                if (name === 'cloneRepo') {
+                  setOut('已克隆到 ' + (r.head || '') + '\n现在可以点「更新到最新」了。');
+                  pull();
+                  return;
+                }
+                if (name === 'pullUpdate') {
+                  setChk(null);
+                  setOut('已更新到 ' + (r.head || '') + '（' + (r.copied || '') + '）\n重启 DSH 后生效。');
+                  pull();
+                  return;
+                }
+                if (name === 'commitPush') {
+                  setOut('已上传：' + (r.head || '') + '\n' + (r.committed || ''));
+                  pull();
+                  return;
+                }
+                setOut('完成');
+              })
+              .catch((e) => {
+                setBusy('');
+                setOut('✗ ' + String((e && e.message) || e));
+              });
+          }
+
+          const row = (label, v) =>
+            h(
+              'div',
+              { style: { display: 'flex', gap: 8, marginTop: 6, fontSize: 'var(--sim-fs-2)' } },
+              h('span', { style: { flex: '0 0 58px', color: 'var(--sim-t2)' } }, label),
+              h('span', { style: { flex: '1 1 auto', minWidth: 0, wordBreak: 'break-all' } }, v || '—')
+            );
+
+          return h(
+            'div',
+            { className: 'sim-card' },
+            h('div', { style: { fontWeight: 600, marginBottom: 4 } }, '更新与提交'),
+            h('div', { className: 'sim-hint' }, '仓库与插件目录不是同一份文件，提交和更新都会在两边各拷一次。'),
+            row('当前', info && info.ok ? (info.head || '') + (info.date ? ' · ' + info.date : '') : ''),
+            row('远端', info && info.ok ? info.remote : ''),
+            h(
+              'div',
+              { className: 'sim-field' },
+              h('label', null, '仓库目录'),
+              h('input', {
+                value: repo,
+                placeholder: '默认 workspace/_repo/anotherlife',
+                onChange: (e) => setRepo(e.target.value),
+              }),
+              h(
+                Btn,
+                {
+                  disabled: !!busy,
+                  onClick: () =>
+                    Promise.resolve(call('setRepoDir', { repoDir: repo }))
+                      .then(() => {
+                        setOut('仓库目录已记住');
+                        pull();
+                      })
+                      .catch((e) => setOut('✗ ' + String((e && e.message) || e))),
+                },
+                '记住'
+              )
+            ),
+            h(
+              'div',
+              { className: 'sim-field' },
+              h('label', null, '远端地址'),
+              h('input', {
+                value: url,
+                placeholder: 'https://github.com/ntyt123/anotherlife.git',
+                onChange: (e) => setUrl(e.target.value),
+              }),
+              h(
+                Btn,
+                {
+                  disabled: !!busy,
+                  onClick: () =>
+                    act(
+                      'cloneRepo',
+                      { url: url, dir: repo },
+                      '克隆',
+                      '把远端仓库克隆到上面的「仓库目录」。\n该目录必须是空的或不存在。\n\n确定继续？'
+                    ),
+                },
+                busy === '克隆' ? '克隆中…' : '克隆到这里'
+              )
+            ),
+            h('div', { className: 'sim-hint', style: { marginTop: 4 } }, '仓库目录要填一个空目录，不是插件目录。'),
+            h(
+              'div',
+              { className: 'sim-acts', style: { marginTop: 10, flexWrap: 'wrap' } },
+              h(
+                Btn,
+                { big: true, disabled: !!busy, onClick: () => act('checkUpdate', {}, '检查', null) },
+                busy === '检查' ? '检查中…' : '检查更新'
+              )
+            ),
+            chk && chk.behind
+              ? h(
+                  'div',
+                  { className: 'sim-hint', style: { marginTop: 6, whiteSpace: 'pre-wrap' } },
+                  chk.log.join('\n')
+                )
+              : null,
+            h(
+              'div',
+              { className: 'sim-acts', style: { marginTop: 8, flexWrap: 'wrap' } },
+              h(
+                Btn,
+                {
+                  big: true,
+                  disabled: !!busy,
+                  onClick: () =>
+                    act(
+                      'pullUpdate',
+                      {},
+                      '更新',
+                      '更新会把仓库和插件目录都对齐到远端，本地未提交的改动会全部丢弃。\n\n确定继续？'
+                    ),
+                },
+                busy === '更新' ? '更新中…' : '更新到最新'
+              ),
+              h(
+                Btn,
+                {
+                  big: true,
+                  disabled: !!busy,
+                  onClick: () =>
+                    act(
+                      'commitPush',
+                      {},
+                      '提交',
+                      '会把插件目录和卡片拷进仓库，然后提交并上传。\n\n确定继续？'
+                    ),
+                },
+                busy === '提交' ? '上传中…' : '提交并上传'
+              )
+            ),
+            out
+              ? h(
+                  'div',
+                  {
+                    className: 'sim-hint',
+                    style: {
+                      marginTop: 8,
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-all',
+                      maxHeight: 160,
+                      overflow: 'auto',
+                      fontFamily: 'ui-monospace,Menlo,Consolas,monospace',
+                    },
+                  },
+                  out
+                )
+              : null,
+            h('div', { className: 'sim-hint', style: { marginTop: 6 } }, '更新完要重启 DSH，宿主侧代码才会重新加载。')
+          );
+        }
+
+const mergeParsedFields = (function(){
+const clone = (v) => v === undefined ? undefined : JSON.parse(JSON.stringify(v));
+const obj = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
+const nonempty = (v) => v !== undefined && v !== null && v !== '' && (!Array.isArray(v) || v.length > 0);
+const label = (x) => String(x?.名称 || x?.名字 || x?.姓名 || x?.车型 || x?.对象 || x?.位置 || '').trim();
+function mergeInitialData(base, incoming) {
+  if (!nonempty(incoming)) return clone(base === undefined ? incoming : base);
+  if (Array.isArray(incoming)) {
+    const out = Array.isArray(base) ? clone(base) : [];
+    for (const value of incoming) {
+      if (!obj(value)) { if (!out.some((x) => JSON.stringify(x) === JSON.stringify(value))) out.push(clone(value)); continue; }
+      const nm = label(value);
+      const at = out.findIndex((x) => obj(x) && ((nm && label(x) === nm) || (value.位置 && x.位置 === value.位置 && (!(x.名称 || x.名字) || !(value.名称 || value.名字))) || (value.对象 && x.对象 === value.对象)));
+      if (at < 0) out.push(clone(value)); else out[at] = mergeInitialData(out[at], value);
+    }
+    return out;
+  }
+  if (obj(incoming)) {
+    const out = obj(base) ? clone(base) : {};
+    for (const [k, v] of Object.entries(incoming)) {
+      if (['__proto__', 'constructor', 'prototype'].includes(k) || k.startsWith('_')) continue;
+      out[k] = mergeInitialData(out[k], v);
+    }
+    return out;
+  }
+  return incoming;
+}
+
+return mergeInitialData;})();
+
+      // GENERIC_VIEWS_BEGIN
+// 内置快捷开局只提供解析原文，不包含配置、既有角色状态或后续结局。
+const OPENING_PRESETS = Object.freeze([
+  {
+    id: 'modern-life',
+    label: '现代人生',
+    worldText: '现代中国，以1991年为故事起点。社会、家庭、教育以及影视和音乐行业随年代发展，基调贴近日常生活。',
+    characterText: '主角是1991年出生在普通城市家庭的男孩，从刚出生时开始生活。家人刚迎接他的到来，此时尚未入学，也没有职业经历。',
+  },
+  {
+    id: 'song-family',
+    label: '宋代世家',
+    worldText: '北宋，宋仁宗初年，约公元1023年。科举、礼法与士大夫秩序影响社会，世家大族与朝堂联系密切，家族生活重视门第和人情往来。',
+    characterText: '主角刚出生，是世家大族的长子。家族重视读书和仕途，父母已与门当户对的人家定下指腹婚约。从家中迎接长子出生的日常开始。',
+  },
+  {
+    id: 'hogwarts',
+    label: '霍格沃茨',
+    worldText: '《哈利·波特》的魔法世界，1991年英国，哈利即将进入霍格沃茨的学年。巫师社会与麻瓜社会并存，魔法部、霍格沃茨和四学院遵循原作设定。',
+    characterText: '主角是十一岁的霍格沃茨同届新生，刚收到录取信，正在准备入学。此时尚未分院，与哈利及其他同学的关系从相识开始。',
+  },
+  {
+    id: 'jinyong',
+    label: '金庸江湖',
+    worldText: '金庸武侠作品中的江湖，以原作的门派、人物和武学设定为基础。市井生活与江湖纷争并存，武学讲究内功、招式与师承。',
+    characterText: '主角是江湖中一个普通年轻人，出身平常，尚未拜师，也没有显赫名声。开局正在城镇间为生计奔走，刚开始接触江湖中人。',
+  },
+  {
+    id: 'shelter',
+    label: '末日避难所',
+    worldText: '灾变后的现代城市，原有交通和通信受到破坏，食物、饮水与安全住所紧缺。幸存者散居各处，搜集物资和修缮住所是日常生存所需。',
+    characterText: '主角是一名普通幸存者，刚把一处废弃民居收拾成简陋的临时避难所。手边只有少量食物、饮水和基础工具，目前独自生活，从第一次外出搜集物资开始。',
+  },
+  {
+    id: 'delivery-system',
+    label: '外卖返现',
+    worldText: '现代中国的城市生活，以外卖配送和普通劳动者的日常为背景。主角将接触一个能发布任务、给予经验和奖励的返现系统。',
+    characterText: '主角是一名普通外卖员，刚刚绑定返现系统。系统可以通过任务提供经验与奖励并逐步升级；开局只收到第一次系统提示，尚未完成首个任务，也未领取奖励。',
+  },
+].map(preset => Object.freeze(preset)));
+
+// 自包含纯检查器：宿主与浏览器构建使用同一份源码，不请求模型。
+function createCreationChecklist(){
+  const rows=x=>Array.isArray(x)?x:[],obj=x=>!!x&&typeof x==='object'&&!Array.isArray(x);
+  const empty=/^(?:无|暂无|未知|未提供|未提及|未设定|待补齐|不详|暂无明确设定|暂无资料|不知道|不清楚|待定)$/u;
+  const text=x=>typeof x==='string'?x.trim():'';
+  const filled=x=>typeof x==='number'?Number.isFinite(x):typeof x==='boolean'?true:typeof x==='string'?!!text(x)&&!empty.test(text(x)):Array.isArray(x)?x.some(filled):obj(x)?Object.values(x).some(filled):false;
+  const get=(s,path)=>path.reduce((v,k)=>v?.[k],s);
+  const pointer=path=>'/'+path.map(x=>String(x).replace(/~/g,'~0').replace(/\//g,'~1')).join('/');
+  const name=x=>text(x?.姓名||x?.名称||x?.名字||x?.name);
+  const assetFields=[['简介','概况','description'],['用途','用途说明','purpose'],['规模说明','规模','scale'],['运营状态','状态','status']];
+  const businessFields=[['主营业务','经营范围','businessScope'],['发展情况','发展状况','development']];
+  const virtualFields=[['简介','说明','description'],['权利标的','关联标的','标的','subject'],['权利内容','权益内容','权利范围','rights'],['行使方式','权利行使方式','exercise'],['限制与义务','权利限制','限制条件','boundaries']];
+  const profileFields=[['表性格','surface_personality'],['里性格','inner_personality'],['背景','人物背景','个人经历','background']];
+  function inspect(s,previous=s?.simulation?.creation?.checklist){
+    s=s||{};const before=rows(previous).filter(x=>obj(x)&&typeof x.id==='string'&&Array.isArray(x.path));const byId=new Map(before.map(x=>[x.id,x])),used=new Set(),checks=[];
+    function add({path,paths=[path],label,rule='text',target=null,field=String(path.at(-1)),group='主角',test}){
+      const identity=target?(target.uid||target.identityName||target.name||'row:'+target.index):'root';let id=JSON.stringify([target?.root||path.slice(0,-1),identity,field]);
+      let old=byId.get(id);
+      if(!old&&target)old=before.find(x=>{if(used.has(x.id)||x.field!==field||x.target?.root!==target.root)return false;const prior=x.target;if(target.uid&&prior.uid===target.uid)return true;const oldStillExists=!!prior.uid&&rows(get(s,target.collection)).some(row=>text(row?.actorId||row?.id)===prior.uid);if(target.name&&prior.name===target.name&&(!target.uid||!prior.uid||!oldStillExists))return true;return !prior.name&&prior.index===target.index&&!oldStillExists;});
+      if(old)id=old.id;used.add(id);
+      const complete=test?!!test():rule==='list'?rows(get(s,path)).length>0:paths.some(p=>typeof get(s,p)==='string'&&filled(get(s,p))||rule==='profile'&&Array.isArray(get(s,p))&&get(s,p).every(v=>typeof v==='string')&&get(s,p).some(filled));
+      if(!complete||old)checks.push({id,label,group,field,path,paths,rule,target,pointer:pointer(path),status:complete?'done':'missing'});
+    }
+    function field(root,entity,keys,title){const paths=keys.map(k=>[...root,k]),profile=profileFields.some(x=>x[0]===keys[0]);if(profile&&keys[0]!=='背景')paths.push([...root,'性格',keys[0]],[...root,'性格',keys[0]==='表性格'?'表':'里']);add({path:[...root,keys[0]],paths,rule:profile?'profile':'text',label:title+' · '+({name:'名称',description:'简介'}[keys[0]]||keys[0]),field:keys[0],group:title,target:entity});}
+    function target(root,row,index){return {root:JSON.stringify(root),collection:root,identityName:name(row)&&rows(get(s,root)).filter(x=>name(x)===name(row)).length>1?name(row)+'#'+index:name(row),uid:text(row?.actorId||row?.id),name:name(row),index};}
+    field(['protagonist'],null,['姓名'],'主角');
+    const actors=[{actor:s.protagonist||{},path:['protagonist'],entity:null,title:'主角'},...rows(s.npcs).map((actor,index)=>({actor,path:['npcs',index],entity:target(['npcs'],actor,index),title:name(actor)||'关联角色 '+(index+1)}))];
+    for(const a of actors){
+      if(a.entity){field(a.path,a.entity,['姓名'],a.title);for(const keys of profileFields)field(a.path,a.entity,keys,a.title);}
+      const n=name(a.actor);if(n)add({path:[...a.path,'姓名'],label:a.title+' · 姓名不重复',field:'uniqueName',target:a.entity,group:a.title,test:()=>actors.filter(x=>name(x.actor)===n).length===1});
+      add({path:[...a.path,'穿着','上衣','物品'],paths:[[...a.path,'穿着','上衣','物品'],[...a.path,'穿着','下衣','物品']],label:a.title+' · 普通穿着',field:'ordinaryWear',target:a.entity,group:a.title});
+      if(text(a.actor?.性别).includes('女'))for(const slot of ['内衣','内裤'])field([...a.path,'穿着',slot],a.entity?{...a.entity,root:a.entity.root+':wear:'+slot}:null,['物品'],a.title+' · '+slot);
+    }
+    for(const [collection,label]of [['住所','住所'],['事业','事业'],['物品','物品'],['技能','技能'],['交通','交通']])rows(s.protagonist?.[collection]).forEach((row,index)=>{
+      const root=['protagonist',collection,index],t=target(['protagonist',collection],row,index),title=name(row)||label+' '+(index+1);
+      field(root,t,collection==='住所'?['名称','名字','位置']:collection==='技能'?['名称','名字','name','技能名']:['名称','名字','name','车型'],title);
+    });
+    const source=String(s.parseInput?.character||'');
+    if(/房产|住宅|住所|有.{0,12}(?:房子|别墅|住房)/.test(source))add({path:['protagonist','住所'],label:'主角 · 已声明的住所',rule:'list'});
+    if(/(?:有自己的|拥有|创办|经营|成立).{0,12}(?:公司|企业|工作室)/.test(source))add({path:['protagonist','事业'],label:'主角 · 已声明的事业',rule:'list'});
+    const pair=source.match(/在([^，。；\n]{1,40}?)(?:均有|各有|都有)房产/);if(pair)for(const city of pair[1].split(/[、和与及]/).map(text).filter(Boolean))add({path:['protagonist','住所'],field:'home:'+city,label:'主角 · '+city+'的独立住所',test:()=>rows(s.protagonist?.住所).some(h=>(name(h)+text(h.位置)).includes(city))});
+    for(const m of source.matchAll(/拥有(?:一[把辆台件只本部套张]|[两三四五六七八九十]+[把辆台件只本部套张])?([^，。；\n]+)/g)){const item=text(m[1]);if(!item||/公司|企业|房产|住宅|能力|技能|系统|法术/.test(item))continue;add({path:['protagonist','物品'],field:'item:'+item,label:'主角 · 已声明物品：'+item,test:()=>rows(s.protagonist?.物品).some(x=>name(x)&&(name(x).includes(item)||item.includes(name(x))))});}
+    const relationText=(text(s.protagonist?.人物关系)+' '+source).replace(/(?:没有|不涉及|未提及)[^，。；]{0,5}(?:父母|父亲|母亲|妻子|丈夫|兄弟姐妹)/g,'');
+    const relations=new Set(/父母/.test(relationText)?['父亲','母亲']:[]);for(const r of ['父亲','母亲','妻子','丈夫','妹妹','姐姐','弟弟','哥哥','儿子','女儿','师父'])if(relationText.includes(r))relations.add(r);
+    for(const note of [...rows(s.simulation?.creation?.warnings),...rows(s.simulation?.creation?.issues)]){const match=String(note).match(/^缺少关联角色资料：(.+)$/);if(match)relations.add(match[1]);}
+    for(const relation of relations)add({path:['npcs'],field:'relation:'+relation,label:'关联角色 · '+relation,test:()=>rows(s.npcs).some(n=>text(n?.与主角关系||n?.关系).includes(relation))});
+    for(const collection of ['实体资产','虚拟资产'])rows(s[collection]).forEach((row,index)=>{
+      const root=[collection,index],t=target([collection],row,index),title=name(row)||collection+' '+(index+1);field(root,t,['名称','名字','name'],title);
+      const business=/公司|企业|工作室|商行|商店|工厂|店铺/.test(text(row?.类型||row?.类别)||name(row))&&!/厂房|门面|办公楼/.test(text(row?.类型||row?.类别));
+      for(const keys of collection==='虚拟资产'?virtualFields:[...assetFields,...(business?businessFields:[])])field(root,t,keys,title);
+    });
+    if(s.simulation?.enabled&&s.simulation?.settings?.managementEnabled)rows(s.simulation?.management?.units).forEach((row,index)=>{
+      const root=['simulation','management','units',index],t=target(['simulation','management','units'],row,index),title=name(row)||'经营单位 '+(index+1);field(root,t,['name'],title);field(root,t,['description'],title);
+      for(const [key,label]of [['businessScope','业务范围'],['organization','组织与规模'],['development','发展情况'],['operatingStatus','经营状态']])add({path:[...root,'businessProfile',key],target:t,field:key,label:title+' · '+label,group:title});
+    });
+    // 删除对象不等于补齐其字段；不让后移的同索引条目冒领旧状态。
+    for(const old of before)if(!used.has(old.id))checks.push({...old,status:'removed'});
+    return checks;
+  }
+  function has(s){const info=s?.simulation?.creation||{};return info.checklistOrigin==='parsed'||Number(info.version)>0||typeof info.basis==='string'||info.ready===true;}
+  function read(s,previous){if(!has(s))return [];const info=s?.simulation?.creation||{};const baseline=Array.isArray(previous)?previous:info.checklistSchema===2?rows(info.checklist):inspect(s,[]);const ids=new Set(baseline.map(x=>x.id));return inspect(s,baseline).filter(x=>ids.has(x.id));}
+  function attach(s,previous,options={}){const parsed=options.seed===true||has(s);const checks=options.seed===true?inspect(s,[]).filter(x=>x.status==='missing'):read(s,previous);s.simulation={...(s.simulation||{}),creation:{...(s.simulation?.creation||{}),blocking:false,checklistSchema:2,checklistOrigin:parsed?'parsed':'unparsed',checklist:checks}};return checks;}
+  function notices(info){return [...new Set([...rows(info?.warnings),...rows(info?.issues)])].filter(x=>typeof x==='string').filter(x=>/返回|工具|解析失败|type|未提交|未读取|已停止|保存失败/.test(x)||!/(主角缺少姓名|关联角色缺少姓名|姓名重复|缺.*(?:表性格|里性格|背景)|已声明.*(?:住所|事业|物品)|事业条目缺少名称|条目缺少名称|独立住所|缺少完整的|缺少名称或位置|缺少关联角色资料|普通衣着|服装|槽位|缺少单位简介|业务范围|组织与规模|发展情况|经营状态)/.test(x));}
+  return {inspect,read,has,attach,notices,filled};
+}
+const {inspect:buildCreationChecklist,read:readCreationChecklist,has:hasCreationChecklist,attach:refreshCreationChecklist,notices:creationProcessNotices}=createCreationChecklist();
+
+/* 通用界面工厂；构建时原样嵌入client.js，不依赖未公开的宿主接口。 */
+function createGenericViews(React) {
+  const h=React.createElement, list=x=>Array.isArray(x)?x:[], text=x=>x==null?'':String(x), money=x=>Number(x||0).toLocaleString('zh-CN',{maximumFractionDigits:2});
+  const kindName=u=>u.kindName||({company:'公司',label:'唱片公司',agency:'经纪公司',workshop:'工坊',shelter:'避难所',estate:'庄园',sect:'宗门',business:'经营单位'})[u.kind]||'经营单位';
+  const resourceName=(u,id)=>list(u.resources).find(x=>x.id===id)?.name||({wood:'木材',stone:'石料',food:'食物',goods:'成品'})[id]||'物资';
+  function formValues(sim){const settings=sim.settings||{},profile=sim.profile||{},system=sim.boundSystem||{};return {managementEnabled:!!settings.managementEnabled,boundSystemEnabled:!!settings.boundSystemEnabled,worldNewsEnabled:settings.worldNewsEnabled!==false,worldNewsInterval:settings.worldNewsInterval||3,profileId:profile.id||'modern',profileName:profile.name||'',description:profile.description||'',roleLabel:profile.roleLabel||'任职',organizationLabel:profile.organizationLabel||'组织',systemName:system.name||'',persona:system.persona||'',guidance:system.guidance||'',careerText:list(profile.careerTracks).map(x=>x.description||x.name||'').join('\n')};}
+  const NEWS_CSS=".sim-news-shell{display:grid;gap:14px;color:var(--sim-t,#302d29);font-size:var(--sim-fs-3,14px);line-height:1.7;min-width:0}.sim-news-shell *{box-sizing:border-box}.sim-news-shell h2,.sim-news-shell p{margin:0}.sim-news-head{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:20px 24px;border:1px solid var(--sim-bd,#e4dcd3);border-radius:16px;background:linear-gradient(125deg,var(--sim-bg2,#f3ede6),var(--sim-bg,#faf8f4));box-shadow:0 5px 18px #4b2b1410}.sim-news-head h2{font-size:22px;font-weight:750;line-height:1.3;margin:0 0 6px}.sim-news-meta{font-size:12px;opacity:.65}.sim-news-shell .sim-btn{font-size:13px;border-radius:9px;padding:8px 16px}.sim-news-alert{padding:10px 14px;border:1px solid #c9874460;border-radius:9px;background:#c9874410;font-size:13px}.sim-news-tabs{display:flex;gap:5px;padding:5px;border-radius:12px;background:var(--sim-bg2,#f0ece6);width:fit-content;max-width:100%;overflow-x:auto}.sim-news-tab{appearance:none;border:0;border-radius:8px;padding:8px 18px;background:transparent;color:inherit;font:inherit;font-size:13px;white-space:nowrap;cursor:pointer}.sim-news-tab.active{background:var(--sim-accent,#8b3a2e);color:#fff;box-shadow:0 2px 7px #4c221923}.sim-news-list{list-style:none;margin:0;padding:0;display:grid;gap:10px}.sim-news-item{display:grid;grid-template-columns:30px minmax(0,1fr);gap:14px;align-items:start;padding:15px 20px;border:1px solid var(--sim-bd,#e5dfd6);border-radius:12px;background:var(--sim-bg2,#fff);box-shadow:0 3px 12px #4b2b1406;transition:box-shadow .15s,transform .15s}.sim-news-item:hover{transform:translateY(-1px);box-shadow:0 7px 18px #4b2b1412}.sim-news-idx{display:grid;place-items:center;width:26px;height:26px;border-radius:8px;background:var(--sim-accent,#8b3a2e);color:#fff;font-size:12px;font-weight:700;line-height:1;margin-top:1px}.sim-news-item p{font-size:var(--sim-fs-3,14px);line-height:1.8;overflow-wrap:anywhere}.sim-news-item strong{font-weight:650;color:var(--sim-t,#3b332c)}.sim-news-shell .sim-hint{padding:16px;border:1px dashed var(--sim-bd,#ded5cb);border-radius:10px;font-size:13px;opacity:.7}@media(max-width:650px){.sim-news-head{padding:16px;align-items:flex-start;flex-direction:column}.sim-news-head h2{font-size:19px}.sim-news-item{padding:13px 14px;grid-template-columns:24px minmax(0,1fr);gap:10px}.sim-news-idx{width:22px;height:22px;border-radius:7px;font-size:11px}}\n";
+  const MANAGEMENT_CSS=".sim-mgt-shell{display:grid;gap:16px;color:var(--sim-t,#302d29);font-size:var(--sim-fs-3,14px);line-height:1.65;min-width:0}.sim-mgt-shell *{box-sizing:border-box}.sim-mgt-shell h2,.sim-mgt-shell h3,.sim-mgt-shell p{margin:0}.sim-mgt-unit-switch{display:flex;flex-wrap:wrap;gap:8px}.sim-mgt-shell .sim-btn{font-size:var(--sim-fs-3,13px);border-radius:9px;padding:8px 14px;line-height:1.45}.sim-mgt-detail{display:grid;gap:16px;min-width:0}.sim-mgt-hero{display:flex;align-items:center;justify-content:space-between;gap:16px;border:1px solid var(--sim-bd,#e4dcd3);border-radius:16px;padding:22px 24px;background:linear-gradient(125deg,var(--sim-bg2,#f3ede6),var(--sim-bg,#faf8f4));box-shadow:0 5px 18px #4b2b1410}.sim-mgt-hero h2{font-size:var(--sim-fs-7,24px);line-height:1.3;font-weight:750;margin:7px 0 9px;overflow-wrap:anywhere}.sim-mgt-kicker,.sim-mgt-status,.sim-mgt-badge{display:inline-flex;align-items:center;padding:3px 9px;border-radius:6px;font-size:var(--sim-fs-2,12px);font-weight:600;background:#8b3a2e12;color:var(--sim-t,#69392f)}.sim-mgt-status{background:#31755a13;color:var(--sim-t,#34664f)}.sim-mgt-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.sim-mgt-stat{padding:15px 18px;border:1px solid var(--sim-bd,#e5dfd6);border-radius:12px;background:var(--sim-bg2,#fff)}.sim-mgt-stat>span{display:block;opacity:.65;font-size:var(--sim-fs-2,12px);margin-bottom:4px}.sim-mgt-stat>strong{display:block;font-size:var(--sim-fs-6,19px);font-weight:700;overflow-wrap:anywhere}.sim-mgt-tabs{display:flex;gap:5px;padding:5px;border-radius:12px;background:var(--sim-bg2,#f0ece6);overflow-x:auto}.sim-mgt-tab{appearance:none;flex:1;white-space:nowrap;border:0;border-radius:8px;padding:9px 14px;background:transparent;color:inherit;font:inherit;font-size:var(--sim-fs-3,13px);cursor:pointer}.sim-mgt-tab.active{background:var(--sim-accent,#8b3a2e);color:#fff;box-shadow:0 2px 7px #4c221923}.sim-mgt-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start}.sim-mgt-card{border:1px solid var(--sim-bd,#e5dfd6);border-radius:13px;padding:18px 20px;background:var(--sim-bg2,#fff);min-width:0;box-shadow:0 3px 12px #4b2b1406}.sim-mgt-card-title{font-size:var(--sim-fs-4,15px);font-weight:700;line-height:1.4;margin-bottom:15px;padding-left:10px;border-left:3px solid var(--sim-accent,#8b3a2e)}.sim-mgt-row{display:grid;grid-template-columns:84px minmax(0,1fr);gap:10px;padding:7px 0;font-size:var(--sim-fs-3,13px);align-items:start}.sim-mgt-row>span{opacity:.58}.sim-mgt-row>div{white-space:pre-wrap;overflow-wrap:anywhere}.sim-mgt-entry{padding:10px 0;border-bottom:1px solid var(--sim-bd,#e9e3dc)}.sim-mgt-entry:last-child{border-bottom:0}.sim-mgt-section-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:18px 0 12px}.sim-mgt-section-head h3{font-size:var(--sim-fs-5,17px);font-weight:700}.sim-mgt-proposals{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}.sim-mgt-proposal{display:flex;flex-direction:column;align-items:stretch;gap:12px;min-width:0;padding:20px;border:1px solid var(--sim-bd,#e3dbd1);border-radius:14px;background:var(--sim-bg2,#fff);box-shadow:0 4px 15px #4b2b1408;transition:box-shadow .15s,transform .15s}.sim-mgt-proposal:hover{transform:translateY(-2px);box-shadow:0 8px 20px #4b2b1415}.sim-mgt-proposal>.sim-mgt-badge{align-self:flex-start}.sim-mgt-proposal h3{font-size:var(--sim-fs-5,17px);line-height:1.4}.sim-mgt-proposal p{font-size:var(--sim-fs-3,13px);opacity:.76;line-height:1.8}.sim-mgt-proposal>.sim-btn{margin-top:auto}.sim-mgt-price{display:flex;align-items:baseline;flex-wrap:wrap;gap:6px;padding:10px 0;border-bottom:1px solid var(--sim-bd,#e9e3dc)}.sim-mgt-price>span{font-size:var(--sim-fs-2,12px);opacity:.65}.sim-mgt-price>strong{font-size:var(--sim-fs-7,25px);font-weight:750;margin-left:auto;color:var(--sim-accent,#8b3a2e)}.sim-mgt-alert{padding:10px 14px;border:1px solid #c9874460;border-radius:9px;background:#c9874410;margin-bottom:12px;font-size:var(--sim-fs-3,13px)}.sim-mgt-request{display:flex;align-items:flex-end;gap:14px}.sim-mgt-request>label{flex:1;margin-bottom:0!important}.sim-mgt-shell .sim-hint{padding:16px;border:1px dashed var(--sim-bd,#ded5cb);border-radius:10px;font-size:var(--sim-fs-3,13px);opacity:.7}@media(max-width:1050px){.sim-mgt-proposals{grid-template-columns:repeat(2,minmax(0,1fr))}.sim-mgt-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:650px){.sim-mgt-grid,.sim-mgt-proposals{grid-template-columns:1fr}.sim-mgt-hero{padding:16px;align-items:flex-start}.sim-mgt-hero h2{font-size:var(--sim-fs-6,21px)}.sim-mgt-hero>.sim-btn{max-width:110px}.sim-mgt-card,.sim-mgt-proposal{padding:16px}.sim-mgt-request{align-items:stretch;flex-direction:column}.sim-mgt-tabs{gap:0}.sim-mgt-tab{padding:9px 11px}.sim-mgt-stat{padding:12px}.sim-mgt-stat>strong{font-size:var(--sim-fs-4,16px)}}\n";
+  let counter=0;
+  const uid=prefix=>prefix+':'+(globalThis.crypto?.randomUUID?.()||Date.now().toString(36))+':'+(++counter).toString(36);
+  const button=(label,onClick,disabled=false)=>h('button',{className:'sim-btn',type:'button',onClick,disabled},label);
+  const card=(title,...children)=>h('section',{className:'sim-generic-card',style:{border:'1px solid currentColor',borderRadius:10,padding:14,marginBottom:12}},h('h3',null,title),...children);
+  const row=(label,value)=>value!==''&&value!=null?h('div',{className:'sim-generic-row',style:{display:'flex',gap:12,margin:'5px 0'}},h('span',{style:{opacity:.65,minWidth:90}},label),h('span',{style:{whiteSpace:'pre-wrap',overflowWrap:'anywhere'}},Array.isArray(value)?value.map(x=>typeof x==='object'?x.name||x.title||x.description||'':x).join('、'):text(value))):null;
+  const input=(label,value,onChange,type='text')=>h('label',{style:{display:'grid',gap:5,marginBottom:10}},h('span',null,label),h('input',{className:'sim-inp',type,value,onChange:e=>onChange(e.target.value),style:{width:'100%'}}));
+  const area=(label,value,onChange)=>h('label',{style:{display:'grid',gap:5,marginBottom:10}},h('span',null,label),h('textarea',{className:'sim-inp',value,onChange:e=>onChange(e.target.value),rows:3,style:{width:'100%',resize:'vertical'}}));
+  const check=(label,value,onChange)=>h('label',{style:{display:'inline-flex',gap:6,margin:'8px 18px 8px 0'}},h('input',{type:'checkbox',checked:!!value,onChange:e=>onChange(e.target.checked)}),label);
+  const tabs=(names,current,set)=>h('div',{className:'sim-acts',style:{display:'flex',gap:6,flexWrap:'wrap',marginBottom:14}},names.map(([id,name])=>h('button',{key:id,className:'sim-btn'+(current===id?' primary':''),onClick:()=>set(id)},name)));
+  const empty=message=>h('div',{className:'sim-hint'},message);
+  function GenericPanel({state,mode,onCall,onStage,onSettingsChange,sourceText='',actorId='player'}) {
+    const sim=state?.simulation||{},settings=sim.settings||{},profile=sim.profile||{},system=sim.boundSystem||{},management=sim.management||{},units=list(management.units),news=sim.news||{};
+    const newsKey=JSON.stringify([state.world?.['世界观类型']||'',state.world?.['时代与年份']||'',profile.id||'',profile.description||'']);
+    const newsItems=list(news.items).filter(x=>(!x.worldKey||x.worldKey===newsKey)&&(!x.sourceTextVersion||list(state.transcript).some(t=>t.role==='assistant'&&Number(t.seq)===Number(x.sourceSeq)&&t.textVersion===x.sourceTextVersion)));
+    const [section,setSection]=React.useState('overview'),[unitId,setUnitId]=React.useState(units[0]?.id||''),[period,setPeriod]=React.useState(''),[request,setRequest]=React.useState(''),[selected,setSelected]=React.useState([]),[preview,setPreview]=React.useState(null),[busy,setBusy]=React.useState(false),[error,setError]=React.useState(''),[chat,setChat]=React.useState(''),[itemEdit,setItemEdit]=React.useState(null),[notice,setNotice]=React.useState(''),[prompts,setPrompts]=React.useState(null),[busyP,setBusyP]=React.useState(false);
+    const [formState,setForm]=React.useState(()=>formValues(sim));
+
+    const form=mode==='worldSetup'?formValues(sim):formState;
+    const formBasis=React.useRef(formValues(sim));
+    React.useEffect(()=>{const next=formValues(sim),previous=formBasis.current;setForm(current=>{const merged={...current};for(const key of Object.keys(next))if(current[key]===previous[key])merged[key]=next[key];return merged;});formBasis.current=next;},[state.gameId,state._revision]);
+    const busyRef=React.useRef(false);
+    const scope=React.useRef(state?.gameId);scope.current=state?.gameId;
+    const field=(key,value)=>{if(mode!=='worldSetup')return setForm(x=>({...x,[key]:value}));const setting=['managementEnabled','boundSystemEnabled','worldNewsEnabled','worldNewsInterval'];if(setting.includes(key))return onSettingsChange({settings:{[key]:key==='worldNewsInterval'?Number(value):value}});const profileKey={profileId:'id',profileName:'name',description:'description',roleLabel:'roleLabel',organizationLabel:'organizationLabel'}[key];if(profileKey)return onSettingsChange({profile:{[profileKey]:value}});if(key==='careerText')return onSettingsChange({profile:{careerTracks:value?[{id:'customCareerTrack',description:value}]:[]}});const systemKey={systemName:'name',persona:'persona',guidance:'guidance'}[key];if(systemKey)onSettingsChange({boundSystem:{[systemKey]:value}});};
+    async function command(name,args={}){const game=state.gameId;if(busyRef.current)return;busyRef.current=true;setBusy(true);setError('');try{const result=await onCall(name,args);if(scope.current!==game)return;return result;}catch(e){if(scope.current===game)setError(String(e.message||e));return null;}finally{busyRef.current=false;if(scope.current===game)setBusy(false);}}
+    const save=()=>command('simulationSettings',{patch:{settings:{managementEnabled:form.managementEnabled,boundSystemEnabled:form.boundSystemEnabled,worldNewsEnabled:form.worldNewsEnabled,worldNewsInterval:Number(form.worldNewsInterval)},profile:{id:form.profileId,name:form.profileName,description:form.description,roleLabel:form.roleLabel,organizationLabel:form.organizationLabel,...(form.careerText===list(profile.careerTracks).map(x=>x.description||x.name||'').join('\n')&&form.profileId===(profile.id||'modern')?{}:{careerTracks:form.careerText?[{id:'customCareerTrack',description:form.careerText}]:[]})},boundSystem:{name:form.systemName,persona:form.persona,guidance:form.guidance}}});
+    const chooseUnit=id=>{setUnitId(id);setPreview(null);setRequest('');};
+    const unit=units.find(x=>x.id===unitId)||units[0];
+    const stage=(action,label)=>{onStage({...action,id:action.id||uid('action'),label});setError('');};
+
+    let content=null;
+
+    if(mode==='settings'||mode==='setup'||mode==='worldSetup'){
+      content=card(mode!=='settings'?'通用玩法':'通用玩法设定',
+        h('div',null,check('经营',form.managementEnabled,x=>field('managementEnabled',x)),check('系统绑定',form.boundSystemEnabled,x=>field('boundSystemEnabled',x)),check('世界动态自动更新',form.worldNewsEnabled,x=>field('worldNewsEnabled',x))),
+        form.worldNewsEnabled?input('更新间隔',form.worldNewsInterval,x=>field('worldNewsInterval',x),'number'):null,
+        h('label',{style:{display:'grid',gap:5,marginBottom:10}},'展示类型',h('select',{className:'sim-inp',value:form.profileId,onChange:e=>{const id=e.target.value;if(mode==='worldSetup'){onSettingsChange({profile:{id,name:({modern:'现代',ancient:'古代',republican:'民国',academy:'学院',custom:'自定义'})[id],roleLabel:id==='ancient'?'官职':'任职',organizationLabel:id==='academy'?'学院':'组织'}});return;}field('profileId',id);field('roleLabel',id==='ancient'?'官职':'任职');field('organizationLabel',id==='academy'?'学院':'组织');field('profileName',({modern:'现代',ancient:'古代',republican:'民国',academy:'学院',custom:'自定义'})[id]);}},[['modern','现代'],['ancient','古代'],['republican','民国'],['academy','学院'],['custom','自定义']].map(([id,name])=>h('option',{key:id,value:id},name)))),
+        h('label',{style:{display:'grid',gap:5,marginBottom:10}},'世界称呼',h('select',{className:'sim-inp',value:form.profileName,onChange:e=>{const v=e.target.value,id=({'现代':'modern','古代':'ancient','民国':'republican','学院':'academy','自定义':'custom'})[v];field('profileName',v);if(id)field('profileId',id);}},[...['现代','古代','民国','学院','自定义'],...(form.profileName&&!['现代','古代','民国','学院','自定义'].includes(form.profileName)?[form.profileName]:[])].map(v=>h('option',{key:v,value:v},v)))),area('世界参考说明',form.description,x=>field('description',x)),
+        h('label',{style:{display:'grid',gap:5,marginBottom:10}},'任职称呼',h('select',{className:'sim-inp',value:form.roleLabel,onChange:e=>field('roleLabel',e.target.value)},['职位','官职','职务','任职'].map(v=>h('option',{key:v,value:v},v)))),h('label',{style:{display:'grid',gap:5,marginBottom:10}},'组织称呼',h('select',{className:'sim-inp',value:form.organizationLabel,onChange:e=>field('organizationLabel',e.target.value)},['组织','所属','学院'].map(v=>h('option',{key:v,value:v},v)))),area('职位参考',form.careerText,x=>field('careerText',x)),
+        form.boundSystemEnabled?h('div',null,input('系统名称',form.systemName,x=>field('systemName',x)),area('系统人格',form.persona,x=>field('persona',x)),area('主线指引',form.guidance,x=>field('guidance',x))):null,
+        mode==='worldSetup'?null:h('div',{className:'sim-acts'},button('保存通用设定',save,busy),mode==='setup'?button('生成通用资料',async()=>{const saved=await save();if(saved)await command('simulationPrepare',{sourceText});},busy):null),
+        mode==='worldSetup'?null:h('details',{style:{marginTop:14}},h('summary',null,'提示词'),h('div',null,
+          h('div',{className:'sim-acts'},button('读取提示词',()=>command('promptOverrides').then(r=>setPrompts(r&&r.prompts||[])),busyP)),
+          !prompts?h('div',{className:'sim-hint'},'还没读取。'):prompts.map(p=>h('div',{key:p.key,style:{marginTop:12}},h('div',null,h('strong',null,p.label),p.modified?h('span',{className:'sim-hint'},' · 已修改'):null),p.note?h('div',{className:'sim-hint'},p.note):null,
+            h('textarea',{className:'sim-inp',rows:14,value:(typeof p.text==='string'&&p.text)?p.text:(p.default||''),onChange:e=>{const v=e.target.value;setPrompts(list=>list.map(x=>x.key===p.key?{...x,text:v}:x));}}),
+            h('div',{className:'sim-acts'},button('保存',()=>{const cur=(prompts.find(x=>x.key===p.key)||{}).text;return command('promptSave',{key:p.key,text:cur==null?'':cur}).then(r=>setPrompts(r&&r.prompts||[]));},busyP),button('重置',()=>command('promptReset',{key:p.key}).then(r=>setPrompts(r&&r.prompts||[])),busyP)))))
+        ),
+        mode==='setup'?h('div',null,row('资料状态',sim.setupReady?'已准备':'尚未准备'),row('任职',list(sim.careers).map(x=>x.title)),row('技能',list(sim.skills).map(x=>x.name)),row('经营单位',units.map(x=>x.name)),
+          h('details',null,h('summary',null,'编辑任职与技能'),list(sim.careers).filter(x=>(x.actorId||'player')===actorId).map(x=>h('button',{key:x.id,className:'sim-btn',onClick:()=>setItemEdit({kind:'career',...x})},x.title)),button('+ 添加任职',()=>setItemEdit({kind:'career',id:uid('career'),actorId,title:'',organizationName:'',rank:'',duties:''})),list(sim.skills).filter(x=>(x.actorId||'player')===actorId).map(x=>h('button',{key:x.id,className:'sim-btn',onClick:()=>setItemEdit({kind:'skill',...x})},x.name)),button('+ 添加技能',()=>setItemEdit({kind:'skill',id:uid('skill'),actorId,name:'',description:'',category:'',progressionMode:'narrative',levelLabel:''})))):null);
+    } else if(mode==='creationReview'){
+      content=card('任职与技能',h('div',null,row('资料状态',sim.setupReady?'已准备':'尚未准备'),row('任职',list(sim.careers).map(x=>x.title)),row('技能',list(sim.skills).map(x=>x.name)),row('经营单位',units.map(x=>x.name)),
+          h('details',null,h('summary',null,'编辑任职与技能'),list(sim.careers).filter(x=>(x.actorId||'player')===actorId).map(x=>h('button',{key:x.id,className:'sim-btn',onClick:()=>setItemEdit({kind:'career',...x})},x.title)),button('+ 添加任职',()=>setItemEdit({kind:'career',id:uid('career'),actorId,title:'',organizationName:'',rank:'',duties:''})),list(sim.skills).filter(x=>(x.actorId||'player')===actorId).map(x=>h('button',{key:x.id,className:'sim-btn',onClick:()=>setItemEdit({kind:'skill',...x})},x.name)),button('+ 添加技能',()=>setItemEdit({kind:'skill',id:uid('skill'),actorId,name:'',description:'',category:'',progressionMode:'narrative',levelLabel:''})))));
+    } else if(mode==='careers'){
+      const careers=list(sim.careers).filter(x=>(x.actorId||'player')===actorId);
+      content=careers.length?h('div',{className:'sim-career-list'},careers.map(x=>{
+        const status=({active:'在任',ended:'已结束',resigned:'已离任',dismissed:'已免职',running:'进行中',completed:'已完成'})[x.status]||x.status;
+        const history=list(x.history).map(v=>typeof v==='string'?v:[v?.organizationName||v?.organization,v?.title||v?.fromTitle,v?.endedAt].filter(Boolean).join(' · ')).filter(v=>String(v).trim()).join('；');
+        const fields=[[profile.organizationLabel||'组织',x.organizationName],['职级',x.rank],['职责',x.duties],['履历',history],['任职时间',x.startedAt],['离任时间',x.endedAt],['说明',x.description]].filter(([,v])=>v!=null&&String(v).trim()!=='');
+        return h('article',{key:x.id,className:'sim-career-card',style:{border:'1px solid currentColor',borderRadius:8,padding:'8px 10px',marginBottom:6,fontSize:14,lineHeight:1.5}},h('div',{className:'sim-career-summary',style:{display:'flex',alignItems:'baseline',flexWrap:'wrap',gap:8}},h('strong',{style:{fontSize:'1em',fontWeight:600}},x.title),status?h('span',{style:{fontSize:12,opacity:.7}},status):null),fields.map(([label,value])=>h('div',{key:label,className:'sim-career-detail',style:{display:'flex',gap:8,marginTop:4}},h('span',{style:{opacity:.65,flexShrink:0}},label),h('span',{style:{whiteSpace:'pre-wrap',overflowWrap:'anywhere',minWidth:0}},text(value)))));
+      })):empty('没有任职记录。');
+      if(list(profile.careerTracks).length)content=h('div',null,content,h('details',null,h('summary',null,'职位参考'),list(profile.careerTracks).map((track,i)=>card(track.name||'职位表',h('p',null,track.description),list(track.positions).map((position,j)=>h('div',{key:j},typeof position==='string'?position:[position.title||position.name,position.rank||position.grade,position.description].filter(Boolean).join(' · ')))))));
+    } else if(mode==='skills'){
+      const skills=list(sim.skills).filter(x=>(x.actorId||'player')===actorId);
+      const fallback=actorId==='player'&&!skills.length?list(state.skills_items?.技能).map((x,i)=>({id:'legacy:'+i,name:x.名字||x.名称||x.name,description:x.说明||x.简介,source:x.来源,levelLabel:x.等级,progressionMode:'narrative'})):[];
+      content=[...skills,...fallback].length?h('div',null,[...skills,...fallback].map(x=>card(x.name,row('类别',x.category),row('状态',({lost:'已失去',inactive:'暂未生效',active:'已掌握'})[x.status]||''),row('说明',x.description),row('来源',x.source==='systemReward'?'系统奖励':x.source),row('效果',typeof x.effects==='string'?x.effects:x.effects?.description||x.legacyExtra?.效果),row('成长规则',list(x.xpRules).map(r=>(r.name||'练习')+' +'+r.amount)),x.progressionMode==='numeric'?h('div',null,row('等级',x.level),row('经验',x.xp),h('progress',{value:x.xp,max:Math.max(Number(x.xp)+1,Number(x.xpPerLevel||100)*Number(x.level||1)),style:{width:'100%'}})):row('程度',x.levelLabel)))):empty('没有技能记录。');
+    } else if(mode==='records'){
+      const values=sim.actorRecords?.[actorId]||{},fields=list(profile.fields),entries=fields.length?fields:Object.keys(values).map(key=>({key,label:({houseName:'学院',credits:'学分',courses:'课程'})[key]||'补充资料'}));
+      content=entries.some(x=>values[x.key]!==undefined)?card('补充资料',entries.map(x=>row(x.label,values[x.key]))):null;
+    } else if(mode==='world'){
+      const 分类=section==='event'?'event':'rumor',条目=newsItems.filter(x=>x.kind===分类),传闻数=newsItems.filter(x=>x.kind==='rumor').length,大事数=newsItems.filter(x=>x.kind==='event').length;
+      const 净=t=>String(t||'').split(/(?<=[。！？；])/u).filter(x=>!/(未经(?:独立)?核实|未经证实|尚未证实|没有证据|并无证据|此消息不构成)/u.test(x)).join('').replace(/^[，,。\s]+/u,'');
+      content=h('div',{className:'sim-news-shell'},h('style',null,NEWS_CSS),
+        h('div',{className:'sim-news-head'},h('div',null,h('h2',null,'世界动态'),newsItems.length?h('span',{className:'sim-news-meta'},'最近更新 · 第'+Number(news.lastSuccessSeq??news.lastSuccessTurn??0)+'轮'):h('span',{className:'sim-news-meta'},'还没有记录')),h('button',{className:'sim-btn',type:'button',disabled:busy,onClick:()=>command('simulationRefresh',{kind:'news'})},'刷新')),
+        news.error?h('div',{className:'sim-news-alert',role:'alert'},news.error):null,
+        h('div',{className:'sim-news-tabs'},[['rumor','传闻',传闻数],['event','大事',大事数]].map(([v,label,n])=>h('button',{key:v,type:'button',className:'sim-news-tab'+(分类===v?' active':''),onClick:()=>setSection(v)},label+(n?' · '+n:'')))),
+        (条目.filter(x=>净(x.content)).length?h('ol',{className:'sim-news-list'},条目.filter(x=>净(x.content)).map((x,i)=>h('li',{className:'sim-news-item',key:x.id||i},h('span',{className:'sim-news-idx'},String(i+1)),h('p',null,h('strong',null,text(x.time)),净(x.content)?'，'+净(x.content):'')))):empty(分类==='event'?'没有大事记录。':'没有传闻记录。'))
+      );
+    } else if(mode==='management'){
+      const mrow=(label,value)=>value==null||value===''||Array.isArray(value)&&!value.length?null:h('div',{className:'sim-mgt-row'},h('span',null,label),h('div',null,Array.isArray(value)?value.join('、'):text(value)));
+      const mcard=(title,...children)=>h('section',{className:'sim-mgt-card'},h('div',{className:'sim-mgt-card-title'},title),...children);
+      const cashReady=d=>!!d&&(d.cashOnly===true||!Object.keys(d.materials||d.inputs||{}).length)&&d.costKnown!==false;
+      const source=list(state.实体资产).filter(a=>(a.名称||a.名字||a.name)===unit?.name),asset=source.length===1?source[0]:{};
+      const details={businessScope:asset.主营业务||asset.经营范围||asset.用途,organization:asset.规模说明,development:asset.发展情况,operatingStatus:asset.运营状态||asset.状态,premises:Array.isArray(asset.主要设施)?asset.主要设施.join('、'):asset.主要设施||asset.每一层的设施,...Object.fromEntries(Object.entries(unit?.businessProfile||{}).filter(([,v])=>text(v).trim()))};
+      const shares=unit?list(unit.shareholders).map(x=>(x.name||(x.actorId==='player'?'你':'股东'))+' · '+Math.round(x.share*10000)/100+'%'):[];
+      if(unit&&!shares.length)for(const r of list(state.虚拟资产).filter(r=>r.权利标的===unit.name||r.名称===unit.name+'所有权权益')){const holder=r.归属||r.产权人;if(holder)shares.push(holder+' · '+(r.持股比例||r.主角所占股份||'份额未记录'));}
+      const 齐=t=>String(t||'').replace(/\s/gu,'').length,资料齐=!!unit&&齐(unit.description||asset.简介)>=40&&齐(details.businessScope)>=12&&齐(details.organization)>=8&&齐(details.development)>=12&&齐(details.operatingStatus)>=2;
+      const members=unit?list(state.npcs).filter(n=>n.经纪公司===unit.name):[],proposals=unit&&unit.recommendationBasis===JSON.stringify({name:unit.name,kind:unit.kind,description:unit.description,facilities:unit.facilities,facilityDefinitions:unit.facilityDefinitions,productionRules:unit.productionRules,revision:unit.revision})&&list(unit.recommendations).length>=3&&list(unit.recommendations).every(x=>cashReady(x.definition))?unit.recommendations:[];
+      const stat=(label,value)=>h('div',{className:'sim-mgt-stat'},h('span',null,label),h('strong',null,value));
+      const unitButton=(label,id)=>h('button',{className:'sim-btn'+(unitId===id?' primary':''),type:'button',onClick:()=>{if(id)chooseUnit(id);else setUnitId('');setSection(id?'overview':'units');}},label);
+      content=h('div',{className:'sim-mgt-shell'},h('style',null,MANAGEMENT_CSS),
+        error?h('div',{className:'sim-mgt-alert',role:'alert'},error):null,
+        notice?h('div',{className:'sim-mgt-alert',role:'status'},notice):null,
+        h('nav',{className:'sim-mgt-unit-switch','aria-label':'经营单位'},unitButton('全部单位',''),units.map(x=>unitButton(x.name,x.id))),
+        (!unit||section==='units')?h('div',{className:'sim-mgt-grid'},units.length?units.map(x=>mcard(x.name,mrow('类型',kindName(x)),mrow('账户',x.balanceKnown===false?'余额未记录':money(x.balance)+' '+(x.currency||'')),mrow('业务',x.businessProfile?.businessScope||x.description),check('加入结算',selected.includes(x.id),v=>setSelected(old=>v?[...new Set([...old,x.id])]:old.filter(id=>id!==x.id))),button('进入管理',()=>{chooseUnit(x.id);setSection('overview');}))):empty('没有经营单位。')):h('div',{className:'sim-mgt-detail'},
+          h('header',{className:'sim-mgt-hero'},h('div',null,h('span',{className:'sim-mgt-kicker'},kindName(unit)),h('h2',null,unit.name),details.operatingStatus?h('span',{className:'sim-mgt-status'},details.operatingStatus):null),state.phase==='play'?button(资料齐?'资料已完整':'补全单位资料',()=>command('simulationCompleteUnit',{unitId:unit.id,name:unit.name}).then(r=>{if(r)setNotice(资料齐?'资料已完整，无需补全':'单位资料已补全');}),busy||资料齐):null),
+          h('div',{className:'sim-mgt-stats'},stat('单位账户',unit.balanceKnown===false?'余额未记录':money(unit.balance)+' '+(unit.currency||'')),stat('设施记录',list(unit.facilities).length+' 项'),stat('人员记录',list(unit.staff).reduce((n,x)=>n+Number(x.count??1),0)+' 人'),stat('项目记录',list(unit.projects).length+' 项')),
+          h('nav',{className:'sim-mgt-tabs','aria-label':'经营分区'},[['overview','概览'],['facilities','设施'],['production','业务'],['staff','人员'],['projects','项目'],['finance','财务']].map(([key,label])=>h('button',{className:'sim-mgt-tab'+(section===key?' active':''),type:'button',key,onClick:()=>setSection(key)},label))),
+          section==='overview'?h('div',{className:'sim-mgt-grid'},mcard('经营档案',mrow('简介',unit.description||asset.简介),mrow('业务范围',details.businessScope),mrow('组织与规模',details.organization),mrow('发展情况',details.development),mrow('备注',unit.notes),!unit.description&&!asset.简介?empty('经营档案需要补全。'):null),mcard('已有记录',mrow('权益归属',shares),mrow('场地资料',details.premises),mrow('经营设施',list(unit.facilities).map(x=>x.name)),mrow('在办项目',list(unit.projects).map(x=>x.name)),!shares.length&&!details.premises&&!list(unit.facilities).length&&!list(unit.projects).length?empty('没有相关台账记录。'):null)):null,
+          section==='facilities'?h('div',null,h('div',{className:'sim-mgt-grid'},list(unit.facilities).map(x=>mcard(x.name,mrow('等级',x.level),mrow('说明',x.description),mrow('效果',x.effects?.description),mrow('容量',x.effects?.capacity))),list(unit.orders).map(x=>mcard(x.definition?.name||'建设订单',mrow('状态',({running:'建设中',completed:'已完成'})[x.status]||x.status),mrow('进度',x.elapsedDays+' / '+x.definition?.durationDays+' 天')))),h('div',{className:'sim-mgt-section-head'},h('h3',null,'可选方案'),button('更新推荐',()=>command('simulationRefresh',{kind:'recommendations',unitId:unit.id}),busy)),unit.recommendationError?h('div',{className:'sim-mgt-alert',role:'alert'},unit.recommendationError):null,proposals.length?h('div',{className:'sim-mgt-proposals'},proposals.map(x=>h('article',{className:'sim-mgt-proposal',key:x.id},h('span',{className:'sim-mgt-badge'},x.kind==='upgradeFacility'?'设施升级':'建设方案'),h('h3',null,x.name),h('p',null,x.description||x.definition?.description),h('div',{className:'sim-mgt-price'},h('span',null,'全包费用'),h('strong',null,money(x.definition.cost)),h('span',null,unit.currency||'')),mrow('工期',x.definition?.durationKnown===false?'工期未记录':x.definition?.durationDays+' 天'),mrow('效果',x.definition?.effects?.description),button('实施',()=>stage({type:'applyRecommendation',unitId:unit.id,recommendationId:x.id},unit.name+'：'+x.name),busy)))):empty('没有完整的推荐方案。')):null,
+          section==='production'?h('div',{className:'sim-mgt-grid'},list(unit.productionRules).map(x=>mcard(x.name,mrow('周期',x.cycleDays+' 天'),mrow('全包费用',cashReady(x)?money(x.costPerCycle)+' '+(unit.currency||''):'需更新报价'),button('执行一轮',()=>stage({type:'startProduction',unitId:unit.id,ruleId:x.id,cycles:1},unit.name+'：执行'+x.name),busy||!cashReady(x)))),list(unit.productionOrders).map(x=>mcard(x.rule?.name||'业务订单',mrow('状态',({running:'进行中',paused:'已暂停',completed:'已完成'})[x.status]||x.status),mrow('进度',x.completedCycles+' / '+x.targetCycles),mrow('原因',x.reason),x.status!=='completed'?button(x.status==='paused'?'继续执行':'暂停执行',()=>stage({type:x.status==='paused'?'resumeProduction':'pauseProduction',unitId:unit.id,orderId:x.id},unit.name+'：'+(x.status==='paused'?'继续':'暂停')+x.rule?.name),busy):null)),!list(unit.productionRules).length&&!list(unit.productionOrders).length?empty('没有业务执行记录。'):null):null,
+          section==='staff'?h('div',{className:'sim-mgt-grid'},mcard('人员台账',list(unit.staff).length?list(unit.staff).map(x=>h('div',{className:'sim-mgt-entry'},h('strong',null,x.name||x.role),mrow('岗位',x.role),mrow('人数',x.count),mrow('工资',x.salaryKnown===false?'工资未记录':money(x.salary)+' '+(unit.currency||'')),mrow('工时',Math.round((x.workFraction??1)*100)+'%'),mrow('分配',list(unit.facilities).find(y=>y.id===x.facilityId)?.name))):empty('没有人员台账记录。')),mcard('团队资料',mrow('组织与规模',details.organization),members.length?members.map(n=>h('div',{className:'sim-mgt-entry'},h('strong',null,n.姓名),mrow('身份',n.身份||n.定位))):null,!details.organization&&!members.length?empty('没有关联成员资料。'):null)):null,
+          section==='projects'?h('div',{className:'sim-mgt-grid'},[['projects','项目'],['works','作品'],['contracts','合约'],['rights','权益']].map(([key,label])=>mcard(label,list(unit[key]).length?list(unit[key]).map(x=>h('div',{className:'sim-mgt-entry'},h('strong',null,x.name||x.title||label),mrow('说明',x.description),mrow('状态',x.status),mrow('进度',x.stage),mrow('时间',x.deadline||x.date))):empty('没有'+label+'记录。')))):null,
+          section==='finance'?h('div',null,mcard('账户',mrow('余额',unit.balanceKnown===false?'余额未明确':money(unit.balance)+' '+(unit.currency||'')),h('div',{className:'sim-mgt-row'},h('span',null,'自动结算'),h('div',null,h('button',{className:'sim-btn',type:'button',disabled:busy,onClick:()=>command('simulationUnitAutoSettle',{unitId:unit.id,autoSettle:!unit.periodRules?.autoSettle}).then(r=>{if(r)setNotice('自动结算已'+(r.simulation?.management?.units?.find(u=>u.id===unit.id)?.periodRules?.autoSettle?'开启':'关闭'));})},unit.periodRules?.autoSettle?'已开启':'已关闭'))),mrow('周期',String(unit.periodRules?.periodDays||30)+' 天')),mcard('结算',check('当前单位',selected.includes(unit.id),v=>setSelected(old=>v?[...new Set([...old,unit.id])]:old.filter(id=>id!==unit.id))),input('期间',period,setPeriod),button('预览结算',async()=>{const ids=selected.length?selected:[unit.id];const r=await command('simulationSettle',{unitIds:ids,period,preview:true});if(r)setPreview(r.results);},busy||!period.trim()),preview?h('div',null,preview.map(x=>mcard(x.unitName,mrow('期间',x.period),mrow('收入',money(x.income)),mrow('费用',money(x.expenses)),mrow('账面利润',money(x.profit)),mrow('分红',money(x.dividends)),mrow('结余',money(x.closingBalance)))),button('确认结算',async()=>{const r=await command('simulationSettle',{unitIds:preview.map(x=>x.unitId),period:preview[0]?.period,preview:false,expectedResults:preview});if(r)setPreview(null);},busy)):null),mcard('流水',list(management.transactions).filter(x=>x.unitId===unit.id).slice().reverse().map(x=>mrow((({periodIncome:'收入',periodExpense:'费用',dividend:'分红',constructionCost:'建设',productionCost:'生产',recordIncome:'收入',recordExpense:'支出',recordSale:'销售',transferIn:'转入',transferOut:'转出'})[x.kind]||'记录')+' · '+(x.name||''),money(x.amount))))):null,
+        ),
+        h('section',{className:'sim-mgt-card sim-mgt-request'},area('经营安排',request,setRequest),button('加入下一轮',()=>{if(request.trim()){stage({type:'request',...(unit&&section!=='units'?{unitId:unit.id}:{}),text:request},(unit&&section!=='units'?unit.name+'：':'')+request);setRequest('');}},busy||!request.trim()))
+      );
+    } else if(mode==='system'){
+      content=h('div',null,h('h2',null,system.name||'绑定系统'),tabs([['overview','概览'],['tasks','任务'],['achievements','成就'],['chat','对话']],section,setSection),
+        section==='overview'?card('当前指引',row('等级',system.level),row('经验',system.xp),row('主线',system.guidance),row('人格',system.persona),card('奖励记录',list(system.rewardLog).slice().reverse().map(x=>row(x.name,'第'+x.turn+'轮')))):null,
+        ['tasks','achievements'].includes(section)?h('div',null,list(system[section]).map(x=>card(x.name,row('类型',({main:'主线',side:'支线',daily:'日常',achievement:'成就'})[x.kind]||'任务'),row('说明',x.description),row('状态',({active:'进行中',completed:'已完成',claimed:'已领取',failed:'已失败',expired:'已过期',cancelled:'已取消'})[x.status]||x.status),row('期限',x.deadline),x.mode==='metric'?row('进度',Math.max(0,(system.metrics?.[x.metricKey]||0)-(x.metricStart||0))+' / '+x.target):null,row('金钱奖励',x.rewards?.money),row('系统经验',x.rewards?.systemXp),row('技能经验',list(x.rewards?.skillXp).map(r=>(list(sim.skills).find(s=>s.id===r.skillId)?.name||'技能')+' +'+r.amount)),row('物品奖励',list(x.rewards?.items).map(i=>i.name)),x.status==='completed'?button('领取',()=>command('simulationClaim',{taskId:x.id}),busy):null)),!list(system[section]).length?empty(section==='tasks'?'没有任务。':'没有成就。'):null):null,
+        section==='chat'?h('div',null,list(system.messages).map((x,i)=>card(x.role==='user'?'你':system.name||'系统',h('div',{key:i,style:{whiteSpace:'pre-wrap'}},x.content),list(x.eventResults).map((r,j)=>h('div',{key:j,className:'sim-muted'},[r.status,r.name,r.reason].filter(Boolean).join(' · '))))),area('对系统说',chat,setChat),button('发送',async()=>{const r=await command('simulationChat',{text:chat});if(r)setChat('');},busy||!chat.trim())):null);
+    }
+    if(itemEdit)content=h('div',null,content,h('div',{className:'sim-generic-modal',role:'dialog','aria-modal':true,style:{position:'fixed',inset:0,zIndex:100000,display:'grid',placeItems:'center',padding:20,background:'rgba(0,0,0,.35)'},onClick:()=>setItemEdit(null)},h('div',{style:{background:'Canvas',color:'CanvasText',width:'min(600px,95vw)',maxHeight:'85vh',overflow:'auto',borderRadius:12,padding:16},onClick:e=>e.stopPropagation()},card(itemEdit.kind==='skill'?'编辑技能':'编辑任职',input('名称',itemEdit.name??itemEdit.title??'',v=>setItemEdit(x=>({...x,[x.kind==='skill'?'name':'title']:v}))),itemEdit.kind==='skill'?h('div',null,h('label',null,'成长方式',h('select',{value:itemEdit.progressionMode||'narrative',onChange:e=>setItemEdit(x=>({...x,progressionMode:e.target.value}))},[['narrative','叙事成长'],['numeric','数值成长'],['fixed','固定能力']].map(([id,name])=>h('option',{key:id,value:id},name)))),itemEdit.progressionMode==='numeric'?h('div',null,input('初始经验',itemEdit.xp||0,v=>setItemEdit(x=>({...x,xp:Number(v)})),'number'),input('升级经验',itemEdit.xpPerLevel||100,v=>setItemEdit(x=>({...x,xpPerLevel:Number(v)})),'number'),input('每次练习经验',list(itemEdit.xpRules).find(r=>r.id==='practice')?.amount??'',v=>setItemEdit(x=>({...x,xpRules:[...list(x.xpRules).filter(r=>r.id!=='practice'),...(v===''?[]:[{id:'practice',name:'练习',amount:Number(v)}])]})),'number')):null,input('类别',itemEdit.category||'',v=>setItemEdit(x=>({...x,category:v}))),input('程度',itemEdit.levelLabel||'',v=>setItemEdit(x=>({...x,levelLabel:v}))),area('说明',itemEdit.description||'',v=>setItemEdit(x=>({...x,description:v})))):h('div',null,input('组织',itemEdit.organizationName||'',v=>setItemEdit(x=>({...x,organizationName:v}))),input('职级',itemEdit.rank||'',v=>setItemEdit(x=>({...x,rank:v}))),area('职责',itemEdit.duties||'',v=>setItemEdit(x=>({...x,duties:v})))),button('删除这条',async()=>{const r=await command('simulationPrepare',{initialUpdates:{removalActorId:itemEdit.actorId||actorId,[itemEdit.kind==='skill'?'removeSkillIds':'removeCareerIds']:[itemEdit.id]}});if(r)setItemEdit(null);},busy),button('取消',()=>setItemEdit(null)),button('保存',async()=>{const {kind,...record}=itemEdit;const r=await command('simulationPrepare',{initialUpdates:{[kind==='skill'?'skills':'careers']:[record]}});if(r)setItemEdit(null);},busy)))));
+    return h('div',{className:'sim-generic',style:{minWidth:0}},busy?h('div',{className:'sim-hint'},'处理中…'):null,error?h('div',{className:'sim-err'},error):null,content);
+  }
+  function GenericPending({actions,onChange,busy}){
+    const [editing,setEditing]=React.useState(null),[draft,setDraft]=React.useState('');
+    const open=action=>{setEditing(action);setDraft(action.text||action.label||'');};
+    return h('div',null,h('div',{className:'sim-acts',style:{display:'flex',flexWrap:'wrap',gap:6,padding:'6px 0'}},list(actions).map(action=>h('span',{key:action.id,style:{display:'inline-flex'}},button(action.label||'经营操作',()=>open(action),busy),h('button',{className:'sim-btn mini',disabled:busy,title:'移除待办',onClick:()=>onChange(actions.filter(x=>x.id!==action.id))},'×'))),button('清空待办',()=>onChange([]),busy)),editing?h('div',{role:'dialog','aria-modal':true,style:{position:'fixed',inset:0,zIndex:100001,display:'grid',placeItems:'center',padding:20,background:'rgba(0,0,0,.35)'}},h('div',{style:{background:'Canvas',color:'CanvasText',width:'min(600px,95vw)',padding:18,borderRadius:12}},h('h3',null,'编辑下一轮需求'),area('需求',draft,setDraft),button('取消',()=>setEditing(null)),button('保存',()=>{onChange(actions.map(x=>x.id===editing.id?{...x,type:'request',text:draft,label:draft}:x));setEditing(null);},busy||!draft.trim()))):null);
+  }
+  function withActorIds(npcs){const used=new Set(['player']);return list(npcs).map(n=>{const id=typeof n.actorId==='string'&&/^[A-Za-z0-9_.:-]{1,160}$/.test(n.actorId)&&!used.has(n.actorId)?n.actorId:'actor:'+uid('draft');used.add(id);return n.actorId===id?n:{...n,actorId:id};});}
+  return {GenericPanel,GenericPending,withActorIds};
+}
+
+      const { GenericPanel, GenericPending, withActorIds } = createGenericViews(React);
+      // GENERIC_VIEWS_END
+
+      function App({ gameId, close }) {
+          const [genericPendingByGame, setGenericPendingByGame] = React.useState({});
+          const genericPendingGroup = { gameId, actions: genericPendingByGame[gameId] || [] };
+          function setGenericPendingGroup(update) { setGenericPendingByGame(previous => { const old={gameId,actions:previous[gameId]||[]}; const next=typeof update==='function'?update(old):update;return {...previous,[next.gameId]:next.actions}; }); }
+          const genericSendingRef = React.useRef(false);
+          const [genericCharacterTab, setGenericCharacterTab] = React.useState("data");
+          const [state, commitState] = React.useState(null);
+          const activeGameRef = React.useRef(gameId);
+          activeGameRef.current = gameId;
+          const setState = React.useCallback((update) => commitState((previous) => {
+            const next = typeof update === 'function' ? update(previous) : update;
+            if (next && next.gameId && String(next.gameId) !== String(activeGameRef.current)) return previous;
+            if (next && previous && !next.recoveryInfo && next.gameId === previous.gameId && Number(next._revision) < Number(previous._revision)) return previous;
+            return next;
+          }), []);
           // 界面字体与字号：存 localStorage，改完立即生效（挂到根元素的 CSS 变量上）
           const [uiFont, setUiFont] = React.useState(() => readUiPref('font', ''));
           const [uiScale, setUiScale] = React.useState(() => readUiPref('scale', 'm'));
           // 正文字号：单独一档（正文是长时间盯着看的部分，不必拖着别的面板一起变）
           const [readFs, setReadFs] = React.useState(() => readUiPref('readfs', '15.5'));
+          const [promptList, setPromptList] = React.useState(null);
+          const [promptBusy, setPromptBusy] = React.useState(false);
+          const promptCall = (name, args) => Promise.resolve(call(name, args || {}, gameId)).then(r => { setPromptList(r && r.prompts || []); return r; });
+          React.useEffect(() => {
+            let alive = true;
+            setPromptBusy(true);
+            Promise.resolve(call('promptOverrides', {}, gameId))
+              .then(r => { if (alive) setPromptList(r && r.prompts || []); })
+              .catch(() => {})
+              .then(() => { if (alive) setPromptBusy(false); });
+            return () => { alive = false; };
+          }, []);
           // 各档的微调量（在整体基准上加减），形如 {3: 0.5}
           const [uiAdj, setUiAdj] = React.useState(() => {
             try {
@@ -3908,6 +4457,7 @@ function App({ gameId, close }) {
             writeUiPref('adj', '{}');
           };
           const [draft, setDraft] = React.useState(null);
+          React.useEffect(()=>{if(state?.phase!=='character'||!Array.isArray(draft?.npcs))return;setDraft(current=>{const npcs=withActorIds(current.npcs);return npcs.every((x,i)=>x===current.npcs[i])?current:{...current,npcs};});},[state?.phase,draft?.npcs]);
           const [bfNote, setBfNote] = React.useState('');
           // 正在刷新穿着的角色名（空 = 没在刷）
           const [wearBusy, setWearBusy] = React.useState('');
@@ -3916,10 +4466,17 @@ function App({ gameId, close }) {
           const [tab, setTab] = React.useState('setup');
           const [busy, setBusy] = React.useState(false);
           const [err, setErr] = React.useState('');
-          const [input, setInput] = React.useState('');
+          React.useEffect(() => {
+            if (state && state.recoveryInfo && state.recoveryInfo.message) setErr(state.recoveryInfo.message);
+          }, [state && state.recoveryInfo && state.recoveryInfo.message]);
+          const [inputByGame, setInputByGame] = React.useState({});
+          const input = inputByGame[gameId] || '';
+          function setInput(update) { setInputByGame(previous => {const old=previous[gameId]||'';return {...previous,[gameId]:typeof update==='function'?update(old):update};}); }
           const [shown, setShown] = React.useState(14);
           const [nl, setNl] = React.useState('');
           const [nlw, setNlw] = React.useState('');
+          const creationRequestRef=React.useRef({gameId,id:0});
+          if(creationRequestRef.current.gameId!==gameId)creationRequestRef.current={gameId,id:creationRequestRef.current.id+1};
           const [psName, setPsName] = React.useState('');
           const [presets, setPresets] = React.useState([]);
           const [ctxIn, setCtxIn] = React.useState('');
@@ -3931,11 +4488,15 @@ function App({ gameId, close }) {
           const [keyDraft, setKeyDraft] = React.useState({});
           const [jsonKey, setJsonKey] = React.useState(0);
           const [dps, setDps] = React.useState(null); // 角色/资产等面板的可编辑副本
+          const [skillFloat, setSkillFloat] = React.useState(null);
           const [openTip, setOpenTip] = React.useState(''); // 当前展开的胶囊详情（悬浮/点击）
           const [tipRect, setTipRect] = React.useState(null); // 悬浮时胶囊在视口里的位置（浮窗用来定位）
           const [optsOpen, setOptsOpen] = React.useState(false); // 输入框上方的行动选项面板
           const [models, setModels] = React.useState(loadModelCache()); // 各槽位拉到的模型列表（有缓存就先用缓存）
+          const assetDetailsGameRef = React.useRef(gameId);
+          assetDetailsGameRef.current = gameId;
           const [assetOpen, setAssetOpen] = React.useState(null); // 打开的资产卡：{key,i}
+          const assetOpeningSavingRef = React.useRef(false);
           const [uiPrevOpen, setUiPrevOpen] = React.useState(false); // 设定页的「界面预览」弹窗
           const [avatarEdit, setAvatarEdit] = React.useState(null); // 换头像弹窗：{key,name,emoji}
           const [asOpen, setAsOpen] = React.useState(false); // 助手浮窗
@@ -4002,7 +4563,8 @@ function App({ gameId, close }) {
         });
         const phoneDragRef = React.useRef(null);
         // 手机内部当前在哪一屏：home（九宫格）/ contacts / thread
-        const [phoneView, setPhoneView] = React.useState('home');
+        const [phoneView, commitPhoneView] = React.useState('home');
+        function setPhoneView(next) { if (next !== 'thread') phoneNavRef.current = null; phoneFeedEpoch.current++; commitPhoneView(next); }
         // 微博：按作者筛选（空 = 全部）。点某条的作者名进来就是看他的主页。
         // 微博热搜：打开时拉一次（宿主按游戏内日期缓存，同一天不会重复生成）
         const [phoneHot, setPhoneHot] = React.useState(null);
@@ -4010,11 +4572,11 @@ function App({ gameId, close }) {
         // 微博回复写的是缓存文件（simulator-weibo-cache-*.json），不在存档里。
         // 所以每跑完一轮、而人又正停在微博页时，要把缓存重读一次 —— 否则
         // 「某人回了你」在文件里有、界面上还是旧的，得像以前那样手动点刷新。
-        const wbReloadKey = state && state.transcript ? state.transcript.length : 0;
+        const wbReloadKey = state && (state._revision || txFingerprint(state));
         React.useEffect(() => {
           if (phoneView !== 'weibo') return;
           phoneLoadHot(false);
-        }, [wbReloadKey]);
+        }, [wbReloadKey, phoneView]);
         // 点开的那条热搜。非空时「发现」页显示详情，顶栏返回键先回列表
         const [hotDetail, setHotDetail] = React.useState(null);
         const [phoneWbWho, setPhoneWbWho] = React.useState('');
@@ -4023,11 +4585,13 @@ function App({ gameId, close }) {
         const [phoneWbBusy, setPhoneWbBusy] = React.useState(false);
         // 微博：当前要评论哪一条（null = 没选）。回谁 为空表示评微博本身，否则评某条评论。
         const [wbTarget, setWbTarget] = React.useState(null);
+        const [wbSendBusy, setWbSendBusy] = React.useState(false);
+        const wbSendRef = React.useRef(false);
         // 我发过的评论（只在界面上显示，重启就丢）
         const [wbMine, setWbMine] = React.useState([]);
         // wbMine 只活在前端内存，刷新就空 —— 玩家回头看不到自己刚发的那句。
         // 宿主侧 queueWeiboComment 已经把它写进存档（state.wbMine），这里跟着同步回来。
-        const wbMineKey = state && Array.isArray(state.wbMine) ? state.wbMine.length : 0;
+        const wbMineKey = state && state.wbMine;
         React.useEffect(() => {
           if (state && Array.isArray(state.wbMine)) setWbMine(state.wbMine);
         }, [wbMineKey]);
@@ -4035,11 +4599,12 @@ function App({ gameId, close }) {
         const [phoneMe, setPhoneMe] = React.useState(null);
         // 重建历史小结的进行中标记
         const [rebuildBusy, setRebuildBusy] = React.useState(false);
+        const [maintenanceNote, setMaintenanceNote] = React.useState('');
         // 补电话进行中
         const [phoneFillBusy, setPhoneFillBusy] = React.useState(false);
         // 补电话跑完的结果（补了几个 / 留空几个 / 存档路径）
         const [phoneFillInfo, setPhoneFillInfo] = React.useState(null);
-        const [phoneContacts, setPhoneContacts] = React.useState(null);
+        const [phoneContactCache, setPhoneContactCache] = React.useState({});
         const [phoneThreadId, setPhoneThreadId] = React.useState('');
         const [phoneMsgs, setPhoneMsgs] = React.useState([]);
         const [phoneIn, setPhoneIn] = React.useState('');
@@ -4049,14 +4614,18 @@ function App({ gameId, close }) {
         const [phoneAlbum, setPhoneAlbum] = React.useState([]);
         const [phoneAlbumLoaded, setPhoneAlbumLoaded] = React.useState(false);
         const [phoneThumbs, setPhoneThumbs] = React.useState({});
-        const [phonePlatform, setPhonePlatform] = React.useState('朋友圈');
+        const [phonePlatform, commitPhonePlatform] = React.useState('朋友圈');
         const [phoneFeed, setPhoneFeed] = React.useState([]);
-        const [phoneFeedWho, setPhoneFeedWho] = React.useState('');
+        const [phoneFeedWho, commitPhoneFeedWho] = React.useState('');
+        const [phoneFeedLoading,setPhoneFeedLoading]=React.useState(false);
+        const [phoneFeedLoaded,setPhoneFeedLoaded]=React.useState(false);
+        const [phoneFeedError,setPhoneFeedError]=React.useState('');
         const [phoneGenBusy, setPhoneGenBusy] = React.useState(false);
         const [phoneCompose, setPhoneCompose] = React.useState(null);  // {正文, 图:[相册id]}
         const [phoneCmtFor, setPhoneCmtFor] = React.useState('');      // 正在给哪条写评论
         const [phoneAct, setPhoneAct] = React.useState(null);  // {姓名, 号码}
-        const [phoneApp2, setPhoneApp2] = React.useState('');  // '' | 'wechat' | 'qq' —— 当前在哪个 app 里
+        const [phoneApp2, commitPhoneApp2] = React.useState('');
+        const phoneAppScopeRef = React.useRef('');  // '' | 'wechat' | 'qq' —— 当前在哪个 app 里
         // 微信/QQ 里的底部页签：'chat' 会话 / 'book' 通讯录 / 'find' 发现
         const [phoneTab, setPhoneTab] = React.useState('chat');
 
@@ -4075,15 +4644,76 @@ function App({ gameId, close }) {
         const phoneStickRef = React.useRef(true);
         // 评论长按计时器：按住 550ms 弹删除确认
         const cmtPressRef = React.useRef(null);
-        const [phoneGroups, setPhoneGroups] = React.useState([]);
-        const [phoneThreadList, setPhoneThreadList] = React.useState([]);  // 短信的会话列表
+        const [phoneGroupCache, setPhoneGroupCache] = React.useState({});
+        const [phoneThreadCache, setPhoneThreadCache] = React.useState({});  // 短信的会话列表
         const [phonePerson, setPhonePerson] = React.useState(null);  // 正在看的联系人（详情页）
         // 进 thread / person 之前在哪一屏 —— 返回时优先回这里，而不是按平台猜
         const [phoneBackTo, setPhoneBackTo] = React.useState('');
         const [phoneSearch, setPhoneSearch] = React.useState('');  // 联系人搜索词
         const [phonePhoto, setPhonePhoto] = React.useState(null);  // 全屏看的那张
-        const [phoneGroupPick, setPhoneGroupPick] = React.useState(null);  // 建群：{成员:[], 群名:""}
+        const [phoneGroupPick, setPhoneGroupPick] = React.useState(null);
+        const phoneNavRef = React.useRef(null);
+        const phoneLoadRef = React.useRef({});
+        const [phoneCandidates, setPhoneCandidates] = React.useState([]);
+        const [phoneCandidateBusy, setPhoneCandidateBusy] = React.useState(false);
+        const [dataRepairBusy, setDataRepairBusy] = React.useState(false);
+        const dataRepairRef = React.useRef(false);
+        const phoneCacheKey = String(gameId) + ':' + (phoneApp2 || 'sms');
+        const phoneBookRestartNote = '请重启 DSH 后重新打开联系人。';
+        const phoneContacts = phoneContactCache[phoneView === 'addressbook' ? String(gameId) + ':addressBook' : phoneCacheKey] || null;
+        const phoneGroups = phoneGroupCache[phoneCacheKey] || [];
+        const phoneThreadList = phoneThreadCache[phoneCacheKey] || [];
+        function setPhoneApp2(value) {
+          const p=value==='sms'?'':String(value||'');
+          if(!['','wechat','qq'].includes(p))return;
+          phoneAppScopeRef.current=p;phoneNavRef.current=null;
+          setPhoneThreadId('');setPhoneWho('');setPhoneMsgs([]);setPhoneIn('');setPhoneBusy(false);setPhoneCanUndo(false);
+          commitPhoneApp2(p);
+        }
+        function phoneRequestTicket(kind, p) {
+          const key = kind + ':' + String(gameId) + ':' + p;
+          const seq = (phoneLoadRef.current[key] || 0) + 1;
+          phoneLoadRef.current[key] = seq;
+          return { key, seq, gid: String(gameId) };
+        }
+        function phoneRequestCurrent(ticket) { return String(activeGameRef.current) === ticket.gid && phoneLoadRef.current[ticket.key] === ticket.seq; }
+        function phoneStillHere(ticket) { return !!ticket && String(activeGameRef.current) === ticket.gid && phoneNavRef.current === ticket && String(ticket.threadId).split(':')[0] === (phoneAppScopeRef.current || 'sms'); }
+        async function repairBasicDataNow() {
+          if (dataRepairRef.current) return;
+          dataRepairRef.current = true;
+          const gid = String(gameId);
+          try {
+            if (!await ask('核对已有剧情的普通衣着、房屋和公司资料？会调用一次结算模型，不会猜金额调整余额。')) return;
+            if (String(activeGameRef.current) !== gid) return;
+            setDataRepairBusy(true);
+            const r = await run(call('repairBasicData', {}, gid));
+            if (String(activeGameRef.current) !== gid) return;
+            const info = r && r.dataMaintenance;
+            setMaintenanceNote(info?.wardrobe?.missing?.length ? '服装未补齐：' + info.wardrobe.missing.map(x => x.姓名 + '（' + x.why + '）').join('、') : info?.issues?.length ? '资料已核对，仍有' + info.issues.length + '项需确认' : info?.called === false ? '资料已齐全' : '资料已核对');
+          } catch (e) { if (String(activeGameRef.current) === gid) setMaintenanceNote('核对未完成：' + msg(e)); }
+          finally { dataRepairRef.current = false; if (String(activeGameRef.current) === gid) setDataRepairBusy(false); }
+        }
+  // 建群：{成员:[], 群名:""}
         const [phoneCmtText, setPhoneCmtText] = React.useState('');
+        const [phoneCmtTarget, setPhoneCmtTarget] = React.useState(null);
+        const [phonePosting, setPhonePosting] = React.useState(false);
+        const [phoneCommentBusy, setPhoneCommentBusy] = React.useState(false);
+        const phoneFeedEpoch = React.useRef(0);
+        const phoneFeedSeq = React.useRef(0);
+        const phonePostRef = React.useRef({});
+        const phoneGenRef = React.useRef({});
+        const phoneCommentRef = React.useRef({});
+        const phoneCmtLongRef = React.useRef(false);
+        const phoneFeedDataGame=React.useRef(String(gameId));
+        const phoneFeedState = React.useRef({});
+        phoneFeedState.current = { gid: String(gameId), platform: phonePlatform, who: phoneFeedWho, view: phoneView };
+        function resetPhoneFeedScope(){phoneFeedEpoch.current++;phoneFeedSeq.current++;setPhoneFeed([]);setPhoneFeedLoading(false);setPhoneFeedLoaded(false);setPhoneFeedError('');}
+        function setPhonePlatform(value){const p=String(value||'朋友圈');if(phoneFeedState.current.platform!==p)resetPhoneFeedScope();phoneFeedState.current=Object.assign({},phoneFeedState.current,{platform:p});commitPhonePlatform(p);}
+        function setPhoneFeedWho(value){const w=String(value||'').trim();if(phoneFeedState.current.who!==w)resetPhoneFeedScope();phoneFeedState.current=Object.assign({},phoneFeedState.current,{who:w});commitPhoneFeedWho(w);}
+        function feedTicket(plat,who){const n=phoneFeedState.current;return{gid:String(gameId),platform:plat===undefined?n.platform:plat,who:who===undefined?n.who:String(who||'').trim(),epoch:phoneFeedEpoch.current};}
+        function feedCurrent(t) { const n=phoneFeedState.current; return n.gid===t.gid && n.platform===t.platform && n.who===t.who && phoneFeedEpoch.current===t.epoch; }
+        function feedAction(ref,key) { if(ref.current.key!==key) ref.current={key,id:'a'+Date.now()+'-'+Math.random().toString(36).slice(2)}; return ref.current.id; }
+        React.useEffect(function(){phoneFeedEpoch.current++;phoneFeedSeq.current++;setPhoneFeed([]);setPhoneFeedLoading(false);setPhoneFeedLoaded(false);setPhoneFeedError('');phoneGenRef.current={};setPhoneCompose(null);setPhoneCmtFor('');setPhoneCmtText('');setPhoneCmtTarget(null);setPhonePosting(false);setPhoneCommentBusy(false);setPhoneGenBusy(false);phonePostRef.current={};phoneCommentRef.current={};},[gameId]);
         // 正在全屏看哪一段剧情总结（-1 = 没开）
         const [sumView, setSumView] = React.useState(-1);
   // 临时：生图探测（验证 agy-gemini-3.1-flash-image 能不能吐图片块）
@@ -4117,6 +4747,7 @@ function App({ gameId, close }) {
           const dingRef = React.useRef(false); // 这一轮生成完成后要响一声（重新生成这种「序号没变但正文换了」的情况靠它）
           const [editingKey, setEditingKey] = React.useState(''); // 正在编辑哪一段：role-seq
           const [npcOpen, setNpcOpen] = React.useState(null); // 打开的角色卡：{kind,i}
+          React.useEffect(() => { setSkillFloat(null); }, [gameId, tab, npcOpen]);
 
           // 正文里的人名做成可点的：Map<名字, npcs 索引>。
           // 只认 npcs（角色表）—— relationships 是关系条目，不是人，点进去会串。
@@ -4838,6 +5469,7 @@ function App({ gameId, close }) {
            * 在「游玩历史」里的名字改成「角色名·身份」。开局失败/中断就不改名。
            */
           function startGame() {
+            if(busy||creationRequestRef.current.pending)return Promise.resolve();
             // 备注栏（补充信息）不在 protagonist 里，必须显式一起送过去 ——
             // 原来只传了 protagonist，玩家在备注里写的东西就丢了
             // （开局信息里不会出现【补充信息】那一段，AI 也就不知道）。
@@ -4853,6 +5485,7 @@ function App({ gameId, close }) {
                   extraInfo: draft.extraInfo,
                   npcs: Array.isArray(draft.npcs) ? draft.npcs : [],
                   skillsItems: draft.skills_items || null,
+                  simulationOptions: draft.simulation || state.simulation || { enabled: true, settings: { managementEnabled: false, boundSystemEnabled: false, worldNewsEnabled: true, worldNewsInterval: 3 } },
                 },
                 gameId
               )
@@ -5331,7 +5964,7 @@ function App({ gameId, close }) {
            * 这个坑踩过两次：模型槽位的「选完弹回」、以及解析完主角后写角色把主角清空。
            */
           function upd(patch) {
-            setDraft((prev) => Object.assign({}, prev, patch));
+            setDraft((prev) => {const next=Object.assign({},prev,patch);if(['world','protagonist','npcs','skills_items','extraInfo','simulation','实体资产','虚拟资产','relationships'].some(key=>Object.prototype.hasOwnProperty.call(patch,key))&&prev?.simulation?.creation){next.simulation={...(next.simulation||prev.simulation),creation:{...(next.simulation?.creation||prev.simulation.creation),ready:false,issues:['资料已修改，请核对开局资料']}};}if(next.phase==='character'){const previousChecklist=readCreationChecklist(prev);refreshCreationChecklist(next,previousChecklist);}return next;});
           }
 
           /** 总开关：这一局要不要注入长期偏好 */
@@ -5439,20 +6072,72 @@ function App({ gameId, close }) {
 
           const skin = state.skin || 'paper';
           const phase = state.phase || 'world';
+          const genericPending = String(genericPendingGroup.gameId) === String(gameId) ? genericPendingGroup.actions : [];
+          function stageSimulationAction(action) {
+            const signature = x => JSON.stringify([x.type,x.unitId,x.recommendationId,x.facilityId,x.ruleId,x.text]);
+            setGenericPendingGroup(old => { const actions = String(old.gameId) === String(gameId) ? old.actions : []; return { gameId, actions: actions.some(x => signature(x) === signature(action)) ? actions : [...actions, action] }; });
+            setTab('play');
+          }
+          async function genericCall(name, args) {
+            const requestGameId = gameId;
+            const result = await call(name, args || {}, requestGameId);
+            if (String(activeGameRef.current) !== String(requestGameId)) throw new Error('已切换存档');
+            if(phase==='character'&&result?.simulation){setDraft(previous=>({...previous,simulation:result.simulation,skills_items:result.skills_items,protagonist:{...previous.protagonist,技能:result.protagonist?.技能||previous.protagonist.技能}}));}
+            return run(Promise.resolve(result));
+          }
+          function actorSkillView(actor, actorId) {
+            const array = value => Array.isArray(value) ? value : [];
+            const player = actorId === 'player', owner = player ? 'player' : 'npc:' + (actorId || actor?.姓名 || actor?.名字 || '');
+            const skills = new Map();
+            const sources = [array(actor?.技能), player ? array(state.skills_items?.技能) : [], array(state.simulation?.skills).filter(skill => actorId && (skill?.actorId || 'player') === actorId)];
+            for (const source of sources) for (const value of source) {
+              const raw = typeof value === 'string' ? {name:value} : value && typeof value === 'object' && !Array.isArray(value) ? value : null;
+              if (!raw) continue;
+              const record = {...(raw.legacyExtra && typeof raw.legacyExtra === 'object' ? raw.legacyExtra : {}), ...raw};
+              const name = String(record.name || record.名字 || record.名称 || record.技能名 || '').trim();
+              if (!name) continue;
+              const filled = Object.fromEntries(Object.entries(record).filter(([,v]) => v !== '' && v != null));
+              const grade = record.品质 || record.稀有度 || record.quality || record.rarity;
+              skills.set(name, {...(skills.get(name) || {}), ...filled, name, ...(grade ? {displayGrade:grade} : {})});
+            }
+            const cards = [...skills.values()].map((skill, index) => {
+              const grade = skill.displayGrade || '', id = owner + ':skill:' + index, tip = [];
+              const fields = [['品质',grade],['类别',skill.category || skill.类别],['状态',({active:'已掌握',inactive:'暂未生效',lost:'已失去'})[skill.status] || skill.状态],['等级',skill.levelLabel ?? skill.等级 ?? skill.level],['经验',skill.xp ?? skill.经验],['说明',skill.description || skill.说明 || skill.简介 || skill.技能说明 || skill.技能描述],['效果',skill.效果 || skill.effects],['消耗',skill.消耗 ?? skill.cost],['冷却',skill.冷却时间 ?? skill.冷却 ?? skill.cooldown],['成长规则',skill.成长规则 || skill.xpRules],['来源',skill.来源 || (skill.source === 'systemReward' ? '系统奖励' : skill.source)],['获取时间',skill.获取时间 || skill.获得时间]];
+              for (const [label,value] of fields) if (value != null && String(value).trim() !== '' && (typeof value !== 'object' || Object.keys(value).length)) tip.push([label,typeof value === 'object' ? JSON.stringify(value) : String(value)]);
+              const show = (event, pinned) => {
+                if (!pinned && skillFloat?.pinned) return;
+                const element = event?.currentTarget, rect = element?.getBoundingClientRect ? element.getBoundingClientRect() : {left:20,top:20,bottom:40};
+                setSkillFloat(current => pinned && current?.id === id && current.pinned ? null : {id,title:skill.name,tip,rect,pinned,gameId,tab,modal:npcOpen});
+              };
+              const rarity = rarityOf(grade);
+              return h('span',{key:id,className:'sim-chip'+(rarity?' r-'+rarity:''),role:'button',tabIndex:0,'aria-label':'查看技能：'+skill.name,onMouseEnter:event=>show(event,false),onMouseLeave:()=>setSkillFloat(current=>current?.id===id&&!current.pinned?null:current),onClick:event=>show(event,true),onKeyDown:event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault?.();show(event,true);}else if(event.key==='Escape')setSkillFloat(null);}},h('span',{className:'sim-chip-t'},skill.name));
+            });
+            return cards.length ? h('div',{className:'sim-chips'},cards) : h('div',{className:'sim-hint'},'没有技能记录。');
+          }
+          function playerSkillView() { return actorSkillView(draft.protagonist,'player'); }
+          function skillFloatView() {
+            if (!skillFloat || skillFloat.gameId !== gameId || skillFloat.tab !== tab || skillFloat.modal !== npcOpen) return null;
+            return h('section',{className:'sim-tip sim-skill-float',role:skillFloat.pinned?'dialog':'tooltip','aria-label':'技能详情',style:{...tipStyle(skillFloat.rect),zIndex:10020,minWidth:0,width:'min(510px,calc(100vw - 24px))',maxHeight:'min(420px,calc(100vh - 24px))',overflowY:'auto',transform:'none',pointerEvents:skillFloat.pinned?'auto':'none'},onKeyDown:event=>{if(event.key==='Escape')setSkillFloat(null);}},
+              h('div',{style:{display:'flex',alignItems:'center',gap:8,padding:'8px 12px',borderBottom:'1px solid var(--sim-bd)'}},h('strong',null,skillFloat.title),skillFloat.pinned?h('button',{type:'button',className:'sim-btn','aria-label':'关闭技能详情',style:{marginLeft:'auto',padding:'0 6px'},onClick:()=>setSkillFloat(null)},'×'):null),
+              h('div',{style:{padding:'8px 12px'}},skillFloat.tip.length?skillFloat.tip.map(([label,value])=>h('div',{key:label,style:{display:'grid',gridTemplateColumns:'auto minmax(0,1fr)',gap:10,margin:'3px 0'}},h('span',{style:{opacity:.65}},label),h('span',{style:{whiteSpace:'pre-wrap',overflowWrap:'anywhere'}},value))):h('div',{className:'sim-hint'},'没有技能详情记录。')));
+          }
+          function genericView(mode, extra) {
+            return h(GenericPanel, Object.assign({ key: String(gameId) + ':' + mode, mode, state: (mode==='worldSetup'?{...state,...draft}:state), onSettingsChange: patch => {const previous=draft.simulation||state.simulation||{};upd({simulation:{...previous,enabled:true,settings:{...previous.settings,...patch.settings},profile:{...previous.profile,...patch.profile},boundSystem:{...previous.boundSystem,...patch.boundSystem}}});}, onCall: genericCall, onStage: stageSimulationAction, sourceText: JSON.stringify({ world: draft.world, protagonist: normalizeArrs(draft.protagonist), extraInfo: draft.extraInfo, npcs: draft.npcs }) }, extra || {}));
+          }
           const ks = state.keyStatus || {};
 
           function sourceData() {
             if (phase === 'play') {
               const st = state.starting;
-              if (st && st.world && st.protagonist) return { world: st.world, protagonist: st.protagonist, extraInfo: st.extraInfo || '' };
-              return { world: state.world, protagonist: state.protagonist, extraInfo: state.extraInfo || '' };
+              if (st && st.world && st.protagonist) return {...st,extraInfo:st.extraInfo||''};
+              return {...state,extraInfo:state.extraInfo||''};
             }
-            return { world: draft.world, protagonist: draft.protagonist, extraInfo: draft.extraInfo || '' };
+            return {...draft,extraInfo:draft.extraInfo||''};
           }
 
           function goTab(name) {
             if (draft && (phase === 'world' || phase === 'character') && name !== tab) {
-              call('saveDraft', { world: draft.world, protagonist: draft.protagonist, extraInfo: draft.extraInfo }, gameId).catch(() => {});
+              call('saveDraft', { world: draft.world, protagonist: draft.protagonist, extraInfo: draft.extraInfo,npcs:draft.npcs,relationships:draft.relationships,skillsItems:draft.skills_items,simulationOptions:draft.simulation }, gameId).catch(() => {});
             }
             setTab(name);
           }
@@ -5559,6 +6244,8 @@ function App({ gameId, close }) {
 
           /** 标题栏上写什么 */
           function phoneHeadTitle() {
+            if (phoneView === 'addcontact') return '添加联系人';
+            if (phoneView === 'addressbook') return '联系人';
             if (phoneView === 'contacts') return phoneApp2 ? '通讯录' : '联系人';
             if (phoneView === 'thread') return phoneWho || '短信';
             if (phoneView === 'person' && phonePerson) return String(phonePerson.姓名 || '联系人');
@@ -5666,26 +6353,47 @@ function loadMyWeibo(force) {
 }
 
 /** 发一条评论：入宿主队列（下一轮正文会带上），同时本地显示出来。 */
-function wbSendComment() {
-  const t = String(phoneIn || '').trim();
-  if (!t || !wbTarget) return;
-  const 记 = {
-    作者: wbTarget.作者,
-    正文: wbTarget.正文,
-    回谁: wbTarget.回谁 || '',
-    回内容: wbTarget.回内容 || '',
-    评论: t,
-  };
-  setWbMine((prev) => prev.concat([记]));
-  setPhoneIn('');
-  setWbTarget(null);
-  Promise.resolve(call('queueWeiboComment', {
-    微博作者: 记.作者,
-    微博正文: 记.正文,
-    回谁: 记.回谁,
-    回内容: 记.回内容,
-    评论: 记.评论,
-  }, gameId)).catch(() => {});
+function pickBodyReason(v) {
+                const cfg = Object.assign({}, dcfg);
+                const r = Object.assign({}, cfg.reasoning || {});
+                r.body = v;
+                cfg.reasoning = r;
+                upd({ config: cfg });
+                return run(call('saveReasoning', { reasoning: r }, gameId));
+            }
+
+function renderWeiboComments(post) {
+  const threads = groupWeiboThreads(post, wbMine);
+  const name = (value) => String(value || '').startsWith('@') ? String(value) : '@' + String(value || '');
+  const renderReply = (reply, index) => h('div', { className: 'sim-wb-cmt mine sub', key: reply.id || 'reply' + index }, h('span', { className: 'who' }, name(reply.谁) + ' 回复了你：'), h('span', { className: 'txt' }, reply.内容));
+  const renderMine = (item, index, sub) => h('div', { key: item.action.id || 'mine' + index }, h('div', { className: 'sim-wb-cmt mine' + (sub ? ' sub' : '') }, h('span', { className: 'who' }, item.action.回谁 ? '你 回复 ' + name(item.action.回谁) + '：' : '你：'), h('span', { className: 'txt' }, item.action.评论)), item.replies.map(renderReply));
+  return [
+    threads.groups.map(({ comment, mine }, index) => h('div', { key: comment.id || 'comment' + index }, h('div', { className: 'sim-wb-cmt', onClick: (event) => { event.stopPropagation(); setWbTarget({ postId: post.id, parentCommentId: comment.id, 作者: post.作者, 正文: String(post.正文 || ''), 回谁: comment.谁, 回内容: String(comment.内容 || '') }); } }, h('span', { className: 'who' }, comment.谁 + '：'), h('span', { className: 'txt' }, comment.内容)), mine.map((item, i) => renderMine(item, i, true)))),
+    threads.direct.map((item, index) => renderMine(item, index, false)),
+    threads.unplaced.map((item, index) => renderMine(item, index, true)),
+    threads.orphanReplies.map(renderReply),
+  ];
+}
+
+async function wbSendComment() {
+  const text = String(phoneIn || '').trim();
+  const target = wbTarget;
+  if (!text || !target || wbSendBusy || wbSendRef.current) return;
+  wbSendRef.current = true;
+  setWbSendBusy(true);
+  const actionId = 'wa_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2);
+  try {
+    const response = await call('queueWeiboComment', { actionId, postId: target.postId || '', parentCommentId: target.parentCommentId || '', 微博作者: target.作者, 微博正文: target.正文, 回谁: target.回谁 || '', 回内容: target.回内容 || '', 评论: text }, gameId);
+    if (!response || !response.item) throw new Error('评论没有保存');
+    setWbMine((previous) => previous.some((item) => item.id === response.item.id) ? previous.map((item) => item.id === response.item.id ? response.item : item) : previous.concat([response.item]));
+    setState((previous) => previous ? Object.assign({}, previous, {
+      _revision: Math.max(Number(previous._revision) || 0, Number(response.revision) || 0),
+      wbMine: (previous.wbMine || []).some((item) => item.id === response.item.id) ? previous.wbMine : (previous.wbMine || []).concat([response.item]),
+    }) : previous);
+    setPhoneIn((previous) => String(previous || '').trim() === text ? '' : previous);
+    setWbTarget((previous) => previous === target ? null : previous);
+  } catch (error) { setErr('评论发送失败：' + String(error && error.message || error)); }
+  finally { wbSendRef.current = false; setWbSendBusy(false); }
 }
 
         /** 把「多少分钟前」渲染成人话。后端分配的是原始分钟数，展示交给这里。 */
@@ -5725,85 +6433,85 @@ function wbSendComment() {
           /** 读群列表 */
           /** 读某个平台的会话列表（只别人聊过的） */
           function phoneLoadThreads(plat) {
-            const p = plat || 'sms';
+            const p = plat || phoneAppScopeRef.current || 'sms';
+            const ticket = phoneRequestTicket('threads', p);
+            const cacheKey = String(gameId) + ':' + p;
             return run(call('phoneThreads', { 平台: p }, gameId)).then(function (r) {
-              if (r && r.ok) setPhoneThreadList(Array.isArray(r.threads) ? r.threads : []);
+              if (r && r.ok && (!r.平台 || r.平台===p) && phoneRequestCurrent(ticket)) setPhoneThreadCache(function (old) { return Object.assign({}, old, { [cacheKey]: (Array.isArray(r.threads) ? r.threads : []).filter(x=>String(x?.threadId||'').startsWith(p+':')) }); });
             });
           }
 
           function phoneLoadGroups() {
-            const p = phoneApp2 === 'qq' ? 'qq' : 'wechat';
+            const p = phoneAppScopeRef.current === 'qq' ? 'qq' : 'wechat';
+            const ticket = phoneRequestTicket('groups', p);
+            const cacheKey = String(gameId) + ':' + p;
             return run(call('phoneGroupList', { 平台: p }, gameId)).then(function (r) {
-              if (r && r.ok) setPhoneGroups(Array.isArray(r.groups) ? r.groups : []);
+              if (r && r.ok && phoneRequestCurrent(ticket)) setPhoneGroupCache(function (old) { return Object.assign({}, old, { [cacheKey]: Array.isArray(r.groups) ? r.groups : [] }); });
             });
           }
 
           /** 打开一个群 */
-          function phoneOpenGroup(群名) {
-            const p = phoneApp2 === 'qq' ? 'qq' : 'wechat';
-            const tid = p + ':群:' + 群名;
-            setPhoneBackTo(phoneView);   // 记下来处，返回时回它
-            setPhoneWho(群名);
-            setPhoneThreadId(tid);
-            setPhoneView('thread');
-            setPhoneMsgs([]);
-            setPhoneIn('');
+          function phoneOpenGroup(name) {
+            const p = phoneAppScopeRef.current === 'qq' ? 'qq' : 'wechat';
+            setPhoneApp2(p);
+            const tid = p + ':群:' + name;
+            const ticket = { gid: String(gameId), threadId: tid };
+            phoneNavRef.current = ticket;
+            setPhoneBackTo(phoneView === 'newgroup' ? 'apphome' : phoneView);
+            setPhoneWho(name); setPhoneThreadId(tid); setPhoneView('thread'); setPhoneMsgs([]); setPhoneIn(''); setPhoneBusy(false); setPhoneCanUndo(false);
             run(call('phoneThread', { threadId: tid }, gameId)).then(function (r) {
-              if (!r || !r.ok) return;
-              setPhoneMsgs(r.messages || []);
-              setPhoneCanUndo(!!r.canUndo);
+              if (!r || !r.ok || !phoneStillHere(ticket)) return;
+              setPhoneMsgs(r.messages || []); setPhoneCanUndo(!!r.canUndo);
             });
-      // 打开就算读过（跟单聊一样，否则群聊的红点永远不消）
-      run(call('phoneMarkRead', { threadId: tid }, gameId)).then(function (r) {
-        if (r && r.ok) setPhoneThreadList(function (xs) {
-          return (xs || []).map(function (x) { return (x.是否群 && x.姓名 === 群名) ? Object.assign({}, x, { 未读: false }) : x; });
-        });
-      });
+            run(call('phoneMarkRead', { threadId: tid }, gameId)).then(function (r) { if (r && r.ok && phoneStillHere(ticket)) phoneLoadThreads(p); });
           }
 
           /** 解散一个群（带确认） */
           /** 解散一个群（带确认）。ask 是 Promise 式，不是回调式 */
           function phoneDeleteGroup(群名) {
-            ask('解散「' + 群名 + '」？群里的聊天记录也会一起没掉。').then(function (ok) {
-              if (!ok) return;
-              run(call('phoneGroupDelete', { 群名: 群名 }, gameId)).then(function (r) {
-                if (r && r.ok) {
-                  // 如果正停在这个群里，退回去
-                  if (phoneWho === 群名) { setPhoneWho(''); setPhoneThreadId(''); setPhoneView('groups'); }
-                  phoneLoadGroups();
+            const name=String(群名||'').trim();
+            const p=phoneApp2==='qq'?'qq':'wechat';
+            const ticket=phoneRequestTicket('deleteGroup:'+name,p);
+            return phoneAsk('解散「'+name+'」并删除全部群聊记录？',true).then(function(ok){
+              if(!ok||!phoneRequestCurrent(ticket))return;
+              return run(call('phoneGroupDelete',{群名:name,平台:p},ticket.gid)).then(function(r){
+                if(!r||!r.ok||!phoneRequestCurrent(ticket))return;
+                if(phoneThreadId===p+':群:'+name){
+                  setPhoneWho('');setPhoneThreadId('');setPhoneMsgs([]);setPhoneCanUndo(false);
+                  if(phoneView==='thread')setPhoneView('groups');
                 }
+                return Promise.all([phoneLoadGroups(),phoneLoadThreads(p)]);
               });
             });
           }
 
-          function phoneLoadContacts(plat) {
-            const p = plat || (phoneApp2 === 'wechat' ? 'wechat' : phoneApp2 === 'qq' ? 'qq' : 'sms');
-            return run(call('phoneGet', { 平台: p }, gameId)).then(function (r) {
-              if (r && r.ok) setPhoneContacts(Array.isArray(r.contacts) ? r.contacts : []);
+          function phoneLoadContacts(plat, scope) {
+            const p = plat || phoneAppScopeRef.current || 'sms', book = scope === 'addressBook';
+            const ticket = phoneRequestTicket('contacts', book ? 'addressBook' : p);
+            const cacheKey = String(gameId) + ':' + (book ? 'addressBook' : p);
+            return run(call('phoneGet', book ? {平台:p,scope:'addressBook'} : {平台:p}, gameId)).then(function(r) {
+              if (!r || !r.ok || !phoneRequestCurrent(ticket)) return;
+              if (book && r.scope !== 'addressBook') { setErr(phoneBookRestartNote); return; }
+              if (book) setErr(old => old === phoneBookRestartNote ? '' : old);
+              setPhoneContactCache(old => Object.assign({},old,{[cacheKey]:Array.isArray(r.contacts)?r.contacts:[]}));
             });
           }
 
           function phoneOpenThread(name, plat) {
             const nm = String(name || '').trim();
-            const p = plat || (phoneApp2 === 'wechat' ? 'wechat' : phoneApp2 === 'qq' ? 'qq' : 'sms');
+            const p = plat || phoneAppScopeRef.current || 'sms';
+            if(!['sms','wechat','qq'].includes(p)||!nm)return;
+            setPhoneApp2(p==='sms'?'':p);
             const tid = p + ':' + nm;
-            setPhoneWho(nm);
-            setPhoneThreadId(tid);
-            setPhoneBackTo(phoneView);   // 记下来处
-            setPhoneView('thread');
-            setPhoneMsgs([]);
-            setPhoneIn('');
-            run(call('phoneThread', { threadId: tid }, gameId)).then((r) => {
-              if (!r || !r.ok) return;
-              setPhoneMsgs(r.messages || []);
-              setPhoneCanUndo(!!r.canUndo);
+            const ticket = { gid: String(gameId), threadId: tid };
+            phoneNavRef.current = ticket;
+            setPhoneWho(nm); setPhoneThreadId(tid); setPhoneBackTo(phoneView); setPhoneView('thread');
+            setPhoneMsgs([]); setPhoneIn(''); setPhoneBusy(false); setPhoneCanUndo(false);
+            run(call('phoneThread', { threadId: tid }, gameId)).then(function (r) {
+              if (!r || !r.ok || !phoneStillHere(ticket)) return;
+              setPhoneMsgs(r.messages || []); setPhoneCanUndo(!!r.canUndo);
             });
-          // 打开就算读过：记下目前有多少条
-          run(call('phoneMarkRead', { threadId: tid }, gameId)).then(function (r) {
-            if (r && r.ok) setPhoneThreadList(function (xs) {
-              return (xs || []).map(function (x) { return x.姓名 === nm ? Object.assign({}, x, { 未读: false }) : x; });
-            });
-          });
+            run(call('phoneMarkRead', { threadId: tid }, gameId)).then(function (r) { if (r && r.ok && phoneStillHere(ticket)) phoneLoadThreads(p); });
           }
 
           /** 发一条 */
@@ -5834,80 +6542,64 @@ function wbSendComment() {
 
           /** 读动态流。平台 + 可选「只看某人」 */
           function phoneLoadFeed(plat, who) {
-            const p = plat || phonePlatform;
-            const w = who === undefined ? phoneFeedWho : who;
-            return run(call('feedList', { 平台: p, 谁的: w || '' }, gameId)).then(function (r) {
-              if (r && r.ok) setPhoneFeed(Array.isArray(r.items) ? r.items : []);
-              // 刷新之后把「正在评论哪条」清掉 —— 否则那一段输入框会一直挂在列表里
-              setPhoneCmtFor('');
-              setPhoneCmtText('');
-            });
+            const t=feedTicket(plat,who);if(!feedCurrent(t))return Promise.resolve(null);
+            const seq=++phoneFeedSeq.current;setPhoneFeedLoading(true);setPhoneFeedError('');
+            const valid=()=>feedCurrent(t)&&seq===phoneFeedSeq.current;
+            return run(call('feedList',{平台:t.platform,谁的:t.who||''},t.gid)).then(function(r){
+              if(valid()){
+                if(r&&r.ok){phoneFeedDataGame.current=t.gid;setPhoneFeed((Array.isArray(r.items)?r.items:[]).filter(x=>!t.who||String(x?.作者||'').trim()===t.who));setPhoneFeedLoaded(true);}
+                else setPhoneFeedError('读取失败');
+              }return r;
+            }).catch(function(){if(valid())setPhoneFeedError('读取失败');return null;}).finally(function(){if(valid())setPhoneFeedLoading(false);});
           }
 
-          /** 刷一批新的（调模型） */
-          function phoneDoGen() {
-            if (phoneGenBusy) return;
-            setPhoneGenBusy(true);
-            // 在看某个人的朋友圈时，要按作者生成 —— 不然生成的动态过滤后一条都看不到
-            run(call('feedGen', { 平台: phonePlatform, 谁的: phoneFeedWho || '' }, gameId))
-              .then(function (r) {
-                if (r && r.ok) phoneLoadFeed(phonePlatform);
-              })
-              .catch(function () { /* run 内部已经 setErr 了，这里只挡未处理的 rejection */ })
-              .finally(function () { setPhoneGenBusy(false); });
+          /** 生成新动态；读取现有数据不调用模型。 */
+          function phoneDoGen(){
+            if(phoneGenRef.current.busy)return;
+            const t=feedTicket(),op={busy:true,gid:t.gid};phoneGenRef.current=op;setPhoneGenBusy(true);
+            return run(call('feedGen',{平台:t.platform,谁的:t.who||''},t.gid)).then(function(r){if(r&&r.ok&&feedCurrent(t))return phoneLoadFeed(t.platform,t.who);}).catch(function(){}).finally(function(){if(phoneGenRef.current===op){phoneGenRef.current={};if(String(phoneFeedState.current.gid)===t.gid)setPhoneGenBusy(false);}});
           }
 
           /** 发一条 */
           function phoneDoPost() {
-            if (!phoneCompose) return;
-            const body = String(phoneCompose.正文 || '').trim();
-            const pics = Array.isArray(phoneCompose.图) ? phoneCompose.图 : [];
-            if (!body && !pics.length) return;
-            run(call('feedPost', { 平台: phonePlatform, 正文: body, 图片: pics.map(function (x) { return { 相册id: x }; }) }, gameId))
-              .then(function (r) {
-                if (r && r.ok) { setPhoneCompose(null); phoneLoadFeed(phonePlatform); }
-              });
+            if(!phoneCompose)return;
+            const body=String(phoneCompose.正文||'').trim(),pics=Array.isArray(phoneCompose.图)?phoneCompose.图:[];
+            if(!body&&!pics.length)return;
+            if(phonePostRef.current.busy&&phonePostRef.current.gid===String(gameId))return;
+            const t=feedTicket(),key=JSON.stringify([gameId,t.platform,body,pics]),actionId=feedAction(phonePostRef,key);
+            phonePostRef.current.busy=true;phonePostRef.current.gid=t.gid;setPhonePosting(true);
+            return run(call('feedPost',{平台:t.platform,正文:body,图片:pics.map(x=>({相册id:x})),actionId},gameId)).then(function(r){
+              if(r&&r.ok&&feedCurrent(t)){
+                setPhoneCompose(null);setPhoneView('feed');
+                setPhoneFeed(prev=>r.item?[r.item,...(prev||[]).filter(x=>x.id!==r.item.id)]:prev);
+                phonePostRef.current.key='';
+                return phoneLoadFeed(t.platform,t.who);
+              }
+            }).catch(function(){}).finally(function(){if(phonePostRef.current.id===actionId){phonePostRef.current.busy=false;if(phoneFeedState.current.gid===t.gid)setPhonePosting(false);}});
           }
 
           /** 点赞 */
 /** 删掉自己发的一条评论（长按触发） */
-function phoneDelComment(postId, ci) {
-  phoneAsk('删除这条评论？', true).then(function (ok) {
-    if (!ok) return;
-    run(call('feedDelComment', { 平台: phonePlatform, id: postId, 索引: ci }, gameId))
-      .then(function (r) { if (r && r.ok) phoneLoadFeed(phonePlatform); })
-      .catch(function () {});
+function phoneDelComment(postId,ci){
+  const t=feedTicket();phoneAsk('删除这条评论？',true).then(function(ok){if(!ok||!feedCurrent(t))return;
+    run(call('feedDelComment',{平台:t.platform,id:postId,索引:typeof ci==='number'?ci:undefined,commentId:typeof ci==='string'?ci:undefined},t.gid)).then(function(r){if(r&&r.ok&&feedCurrent(t))return phoneLoadFeed(t.platform,t.who);}).catch(function(){});
   });
 }
-
-          function phoneDoLike(id) {
-            run(call('feedLike', { 平台: phonePlatform, id: id }, gameId)).then(function (r) {
-              if (r && r.ok) phoneLoadFeed(phonePlatform);
-            });
-          }
+          function phoneDoLike(id){const t=feedTicket();return run(call('feedLike',{平台:t.platform,id},t.gid)).then(function(r){if(r&&r.ok&&feedCurrent(t))return phoneLoadFeed(t.platform,t.who);});}
 
           /** 发评论（会带回一条回复） */
 function phoneDoComment(id) {
-  const t = String(phoneCmtText || '').trim();
-  if (!t) return;
-  const meN = String((state && state.protagonist && state.protagonist.姓名) || '');
-  // 先把自己这条挂上去 —— 生成回复要一两秒，等的话输入框会顿在那儿
-  setPhoneFeed(function (prev) {
-    return (prev || []).map(function (it) {
-      if (String(it.id) !== String(id)) return it;
-      const 评 = Array.isArray(it.评论) ? it.评论.slice() : [];
-      评.push({ 谁: meN, 内容: t.slice(0, 100) });
-      return Object.assign({}, it, { 评论: 评 });
-    });
-  });
-  setPhoneCmtText('');
-  setPhoneCmtFor('');
-  run(call('feedComment', { 平台: phonePlatform, id: id, 内容: t }, gameId))
-    .then(function (r) {
-      // 服务端那份带着 AI 的回复，回来之后整体覆盖（多出来的那条就是对方的回话）
-      if (r && r.ok) phoneLoadFeed(phonePlatform);
-    })
-    .catch(function () {});
+  const text=String(phoneCmtText||'').trim();if(!text)return;
+  if(phoneCommentRef.current.busy&&phoneCommentRef.current.gid===String(gameId))return;
+  const t=feedTicket(),target=phoneCmtTarget&&phoneCmtTarget.postId===id?phoneCmtTarget:null;
+  const actionId=feedAction(phoneCommentRef,JSON.stringify([gameId,t.platform,id,target?.id||'',text]));
+  phoneCommentRef.current.busy=true;phoneCommentRef.current.gid=t.gid;setPhoneCommentBusy(true);
+  const pendingId='pending:'+actionId,meN=String(state?.protagonist?.姓名||'');
+  setPhoneFeed(prev=>(prev||[]).map(it=>String(it.id)===String(id)?Object.assign({},it,{评论:[...(it.评论||[]).filter(c=>c.id!==pendingId),{id:pendingId,谁:meN,内容:text,回复谁:target?.name||it.作者}]}):it));
+  setPhoneCmtText('');setPhoneCmtFor('');setPhoneCmtTarget(null);
+  return run(call('feedComment',{平台:t.platform,id,内容:text,replyToCommentId:target?.id||'',actionId},gameId)).then(function(r){
+    if(r&&r.ok&&feedCurrent(t)){setPhoneFeed(prev=>(prev||[]).map(it=>it.id===id?r.item:it));phoneCommentRef.current.key='';if(r.replyError)setErr(r.replyError);}
+  }).catch(function(){if(feedCurrent(t)){setPhoneFeed(prev=>(prev||[]).map(it=>it.id===id?Object.assign({},it,{评论:(it.评论||[]).filter(c=>c.id!==pendingId)}):it));setPhoneCmtText(text);setPhoneCmtFor(id);setPhoneCmtTarget(target);}}).finally(function(){if(phoneCommentRef.current.id===actionId){phoneCommentRef.current.busy=false;if(phoneFeedState.current.gid===t.gid)setPhoneCommentBusy(false);}});
 }
 
           /** 动态里的头像字（没有真头像，用姓名的第一个字） */
@@ -5986,14 +6678,15 @@ function phoneDoComment(id) {
            * 失败兜底：重发/重生成会先把界面截断，后端要是挂了，
            * 被切掉的那些在界面上就没了。重新拉一次线程，回到存档里的真实状态。
            */
-          function phoneReloadThread() {
-            if (!phoneThreadId) return;
-            run(call('phoneThread', { threadId: phoneThreadId }, gameId)).then(function (r) {
-              if (r && r.ok) setPhoneMsgs(r.messages || []);
+          function phoneReloadThread(ticket = phoneNavRef.current) {
+            if (!phoneStillHere(ticket)) return Promise.resolve();
+            return run(call('phoneThread', { threadId: ticket.threadId }, gameId)).then(function (r) {
+              if (r && r.ok && phoneStillHere(ticket)) { setPhoneMsgs(r.messages || []); setPhoneCanUndo(!!r.canUndo); }
             });
           }
 
-          function phoneReveal(all, lastOut) {
+          function phoneReveal(all, lastOut, ticket = phoneNavRef.current) {
+            if (!phoneStillHere(ticket) || ticket.threadId !== phoneThreadId) return;
             const arr = Array.isArray(all) ? all : [];
             if (lastOut < 0) { setPhoneBusy(false); return; }
             setPhoneMsgs(arr.slice(0, lastOut + 1));
@@ -6001,10 +6694,12 @@ function phoneDoComment(id) {
             if (!rest.length) { setPhoneBusy(false); return; }
             let k = 0;
             const step = function () {
+              if (!phoneStillHere(ticket)) return;
               if (k >= rest.length) { setPhoneBusy(false); return; }
               const cur = rest[k];
               const wait = cur && cur.类型 === 'image' ? 1200 : phoneTypingMs(cur && cur.内容);
               window.setTimeout(function () {
+                if (!phoneStillHere(ticket)) return;
                 k++;
                 setPhoneMsgs(arr.slice(0, lastOut + 1 + k));
                 step();
@@ -6021,28 +6716,51 @@ function phoneDoComment(id) {
           }
 
           function phoneSendNow() {
-            const t = String(phoneIn || '').trim();
-            if (!t || phoneBusy || !phoneThreadId) return;
+            const text = String(phoneIn || '').trim();
+            const ticket = phoneNavRef.current;
+            if (!text || phoneBusy || !phoneThreadId || !phoneStillHere(ticket)) return Promise.resolve();
             const base = (phoneMsgs || []).slice();
-            // 先把自己这条摆上去 —— 不等后端。
-            // 不然模型快的时候，「我发的」和「她回的第一条」会同时冒出来，
-            // 中间那段等待看起来就像没反应。
-            base.push({ id: 'local-' + Date.now(), 方向: 'out', 内容: t, 类型: 'text', 时间: '', 状态: 'sending' });
-            setPhoneMsgs(base);
-            setPhoneIn('');
-            setPhoneBusy(true);
-            run(call('phoneSend', { threadId: phoneThreadId, text: t }, gameId))
-              .then((r) => {
-                if (!r || !r.ok) { setPhoneBusy(false); setPhoneMsgs(base.slice(0, -1)); return; }
-                const all = r.messages || [];
-                setPhoneCanUndo(true);   // 后端刚 push 过历史，现在一定能回退
-                phoneReveal(all, phoneLastOut(all));
-              })
-              .catch(() => { setPhoneBusy(false); setPhoneMsgs(base.slice(0, -1)); });
+            const local = { id: 'local-' + Date.now(), 方向: 'out', 内容: text, 类型: 'text', 时间: '', 状态: 'sending' };
+            setPhoneMsgs(base.concat(local)); setPhoneIn(''); setPhoneBusy(true);
+            return run(call('phoneSend', { threadId: ticket.threadId, text }, gameId)).then(function (r) {
+              if (!phoneStillHere(ticket)) return;
+              if (!r || !r.ok) throw new Error('消息未发送');
+              setPhoneCanUndo(true);
+              phoneReveal(r.messages || [], phoneLastOut(r.messages || []),ticket);
+              phoneLoadThreads(String(ticket.threadId).split(':')[0]);
+            }).catch(function () {
+              if (!phoneStillHere(ticket)) return;
+              setPhoneBusy(false); setPhoneMsgs(base); setPhoneIn(function (current) { return current || text; });
+            });
           }
 
           /** 手机里显示什么 */
+          async function phoneShowAddContact() {
+            const p = phoneApp2 || 'wechat';
+            const ticket = phoneRequestTicket('candidates', p);
+            setPhoneBackTo('apphome'); setPhoneCandidates([]); setPhoneView('addcontact');
+            const r = await run(call('phoneCandidates', { 平台: p }, gameId));
+            if (r && r.ok && phoneRequestCurrent(ticket)) setPhoneCandidates(r.contacts || []);
+          }
+          async function phoneAddSelected(name) {
+            if (phoneCandidateBusy) return;
+            const p = phoneApp2 || 'wechat';
+            const gid = String(gameId);
+            setPhoneCandidateBusy(true);
+            try {
+              const r = await run(call('phoneAddContact', { 平台: p, name }, gameId));
+              if (!r || !r.ok || String(activeGameRef.current) !== gid) return;
+              await phoneLoadContacts(p);
+              if (String(activeGameRef.current) === gid) { setPhoneTab('book'); setPhoneView('apphome'); }
+            } finally { if (String(activeGameRef.current) === gid) setPhoneCandidateBusy(false); }
+          }
           function phoneBody() {
+            if (phoneView === 'addcontact') return h('div', { className: 'sim-ph-thread' },
+              h('div', { className: 'sim-ph-list' }, phoneCandidates.length ? phoneCandidates.map(function (c) {
+                return h('div', { className: 'sim-ph-row', key: c.姓名 }, uiFace(c.姓名, 'sim-wx-av', avatarsMap(), false),
+                  h('div', { className: 'sim-ph-rc' }, h('div', { className: 'n' }, c.姓名)),
+                  h('button', { className: 'sim-btn', disabled: phoneCandidateBusy, onClick: function () { phoneAddSelected(c.姓名); } }, '添加'));
+              }) : h('div', { className: 'sim-ph-empty' }, '没有待添加的联系人。')));
             // groups：群列表
             if (phoneView === 'groups') {
               const gs = phoneGroups || [];
@@ -6056,11 +6774,11 @@ function phoneDoComment(id) {
                           h('div', { className: 'p' }, (Array.isArray(g.成员) ? g.成员.join('、') : '') + (g.条数 ? '　' + g.最近 : ''))
                         ,
                         h('button', {
-                          className: 'sim-ph-hd-btn',
-                          style: { flex: '0 0 auto' },
+                          className: 'sim-btn danger',
+                          style: { flex: '0 0 auto', padding: '4px 8px', fontSize: 'var(--sim-fs-2)' },
                           title: '解散这个群',
                           onClick: function (e) { e.stopPropagation(); phoneDeleteGroup(g.群名); },
-                        }, '✕')
+                        }, '解散')
                         )
                       );
                     }))
@@ -6105,9 +6823,9 @@ function phoneDoComment(id) {
                 h('div', { className: 'sim-ph-bar' },
                   h('button', { className: 'sim-btn', onClick: function () { setPhoneGroupPick(null); setPhoneView('groups'); } }, '取消'),
                   h('button', { className: 'sim-btn primary', style: { flex: '1 1 auto' }, disabled: picked.length < 2, onClick: function () {
-                    const p = phoneApp2 === 'qq' ? 'qq' : 'wechat';
+                    const p = phoneAppScopeRef.current === 'qq' ? 'qq' : 'wechat';
                     run(call('phoneGroupCreate', { 平台: p, 成员: picked, 群名: phoneGroupPick.群名 }, gameId)).then(function (r) {
-                      if (r && r.ok) { setPhoneGroupPick(null); setPhoneView('groups'); phoneLoadGroups(); }
+                      if (r && r.ok) { setPhoneGroupPick(null); phoneLoadGroups(); phoneLoadThreads(p); phoneOpenGroup(r.群名); setPhoneBackTo('apphome'); setPhoneTab('chat'); }
                     });
                   } }, '建群')
                 )
@@ -6125,7 +6843,7 @@ function phoneDoComment(id) {
               const av = avatarsMap();   // 会话行 / 通讯录的头像
 
               const 会话行 = function (t2) {
-                return h('div', { className: 'sim-ph-row', key: t2.姓名, onClick: function () { t2.是否群 ? phoneOpenGroup(t2.姓名) : phoneOpenThread(t2.姓名, 平台); } },
+                return h('div', { className: 'sim-ph-row', key: t2.threadId || ((t2.是否群 ? 平台 + ':群:' : 平台 + ':') + t2.姓名), onClick: function () { t2.是否群 ? phoneOpenGroup(t2.姓名) : phoneOpenThread(t2.姓名, 平台); } },
                   // 群聊用通用群图标；单聊走 uiFace（有头像图就用图，没有用姓名首字）
                   t2.是否群
                     ? h('span', { className: 'sim-wx-av', style: { fontSize: '18px' } }, '👥')
@@ -6136,11 +6854,12 @@ function phoneDoComment(id) {
                         String(t2.姓名 || ''), t2.未读 ? h('span', { className: 'sim-ph-dot' }) : null),
                       h('div', { style: { fontSize: 'var(--sim-fs-6)', color: 'var(--sim-t2)', flex: '0 0 auto', display: 'flex', alignItems: 'center', gap: '3px' } },
                         phoneClock(t2.时间),
-                        h('span', { className: 'sim-ph-thread-del', title: '删除这个会话', onClick: function (ev) {
+                        h('span', { className: 'sim-ph-thread-del', title: t2.是否群 ? '解散这个群' : '删除这个会话', onClick: function (ev) {
                           ev.stopPropagation();
+                          if(t2.是否群){phoneDeleteGroup(t2.姓名);return;}
                           phoneAsk('删除「' + String(t2.姓名 || '') + '」的聊天记录？删了就找不回来了。', true).then(function (ok) {
                             if (!ok) return;
-                            const tid2 = (t2.是否群 ? 平台 + ':群:' : 平台 + ':') + t2.姓名;
+                            const tid2 = String(t2.threadId || ((t2.是否群 ? 平台 + ':群:' : 平台 + ':') + t2.姓名));
                             run(call('phoneDeleteThread', { threadId: tid2 }, gameId)).then(function (r) {
                               if (r && r.ok) phoneLoadThreads(平台);
                             });
@@ -6170,14 +6889,12 @@ function phoneDoComment(id) {
                       ? ts.map(会话行)
                       : h('div', { className: 'sim-ph-empty' }, '还没有人找过你。'))
                     : tab === 'book'
-                      ? (cs.length
-                          ? [
-                              h('div', { className: 'sim-ph-row', key: '__groups', onClick: function () { setPhoneView('groups'); phoneLoadGroups(); } },
-                                h('div', { className: 'sim-ph-av' }, '👥'),
-                                h('div', { className: 'sim-ph-rc' }, h('div', { className: 'n' }, '群聊'), h('div', { className: 'p' }, '拉几个人开一个'))
-                              ),
-                            ].concat(cs.map(人群))
-                          : h('div', { className: 'sim-ph-empty' }, '还没有人加你。'))
+                      ? [
+                          h('div', { className: 'sim-ph-row', key: '__groups', onClick: function () { setPhoneView('groups'); phoneLoadGroups(); } },
+                            h('div', { className: 'sim-ph-av' }, '👥'), h('div', { className: 'sim-ph-rc' }, h('div', { className: 'n' }, '群聊'))),
+                          h('div', { className: 'sim-ph-row', key: '__add', onClick: phoneShowAddContact },
+                            h('div', { className: 'sim-ph-av' }, '＋'), h('div', { className: 'sim-ph-rc' }, h('div', { className: 'n' }, '添加联系人'))),
+                        ].concat(cs.length ? cs.map(人群) : [h('div', { key: '__empty', className: 'sim-ph-empty' }, '通讯录为空。')])
                   : [
                         h('div', { className: 'sim-ph-row', key: '__feed', onClick: function () {
                           setPhonePlatform(isWx ? '朋友圈' : '说说');
@@ -6251,56 +6968,20 @@ function phoneDoComment(id) {
 
             // person：联系人详情。号码 / 微信 / QQ / 关系都在这儿，操作按钮也在。
             if (phoneView === 'person' && phonePerson) {
-              const p = phonePerson;
-              const av = avatarsMap();
-              const 微信号 = String(p.微信 || '').trim();
-
-              // 真实微信的个人资料页：头像 + 昵称 + 微信号，下面是朋友圈入口和「发消息」。
-              // 不放电话 / QQ / 身份 —— 那些是手机通讯录的事，微信里看不到。
-              return h('div', { className: 'sim-ph-thread', style: { overflowY: 'auto', background: '#ededed' } },
-                h('div', { style: { display: 'flex', gap: '14px', padding: '20px 16px', background: '#fff' } },
-                  (function () {
-                    const src = String((av || {})['npc:' + String(p.姓名 || '')] || '').trim();
-                    const box = { width: '56px', height: '56px', borderRadius: '5px', fontSize: '24px', flex: '0 0 auto', overflow: 'hidden' };
-                    return src
-                      ? h('img', { className: 'sim-ph-av', src: src, alt: '', style: Object.assign({}, box, { display: 'block', objectFit: 'cover' }) })
-                      : h('div', { className: 'sim-ph-av', style: box }, String(p.姓名 || '?').slice(0, 1));
-                  })(),
-                  h('div', { style: { flex: '1 1 auto', minWidth: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '5px' } },
-                    h('div', { style: { fontSize: 'var(--sim-fs-3)', fontWeight: 600, color: '#191919' } }, String(p.姓名 || '')),
-                    微信号 ? h('div', { style: { fontSize: 'var(--sim-fs-6)', color: '#9a9a9a' } }, '微信号：' + 微信号) : null
-                  )
-                ),
-                // 朋友圈
-                h('div', { style: { marginTop: '8px', background: '#fff' } },
-                  h('div', {
-                    style: { padding: '14px 16px', fontSize: 'var(--sim-fs-5)', color: '#191919', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
-                    onClick: function () {
-                      setPhonePlatform('朋友圈');
-                      setPhoneFeedWho(String(p.姓名 || ''));
-                      setPhoneView('feed');
-                      phoneLoadFeed('朋友圈', String(p.姓名 || ''));
-                    },
-                  },
-                    h('span', null, '朋友圈'),
-                    h('span', { style: { color: '#c8c8c8', fontSize: 'var(--sim-fs-4)' } }, '›')
-                  )
-                ),
-                // 发消息（只有填了微信号才能发）
-                h('div', { style: { marginTop: '24px', padding: '0 16px 24px' } },
-                  微信号
-                    ? h('button', {
-                        className: 'sim-btn primary',
-                        style: { width: '100%', padding: '11px 0', fontSize: 'var(--sim-fs-5)' },
-                        onClick: function () { phoneOpenThread(p.姓名, 'wechat'); },
-                      }, '发消息')
-                    : null
-                )
-              );
+              const person = phonePerson;
+              const p = person.scope === 'addressBook' ? 'sms' : person.平台 || phoneApp2 || 'sms';
+              const canSend = p === 'sms' ? !!person.电话 : person.可发送 === true || (p === 'qq' ? !!person.QQ : !!person.微信);
+              const address = p === 'sms' ? person.电话 : p === 'qq' ? person.QQ : person.微信;
+              return h('div', { className: 'sim-ph-thread' },
+                h('div', { style: { padding: '20px 16px', display: 'flex', alignItems: 'center', gap: 12 } },
+                  uiFace(person.姓名, 'sim-ph-av', avatarsMap(), false), h('div', null, h('div', { className: 'n' }, person.姓名), address ? h('div', { className: 'sim-hint' }, (p==='sms'&&person.电话类型==='游戏虚拟'?'游戏号码 · ':'')+String(address)) : null)),
+                h('div', { style: { padding: '0 16px 20px' } }, canSend ? h('button', { className: 'sim-btn primary', style: { width: '100%' }, onClick: function () { phoneOpenThread(person.姓名, p); } }, p === 'sms' ? '发短信' : '发消息') : h('div', { className: 'sim-ph-empty' }, p === 'sms' ? '没有电话号码。' : '尚未添加联系人。'),
+                  p==='wechat'&&person.scope!=='addressBook'&&canSend ? h('button',{className:'sim-btn',style:{width:'100%',marginTop:8},onClick:()=>{setPhonePlatform('朋友圈');setPhoneFeedWho(person.姓名);setPhoneView('feed');phoneLoadFeed('朋友圈',person.姓名);}},'朋友圈') : null));
             }
 
             // contacts：按拼音首字母分组 + 顶部搜索。点一条进详情页。
-            if (phoneView === 'contacts') {
+            if (phoneView === 'contacts' || phoneView === 'addressbook') {
+              const addressBook = phoneView === 'addressbook';
               const 全部 = phoneContacts || [];
               const kw = String(phoneSearch || '').trim().toLowerCase();
               const cs = kw
@@ -6339,7 +7020,7 @@ function phoneDoComment(id) {
                   })
                 ),
                 !键.length
-                  ? h('div', { className: 'sim-ph-empty' }, kw ? '没找到这个人。' : phoneApp2 ? '还没有人加你。' : '还没有人把电话给你。')
+                  ? h('div', { className: 'sim-ph-empty' }, kw ? '没找到这个人。' : addressBook ? (err === phoneBookRestartNote ? phoneBookRestartNote : '还没有联系人。') : phoneApp2 ? '还没有人加你。' : '还没有人把电话给你。')
                   : h('div', { style: { flex: '1 1 auto', minHeight: 0, overflowY: 'auto' } },
                       键.map(function (k) {
                         return h('div', { key: k },
@@ -6357,7 +7038,8 @@ function phoneDoComment(id) {
                               key: c.姓名,
                               onClick: function () {
                                 // 微信/QQ 里点人仍然是直接聊天
-                                if (phoneApp2) { phoneOpenThread(c.姓名); return; }
+                                if (!addressBook && phoneApp2) { phoneOpenThread(c.姓名); return; }
+                                if (addressBook) setPhoneApp2('');
                                 setPhoneBackTo(phoneView);
                                 setPhonePerson(c);
                                 setPhoneView('person');
@@ -6412,48 +7094,52 @@ function phoneDoComment(id) {
                     uiFace(me ? '我' : (m.谁 || phoneWho), 'sim-wx-av' + (me ? ' me' : ''), av, me),
                     h('div', { className: 'sim-wx-col' },
                       (!me && 是群 && m.谁) ? h('span', { className: 'sim-wx-who' }, String(m.谁)) : null,
-                      h('div', { className: 'sim-wx-bub' },
+                      h('div', { className: 'sim-wx-bub' + (m.类型 === 'image' ? ' is-image' : '') },
                         m.类型 === 'image'
-                          ? h('div', { className: 'sim-wx-img' }, h('span', { className: 'ic' }, '🖼'), h('span', { className: 'dsc' }, String(m.描述 || '一张图片')))
+                          ? h('div', { className: 'sim-wx-img', role: 'img', title: String(m.描述 || '一张图片'), 'aria-label': '图片：' + String(m.描述 || '一张图片') }, h('div', { className: 'sim-wx-imgbox', 'aria-hidden': true }, '图片'))
                           : String(m.内容 || ''),
                         m.状态 === 'sending' ? null : h('span', { className: 'ops' + (me ? ' left' : '') },
                           m.方向 === 'in'
                           ? h('button', {
                               onClick: () => {
+                                const ticket=phoneNavRef.current;if(!phoneStillHere(ticket)||ticket.threadId!==phoneThreadId)return;
                                 const arr = phoneMsgs || [];
                                 const at = arr.findIndex((x) => String(x.id) === String(m.id));
                                 if (at >= 0) setPhoneMsgs(arr.slice(0, at));
                                 setPhoneBusy(true);
-                                run(call('phoneRegen', { threadId: phoneThreadId, msgId: m.id }, gameId))
+                                run(call('phoneRegen', { threadId: ticket.threadId, msgId: m.id }, ticket.gid))
                                   .then((r) => {
-                                    if (!r || !r.ok) { setPhoneBusy(false); phoneReloadThread(); return; }
+                                    if(!phoneStillHere(ticket))return;
+                                    if (!r || !r.ok) { setPhoneBusy(false); phoneReloadThread(ticket); return; }
                                     const all = r.messages || [];
                                     setPhoneCanUndo(true);
-                                    phoneReveal(all, phoneLastOut(all));
+                                    phoneReveal(all, phoneLastOut(all),ticket);
                                   })
-                                  .catch(() => { setPhoneBusy(false); phoneReloadThread(); });
+                                  .catch(() => { if(!phoneStillHere(ticket))return;setPhoneBusy(false); phoneReloadThread(ticket); });
                               },
                             }, '重生成')
                           : m.类型 === 'image' ? null : h('button', {
                               onClick: () => {
+                                const ticket=phoneNavRef.current;if(!phoneStillHere(ticket)||ticket.threadId!==phoneThreadId)return;
                                 const arr = phoneMsgs || [];
                                 const at = arr.findIndex((x) => String(x.id) === String(m.id));
                                 if (at < 0) return;
                                 setPhoneMsgs(arr.slice(0, at + 1));
                                 setPhoneBusy(true);
-                                run(call('phoneResend', { threadId: phoneThreadId, msgId: m.id }, gameId))
+                                run(call('phoneResend', { threadId: ticket.threadId, msgId: m.id }, ticket.gid))
                                   .then((r) => {
-                                    if (!r || !r.ok) { setPhoneBusy(false); phoneReloadThread(); return; }
+                                    if(!phoneStillHere(ticket))return;
+                                    if (!r || !r.ok) { setPhoneBusy(false); phoneReloadThread(ticket); return; }
                                     const all = r.messages || [];
                                     setPhoneCanUndo(true);
-                                    phoneReveal(all, phoneLastOut(all));
+                                    phoneReveal(all, phoneLastOut(all),ticket);
                                   })
-                                  .catch(() => { setPhoneBusy(false); phoneReloadThread(); });
+                                  .catch(() => { if(!phoneStillHere(ticket))return;setPhoneBusy(false); phoneReloadThread(ticket); });
                               },
                             }, '重发'),
                           h('button', {
-                            onClick: () => run(call('phoneDelete', { threadId: phoneThreadId, msgId: m.id }, gameId))
-                              .then((r) => { if (r && r.ok) setPhoneMsgs(r.messages || []); }),
+                            onClick: () => {const ticket=phoneNavRef.current;if(!phoneStillHere(ticket)||ticket.threadId!==phoneThreadId)return;return run(call('phoneDelete', { threadId: ticket.threadId, msgId: m.id }, ticket.gid))
+                              .then((r) => { if (r && r.ok && phoneStillHere(ticket)) setPhoneMsgs(r.messages || []); });},
                           }, '删'),
                         ),
                       )
@@ -6523,14 +7209,14 @@ function phoneDoComment(id) {
                 ),
                 h('div', { className: 'sim-ph-bar' },
                   h('button', { className: 'sim-btn', onClick: function () { setPhoneCompose(null); setPhoneView('feed'); } }, '取消'),
-                  h('button', { className: 'sim-btn primary', style: { flex: '1 1 auto' }, disabled: !String(phoneCompose.正文 || '').trim() && !picked.length, onClick: phoneDoPost }, '发出去')
+                  h('button', { className: 'sim-btn primary', style: { flex: '1 1 auto' }, disabled: phonePosting || (!String(phoneCompose.正文 || '').trim() && !picked.length), onClick: phoneDoPost }, '发出去')
                 )
               );
             }
 
             // feed：朋友圈 / 说说
             if (phoneView === 'feed') {
-              const items = phoneFeed || [];
+              const items = (phoneFeedDataGame.current===String(gameId)?phoneFeed:[]).filter(x=>!phoneFeedWho||String(x?.作者||'').trim()===phoneFeedWho);
               const meN = String((state && state.protagonist && state.protagonist.姓名) || '');
               // 在看别人的朋友圈：这时候不能发帖，也不该有「我的 / 看全部」那个切换
               const 看别人 = !!phoneFeedWho && phoneFeedWho !== meN;
@@ -6543,7 +7229,8 @@ function phoneDoComment(id) {
                     setPhoneFeedWho(next);
                     phoneLoadFeed(phonePlatform, next);
                   } }, phoneFeedWho ? '看全部' : '我的'),
-                  h('button', { className: 'sim-btn' + (phoneGenBusy ? '' : ' primary'), disabled: phoneGenBusy, onClick: phoneDoGen }, phoneGenBusy ? '…' : '刷新')
+                  h('button',{className:'sim-btn',disabled:phoneFeedLoading,onClick:function(){phoneLoadFeed(phonePlatform,phoneFeedWho);}},phoneFeedLoading?'…':'刷新'),
+                  h('button',{className:'sim-btn primary',disabled:phoneGenBusy,onClick:phoneDoGen},phoneGenBusy?'…':'新动态')
                 ),
                 // 列表
                 items.length
@@ -6568,7 +7255,7 @@ function phoneDoComment(id) {
                             h('div', { className: 'sim-ph-post-act' },
                               h('span', { className: 'a' + (liked ? ' on' : ''), onClick: function () { phoneDoLike(it.id); } },
                                 '♥ ' + (Array.isArray(it.赞) && it.赞.length ? it.赞.join('、') : '赞')),
-                              h('span', { className: 'a', onClick: function () { setPhoneCmtFor(phoneCmtFor === it.id ? '' : it.id); setPhoneCmtText(''); } }, '评论'),
+                              h('span', { className: 'a', onClick: function () { setPhoneCmtFor(phoneCmtFor === it.id ? '' : it.id); setPhoneCmtText(''); setPhoneCmtTarget(null); } }, '评论'),
                               it.自己发的 ? h('span', { className: 'a', onClick: function () {
                                 run(call('feedRemove', { 平台: phonePlatform, id: it.id }, gameId)).then(function (r) { if (r && r.ok) phoneLoadFeed(phonePlatform); });
                               } }, '删') : null
@@ -6578,25 +7265,26 @@ function phoneDoComment(id) {
                               const 我的评论 = String(c.谁 || '') === meN;
                               return h('div', {
                                 className: 'sim-ph-cmt' + (我的评论 ? ' mine' : ''),
-                                key: 'c' + ci,
+                                key: c.id || 'c' + ci,
+                                onClick: function(){if(phoneCmtLongRef.current){phoneCmtLongRef.current=false;return;}setPhoneCmtFor(it.id);setPhoneCmtTarget({postId:it.id,id:c.id||'',name:String(c.谁||'')});setPhoneCmtText('');},
                                 onPointerDown: 我的评论 ? function () {
-                                  clearTimeout(cmtPressRef.current);
-                                  cmtPressRef.current = setTimeout(function () { phoneDelComment(it.id, ci); }, 550);
+                                  phoneCmtLongRef.current=false;clearTimeout(cmtPressRef.current);
+                                  cmtPressRef.current = setTimeout(function () { phoneCmtLongRef.current=true;phoneDelComment(it.id, c.id || ci); }, 550);
                                 } : undefined,
                                 onPointerUp: 我的评论 ? function () { clearTimeout(cmtPressRef.current); } : undefined,
                                 onPointerLeave: 我的评论 ? function () { clearTimeout(cmtPressRef.current); } : undefined,
-                                onContextMenu: 我的评论 ? function (ev) { ev.preventDefault(); phoneDelComment(it.id, ci); } : undefined,
-                              }, h('b', null, String(c.谁 || '') + '：'), String(c.内容 || ''));
+                                onContextMenu: 我的评论 ? function (ev) { ev.preventDefault(); phoneDelComment(it.id, c.id || ci); } : undefined,
+                              }, h('b', null, String(c.谁 || '') + (c.回复谁 ? ' 回复 ' + c.回复谁 : '') + '：'), String(c.内容 || ''));
                             })) : null,
                             phoneCmtFor === it.id ? h('div', { className: 'sim-ph-in', style: { borderTop: 'none', background: 'transparent', paddingTop: '6px' } },
-                              h('textarea', { value: phoneCmtText, placeholder: '回复 ' + String(it.作者 || ''), onChange: function (e) { setPhoneCmtText(e.target.value.slice(0, 100)); } }),
-                              h('button', { className: 'sim-btn primary', onClick: function () { phoneDoComment(it.id); } }, '发')
+                              h('textarea', { value: phoneCmtText, placeholder: '回复 ' + String(phoneCmtTarget?.postId===it.id ? phoneCmtTarget.name : it.作者 || ''), onChange: function (e) { setPhoneCmtText(e.target.value.slice(0, 100)); } }),
+                              h('button', { className: 'sim-btn primary', disabled:phoneCommentBusy, onClick: function () { phoneDoComment(it.id); } }, '发')
                             ) : null
                           )
                         )
                       );
                     }))
-                  : h('div', { className: 'sim-ph-empty' }, phoneGenBusy ? '正在刷新…' : '还没有动态，点「刷新」看看。')
+                  : h('div',{className:'sim-ph-empty'},phoneFeedLoading?'读取中':phoneFeedError?phoneFeedError:phoneFeedLoaded?'没有动态':'读取中',phoneFeedError?h('button',{className:'sim-btn',onClick:function(){phoneLoadFeed(phonePlatform,phoneFeedWho);}},'重试'):null)
                 ,
                 h('div', { className: 'sim-ph-bar' },
                   看别人 ? null : h('button', { className: 'sim-btn primary', style: { flex: '1 1 auto' }, onClick: function () { setPhoneCompose({ 正文: '', 图: [] }); setPhoneView('compose'); if (!phoneAlbumLoaded) phoneLoadAlbum(); else phoneLoadAlbum(); } }, '发一条')
@@ -6681,7 +7369,7 @@ function phoneDoComment(id) {
                                 'div',
                                 {
                                   className: 'sim-wb-item' + (w.相关 ? ' rel' : ''),
-                                  onClick: () => setWbTarget({ 作者: w.作者, 正文: String(w.正文 || '').slice(0, 60), 回谁: '' }),
+                                  onClick: () => setWbTarget({ postId: w.id, 作者: w.作者, 正文: String(w.正文 || ''), 回谁: '' }),
                                   key: 't' + i,
                                   },
                                 h(
@@ -6715,58 +7403,7 @@ function phoneDoComment(id) {
                                     // 第三种要跟着「你那条回复」走 —— 否则它掉在列表末尾，
                                     // 看不出是在应你哪句话（玩家原话：回复我的回复没和我的回复在一起）。
                                     // 这里用立即执行函数，因为 h(...) 的参数位置不能写语句。
-                                    (function () {
-                                      const 截断正文 = String(w.正文 || '').slice(0, 60);
-                                      const 我的 = wbMine.filter((m) => m.作者 === w.作者 && m.正文 === 截断正文);
-                                      const 回我的 = (w.评论列表 || []).filter((c) => c && c.回复 && String(c.回谁 || '') === '玩家');
-                                      const 普通评论 = (w.评论列表 || []).filter((c) => !(c && c.回复 && String(c.回谁 || '') === '玩家'));
-                                      // 一条微博只把「回你的」放一次，别每条评论下面都重复一遍
-                                      const 已放 = { v: false };
-                                      // 模型有时把名字写成「@某人」，别叠成 @@
-                                      const 名字 = (s) => {
-                                        const t = String(s || '');
-                                        return t.charAt(0) === '@' ? t : '@' + t;
-                                      };
-                                      return [
-                                        普通评论.map((c, ci) => {
-                                          const 我对他的 = 我的.filter((m) => String(m.回谁 || '') === String(c.谁 || ''));
-                                          // 只有「这条评论下有你回复」的那一条，才把「回你的」带上 ——
-                                          // 原来只判 已放，结果第一条评论就把它们收走了，挂在一条你根本没回过的评论下面。
-                                          const 这段回我的 = (已放.v || !我对他的.length) ? [] : 回我的;
-                                          if (这段回我的.length) 已放.v = true;
-                                          return h(
-                                            'div',
-                                            { key: 'c' + ci },
-                                            h(
-                                              'div',
-                                              { className: 'sim-wb-cmt', onClick: (e) => { e.stopPropagation(); setWbTarget({ 作者: w.作者, 正文: 截断正文, 回谁: c.谁, 回内容: String(c.内容 || '') }); } },
-                                              h('span', { className: 'who' }, c.谁 + '：'),
-                                              h('span', { className: 'txt' }, c.内容)
-                                            ),
-                                            我对他的.map((m, mi) => h('div', { className: 'sim-wb-cmt mine sub', key: 'my' + ci + '_' + mi },
-                                              h('span', { className: 'who' }, '你 回复 ' + 名字(c.谁) + '：'),
-                                              h('span', { className: 'txt' }, m.评论)
-                                            )),
-                                            这段回我的.map((c2, ri) => h('div', { className: 'sim-wb-cmt mine sub', key: 're' + ci + '_' + ri },
-                                              h('span', { className: 'who' }, 名字(c2.谁) + ' 回复了你：'),
-                                              h('span', { className: 'txt' }, c2.内容)
-                                            ))
-                                          );
-                                        }),
-                                        // 直接评微博本身的（没回某条评论）
-                                        我的.filter((m) => !String(m.回谁 || '')).map((m, mi) =>
-                                          h('div', { className: 'sim-wb-cmt mine', key: 'myw' + mi },
-                                            h('span', { className: 'who' }, '你：'),
-                                            h('span', { className: 'txt' }, m.评论)
-                                          )
-                                        ),
-                                        // 你没回复过任何评论时，别人的回复只能落在最后
-                                        已放.v ? null : 回我的.map((c, ri) => h('div', { className: 'sim-wb-cmt mine sub', key: 're' + ri },
-                                          h('span', { className: 'who' }, 名字(c.谁) + ' 回复了你：'),
-                                          h('span', { className: 'txt' }, c.内容)
-                                        ))
-                                      ];
-                                    })()
+                                    renderWeiboComments(w)
                                     )
                                 : null
                               )
@@ -6946,7 +7583,7 @@ function phoneDoComment(id) {
                     onChange: (e) => setPhoneIn(e.target.value),
                     onKeyDown: (e) => { if (e.key === 'Enter') wbSendComment(); },
                   }),
-                  h('button', { className: 'wb-send', disabled: !wbTarget || !phoneIn.trim(), onClick: () => wbSendComment() }, '发送')
+                  h('button', { className: 'wb-send', disabled: wbSendBusy || !wbTarget || !phoneIn.trim(), onClick: () => wbSendComment() }, '发送')
                 ) : null,
                 h('div', { className: 'sim-wb-nav' },
                   h('button', { className: 'sim-wb-nv' + (tab === 'home' ? ' on' : ''), onClick: () => { setPhoneWbTab('home'); setHotDetail(null); } }, h('span', { className: 'i' }, '🏠'), h('span', { className: 'l' }, '首页')),
@@ -7008,18 +7645,19 @@ function phoneDoComment(id) {
                 );
               })(),
               h('div', { className: 'sim-ph-grid' },
-              phoneApp('✉️', '短信', () => { setPhoneView('threads'); phoneLoadThreads(); }, false),
+              phoneApp('✉️', '短信', () => { setPhoneApp2(''); setPhoneView('threads'); phoneLoadThreads('sms'); }, false),
               phoneApp('👥', '联系人', () => {
                 // 桌面这个永远是「手机通讯录」（按电话号码），不是微信通讯录。
-                // 不传参的话 phoneLoadContacts 会按 phoneApp2 走 —— 刚进过微信就会拉来微信那批人。
+                // 手机通讯录独立汇总已有联系渠道，不与短信候选共用缓存。
                 setPhoneApp2('');
-                setPhoneView('contacts');
-                phoneLoadContacts('sms');
+                setPhoneView('addressbook');
+                 setPhoneSearch('');
+                phoneLoadContacts('sms', 'addressBook');
               }),
               phoneApp('📸', '相机', () => {}, !era.有相机),
               phoneApp('🖼️', '相册', () => { setPhoneView('album'); if (!phoneAlbumLoaded) phoneLoadAlbum(); }),
               phoneApp('📞', '电话', () => {}, true),
-              phoneApp('💬', '微信', () => { setPhoneApp2('wechat'); setPhoneTab('chat'); setPhoneView('apphome'); phoneLoadThreads('wechat'); if (!phoneContacts) phoneLoadContacts('wechat'); }, !era.有微信),
+              phoneApp('💬', '微信', () => { setPhoneApp2('wechat'); setPhoneTab('chat'); setPhoneView('apphome'); phoneLoadThreads('wechat'); phoneLoadContacts('wechat'); }, !era.有微信),
               // 每次进来都重读一次缓存 —— 回复是写进缓存文件的（simulator-weibo-cache-*.json），
 // 原来只在首次进入时读，于是「某人回了你」写完界面上也看不到，得手动点刷新。
 // getHotsearch 命中缓存时只读文件、不调模型，重进不花调用次数。
@@ -7027,7 +7665,7 @@ phoneApp('🔥', '微博', () => { setPhoneView('weibo'); phoneLoadHot(false); }
               ),
               // QQ 先不做 —— 它和微信共用同一套结构，做出来只是多一层皮（配色 + 底栏 + 顶栏）。
               // 要恢复就把下一行开头的 // 去掉。
-              // phoneApp('🐧', 'QQ', () => { setPhoneApp2('qq'); setPhoneTab('chat'); setPhoneView('apphome'); phoneLoadThreads('qq'); if (!phoneContacts) phoneLoadContacts('qq'); }, !era.有QQ),
+              // phoneApp('🐧', 'QQ', () => { setPhoneApp2('qq'); setPhoneTab('chat'); setPhoneView('apphome'); phoneLoadThreads('qq'); phoneLoadContacts('qq'); }, !era.有QQ),
               // 把 Dock 推到底的那个撑高块：
               // .sim-ph-desk 是 overflow-y:auto 的 flex 容器，在这个上下文里 margin-top:auto 会塌成 0，
               // 所以用一个 flex:1 的空 div 吃掉剩余高度（不可见、不可点）。
@@ -7035,8 +7673,8 @@ phoneApp('🔥', '微博', () => { setPhoneView('weibo'); phoneLoadHot(false); }
               // Dock：最常用的四个，毛玻璃条
               h('div', { className: 'sim-ph-dock' },
                 phoneApp('📞', '电话', () => {}, true),
-                phoneApp('✉️', '短信', () => { setPhoneView('threads'); phoneLoadThreads(); }, false),
-                phoneApp('💬', '微信', () => { setPhoneApp2('wechat'); setPhoneTab('chat'); setPhoneView('apphome'); phoneLoadThreads('wechat'); if (!phoneContacts) phoneLoadContacts('wechat'); }, !era.有微信),
+                phoneApp('✉️', '短信', () => { setPhoneApp2(''); setPhoneView('threads'); phoneLoadThreads('sms'); }, false),
+                phoneApp('💬', '微信', () => { setPhoneApp2('wechat'); setPhoneTab('chat'); setPhoneView('apphome'); phoneLoadThreads('wechat'); phoneLoadContacts('wechat'); }, !era.有微信),
                 phoneApp('📸', '相机', () => {}, !era.有相机),
               )
               );
@@ -7547,12 +8185,12 @@ phoneApp('🔥', '微博', () => { setPhoneView('weibo'); phoneLoadHot(false); }
            * 浮窗位置：相对视口固定定位（fixed），并做边界收拢 ——
            * 右边放不下就往左挪，下面放不下就翻到胶囊上方。
            */
-          function tipStyle() {
-            if (!tipRect) return null;
+          function tipStyle(rect = tipRect) {
+            if (!rect) return null;
             const vw = window.innerWidth || 0;
             const vh = window.innerHeight || 0;
             const W = Math.min(510, Math.max(318, (vw || 560) - 40));
-            let left = tipRect.left;
+            let left = rect.left;
             if (vw && left + W > vw - 12) left = Math.max(12, vw - 12 - W);
             const st = { position: 'fixed', left: Math.round(left) + 'px', zIndex: 9999, maxWidth: W + 'px' };
             // **上方优先**：上方够放就放上方（胶囊一般在中下部，上方更不容易挡住下面的内容），
@@ -7560,13 +8198,13 @@ phoneApp('🔥', '微博', () => { setPhoneView('weibo'); phoneLoadHot(false); }
             // 注意：CSS 里给 .sim-tip 留了默认的 top，所以**另一个方向必须显式设成 auto** ——
             // 否则 top 与 bottom 同时存在，fixed 元素的高度会算成负数（浮窗直接看不见）。
             const TIP_MAX = 420;
-            const roomBelow = vh ? vh - tipRect.bottom - 12 : 9999;
-            const roomAbove = tipRect.top - 12;
+            const roomBelow = vh ? vh - rect.bottom - 12 : 9999;
+            const roomAbove = rect.top - 12;
             if (vh && (roomAbove >= TIP_MAX || roomAbove > roomBelow)) {
-              st.bottom = Math.round(vh - tipRect.top + 8) + 'px';
+              st.bottom = Math.round(vh - rect.top + 8) + 'px';
               st.top = 'auto';
             } else {
-              st.top = Math.round(tipRect.bottom + 8) + 'px';
+              st.top = Math.round(rect.bottom + 8) + 'px';
               st.bottom = 'auto';
             }
             return st;
@@ -7907,6 +8545,7 @@ phoneApp('🔥', '微博', () => { setPhoneView('weibo'); phoneLoadHot(false); }
               npcs: Array.isArray(draft.npcs) ? draft.npcs : [],
               relationships: Array.isArray(draft.relationships) ? draft.relationships : [],
               skills_items: draft.skills_items || { 技能: [], 背包: [], 状态值: {} },
+              实体资产:draft.实体资产||[],虚拟资产:draft.虚拟资产||[],simulation:draft.simulation||{},
             };
           }
           function preJsonText() {
@@ -7946,6 +8585,9 @@ phoneApp('🔥', '微博', () => { setPhoneView('weibo'); phoneLoadHot(false); }
                 状态值: o.skills_items.状态值 && typeof o.skills_items.状态值 === 'object' ? o.skills_items.状态值 : {},
               };
             }
+            if(Array.isArray(o.实体资产))patch.实体资产=o.实体资产;
+            if(Array.isArray(o.虚拟资产))patch.虚拟资产=o.虚拟资产;
+            if(o.simulation&&typeof o.simulation==='object'&&!Array.isArray(o.simulation))patch.simulation=o.simulation;
             upd(patch);
             setPreJson(null);
             setPreJsonErr('');
@@ -7956,77 +8598,95 @@ phoneApp('🔥', '微博', () => { setPhoneView('weibo'); phoneLoadHot(false); }
            * 分不清哪些是这次解析出来的。解析失败时把清空前的原样恢复回去。
            */
           function aiParse(target) {
+            if(busy||creationRequestRef.current.pending)return;creationRequestRef.current.pending=true;
+            const requestId=++creationRequestRef.current.id;
+            const currentParse=()=>creationRequestRef.current.id===requestId&&String(activeGameRef.current)===String(gameId);
             setBusy(true);
             setErr('');
             setParseSec(0);
             const backup = target === 'world' ? draft.world : draft.protagonist;
-            // 点击即清空：目的是不让上一局的残值混进这次解析结果。
-            // 但**玩家自己手动设的开关不能清** —— 「是否艺人」是界面上的开关，
-            // 清掉之后解析会把整批演艺字段当"没开"处理，玩家还得再点一次。
-            // 它在上面「解析结果合并」那一步也是以 backup 为准的，所以这里保留即可。
-            if (target === 'world') {
-              upd({ world: blankLike(draft.world) });
-            } else {
-              const blanked = blankLike(draft.protagonist);
-              blanked.是否艺人 = !!(backup && backup.是否艺人);
-              blanked.标签 = (backup && backup.标签) || [];
-              upd({ protagonist: blanked });
-            }
+            let resetComplete = false;
+            let parseDraft = target === 'world' ? draft : {
+              ...draft, protagonist: { ...blankLike(draft.protagonist), 是否艺人: !!backup?.是否艺人 },
+              npcs: [], relationships: [], 实体资产: [], 虚拟资产: [],
+              skills_items: { 技能: [], 背包: [], 状态值: {} }, extraInfo: '', simulation: null,
+            };
+            if (target === 'world') upd({ world: blankLike(draft.world) });
+            else setDraft(parseDraft);
             const t0 = Date.now();
             if (parseTimer.current) window.clearInterval(parseTimer.current);
             parseTimer.current = window.setInterval(() => {
+              if(!currentParse()){if(parseTimer.current)window.clearInterval(parseTimer.current);parseTimer.current=0;return;}
               const sec = Math.round((Date.now() - t0) / 1000);
               setParseSec(sec);
               if (Date.now() - t0 >= PARSE_LIMIT_MS) {
+                creationRequestRef.current.id++;
                 // 宿主那边可能还在等模型；这里先把界面放开，别让按钮一直灰着
                 if (parseTimer.current) window.clearInterval(parseTimer.current);
                 parseTimer.current = 0;
-                setBusy(false);
-                setErr('解析超过 5 分钟还没返回，已放开界面（模型可能在长时间思考或卡住了）。可以重试，或直接手填字段 —— 清空前的原内容已经恢复。');
+                creationRequestRef.current.pending=false;setBusy(false);
+                setErr('解析超过 5 分钟还没返回，已放开界面（模型可能在长时间思考或卡住了）。可以重试，或直接手填字段 —— 人物旧资料不会恢复；世界解析失败会恢复原世界。');
                 if (target === 'world') upd({ world: backup });
-                else upd({ protagonist: backup });
+                else if (!resetComplete) setDraft(draft);
               }
             }, 1000);
             const stopTimer = () => {
               if (parseTimer.current) window.clearInterval(parseTimer.current);
               parseTimer.current = 0;
             };
-            call('parseNatural', { target, text: target === 'world' ? nlw : nl }, gameId)
+            Promise.resolve().then(async () => {
+              if (target !== 'world') {
+                const reset = await call('resetCreation', { gameId, isStar: !!backup?.是否艺人 }, gameId);
+                if (!reset?.protagonist || reset.creationResetVersion !== 1) throw new Error('人物全量重置接口已更新，请重启 DSH 后再解析');
+                resetComplete = true;
+                if (!currentParse()) return;
+                if (reset?.protagonist) {
+                  parseDraft = { ...reset, world: draft.world, config: draft.config };
+                  setState(reset);
+                  setDps(JSON.parse(JSON.stringify(reset)));
+                  setDraft(JSON.parse(JSON.stringify(parseDraft)));
+                }
+              }
+              if (!currentParse()) return;
+              return call('parseNatural', { target, text: target === 'world' ? nlw : nl, ...(target==='world'?{characterText:nl}:{}) }, gameId);
+            })
               .then((p) => {
+                if(!currentParse())return;
                 stopTimer();
                 // 这里不能无条件 setBusy(false)：主角解析完还要接着跑「人物名册」，
                 // 中途放开按钮的话，玩家可能在这半秒里再点一次，两批解析互相覆盖。
                 // 松手放在各分支真正结束的地方。
                 if (p && p._raw) {
-                  setBusy(false);
+                  creationRequestRef.current.pending=false;setBusy(false);
                   const raw = String(p._raw);
                   setErr('解析失败（共 ' + raw.length + ' 字' + (p._finish ? '，finish=' + p._finish : '') + '）。开头：' + raw.slice(0, 150) + ' … 结尾：' + raw.slice(-150));
                   if (target === 'world') upd({ world: backup });
-                  else upd({ protagonist: backup });
+                  else if (!resetComplete) setDraft(draft);
                   return;
                 }
                 if (target === 'world') {
-                  setBusy(false); // 世界观没有第二步，直接松手
-                  upd({ world: Object.assign(blankLike(draft.world), p) });
+                  creationRequestRef.current.pending=false;setBusy(false); // 世界观没有第二步，直接松手
+                  const parsedWorld={...p};delete parsedWorld._simulation;upd({world:mergeParsedFields(draft.world,parsedWorld),...(p?._simulation?{simulation:p._simulation}:{})});
                 } else {
-                  const merged = Object.assign(blankLike(draft.protagonist), p);
+                  const 解析缺项 = Array.isArray(p && p._parseIssues) ? p._parseIssues : [];
+                  const initialData=p?._initialData||{};const cleanParsed = Object.assign({}, p); delete cleanParsed._parseIssues;delete cleanParsed._initialData;
+                  const merged = mergeParsedFields(parseDraft.protagonist, cleanParsed);
                   // 注：「人物关系」现在有正式字段了（主角的 人物关系），解析出来就留在那里 ——
                   // 早期版本它只是解析阶段的临时容器，要挪去备注栏；现在不用挪了，
                   // 手填与解析两条路都写同一个字段，界面上也看得见。
                   // 「额外信息」是解析时接住「装不进任何字段的交代」的容器
                   // （家里情况、特殊经历之类），挪进备注栏 —— 那里本来就会注入开局提示词。
-                  // 追加而不是覆盖，免得冲掉玩家自己写在备注里的东西。
+                  // 再次解析是重建，备注仅保留本轮产物，不与旧备注追加。
                   const extra = String(merged.额外信息 == null ? '' : merged.额外信息).trim();
                   delete merged.额外信息;
                   if (extra) {
-                    const prev = String(draft.extraInfo || '').trim();
-                    upd({ extraInfo: prev ? prev + '\n' + extra : extra });
+                    upd({ extraInfo: extra });
                   }
                   // 年龄不靠模型算：它不知道世界观里的"现在"是哪一年，实测会差一两岁。
                   // 用生日本地算一遍，和生日输入框那套逻辑一致（算不出来就不动原值）。
                   const ageStr = ageFromBirth(merged.生日, nowForAge());
                   const ageNum = Number(String(ageStr).replace(/[^\d]/g, ''));
-                  if (ageNum > 0 && ageNum < 200) merged.年龄 = ageNum;
+                  if (Number.isFinite(ageNum) && ageNum >= 0) merged.年龄 = ageNum;
                   // 纠形与纠键：模型偶尔把数组字段给成对象、或打错键名（「稀y度」），
                   // 界面上找不到那个键，数据就悄悄丢了。
                   toArrays(merged);
@@ -8053,10 +8713,10 @@ phoneApp('🔥', '微博', () => { setPhoneView('weibo'); phoneLoadHot(false); }
                   const CORE = ['姓名', '性别', '年龄', '身份', '外貌'];
                   const gotCore = CORE.some((k) => String(merged[k] == null ? '' : merged[k]).trim());
                   if (!gotCore) {
-                    upd({ protagonist: backup });
-                    setErr('解析没有返回主角的任何信息（模型返回了一个空壳）。可以重试；也可以直接在下面的「完整数据」里手填 —— 原内容已恢复。');
-                    setBusy(false);
-                    setParseNote('');
+                    // 重置已经提交，不恢复上一次的人物数据。
+                    setErr('解析没有返回主角的任何信息（模型返回了一个空壳）。可以重试；也可以直接在下面的「完整数据」里手填。旧人物资料已清空，不会恢复。');
+                    creationRequestRef.current.pending=false;setBusy(false);
+                    setParseNote(解析缺项.length ? '开局资料仍有缺项' : '');
                     return;
                   }
                   upd({ protagonist: merged });
@@ -8081,7 +8741,7 @@ phoneApp('🔥', '微博', () => { setPhoneView('weibo'); phoneLoadHot(false); }
                   if (npcsKeep.length) {
                     upd({
                       npcs: npcsKeep.map((x) => {
-                        const base = blankLike((Array.isArray(draft.npcs) && draft.npcs[0]) || {});
+                        const base = {};
                         return Object.assign(base, x);
                       }),
                     });
@@ -8094,49 +8754,21 @@ phoneApp('🔥', '微博', () => { setPhoneView('weibo'); phoneLoadHot(false); }
                    * 免得某条分支漏了兜底（曾出现名册返回空、兜底也没跑，npcs 一直是空的）。
                    * 传入空数组表示"名册没拿到东西"，此时从「人物关系」那句里拆。
                    */
-                  const applyCast = (list) => {
-                    const fromCast = Array.isArray(list) ? list : [];
-                    const use = dropSelf(alignNpcNames(fromCast.length ? fromCast : parseRelationString(String(merged.人物关系 || '')), merged));
-                    if (use.length) {
-                      upd({
-                        npcs: use.map((x) => {
-                          const base = blankLike((Array.isArray(draft.npcs) && draft.npcs[0]) || {});
-                          return fixKeys(Object.assign(base, x));
-                        }),
-                      });
-                    } else {
-                      // 名册空、兜底也拆不出东西（描述里确实没提到别人）—— 说一句，免得以为坏了
-                      setErr('没有从描述里认出任何人物。如果描述里确实写了家人，可以在下面的「完整数据」里手填 npcs。');
-                    }
-                  };
-                  setParseNote('正在解析人物名册…');
-                  call('parseNatural', { target: 'cast', text: nl }, gameId)
-                    .then((cr) => {
-                      setParseNote('');
-                      setBusy(false);
-                      const list =
-                        cr && Array.isArray(cr.角色)
-                          ? cr.角色.filter((x) => x && typeof x === 'object' && String(x.姓名 || '').trim())
-                          : [];
-                      // 名字以主角字段为准：名册自己起的名字，遇到主角那边已有的同名关系就让位。
-                      // （「女儿罗心悦」vs 名册的「罗朵朵」，以主角为准）
-                      applyCast(list);
-                    })
-                    .catch(() => {
-                      // 名册这步失败（接口报错／超时／返回不解）就退回兜底：从「人物关系」那句里拆
-                      setParseNote('');
-                      setBusy(false);
-                      applyCast([]);
-                    });
+                  setParseNote('解析关联人物与开局资料…');
+                  const requestGameId=gameId;
+                  call('prepareCreation', {world:parseDraft.world,protagonist:normalizeArrs(merged),extraInfo:extra,npcs:npcsKeep,relationships:[],skillsItems:initialData.skillsItems||parseDraft.skills_items,initialData,simulationOptions:parseDraft.simulation,sourceText:nl,discover:true}, requestGameId)
+                    .then(result=>{if(!currentParse()||String(activeGameRef.current)!==String(requestGameId))return;setState(result);setDraft(previous=>({...JSON.parse(JSON.stringify(result)),config:previous?.config||result.config}));setDps(JSON.parse(JSON.stringify(result)));setParseNote(creationStatus(result.simulation?.creation));setErr('');creationRequestRef.current.pending=false;setBusy(false);})
+                    .catch(error=>{if(!currentParse()||String(activeGameRef.current)!==String(requestGameId))return;setParseNote('开局资料未完成');setErr(msg(error));creationRequestRef.current.pending=false;setBusy(false);});
                   return;
                 }
               })
               .catch((e) => {
+                if(!currentParse())return;
                 stopTimer();
                 setErr(msg(e));
-                setBusy(false);
+                creationRequestRef.current.pending=false;setBusy(false);
                 if (target === 'world') upd({ world: backup });
-                else upd({ protagonist: backup });
+                else if (!resetComplete) setDraft(draft);
               });
           }
 
@@ -8153,6 +8785,8 @@ phoneApp('🔥', '微博', () => { setPhoneView('weibo'); phoneLoadHot(false); }
                   ['npcs', '角色', '👥'],
                   ['relations', '关系', '🕸'],
                   ['skills', '资产', '🎒'],
+                  ...(state.simulation?.settings?.managementEnabled ? [['management', '经营', '🏗']] : []),
+                  ...(state.simulation?.settings?.boundSystemEnabled ? [['boundSystem', '系统', '✦']] : []),
                   ['settings', '设定', '⚙️'],
                 ]
               : [
@@ -8217,8 +8851,8 @@ onDoubleClick: () => {
                   onClick: () => {
                     const next = !phoneOpen;
                     setPhoneOpen(next);
-                    if (next && !phoneContacts) {
-                      phoneLoadContacts('sms');   // 手机通讯录，跟 app 无关
+                    if (next && !phoneContactCache[String(gameId) + ':addressBook']) {
+                      phoneLoadContacts('sms', 'addressBook');   // 手机通讯录独立读取
                     }
                   },
                 },
@@ -8377,7 +9011,7 @@ onDoubleClick: () => {
             if (!b || !n) return '';
             let age = n.y - b.y;
             if (n.m < b.m || (n.m === b.m && n.d < b.d)) age -= 1;
-            return age >= 0 && age < 200 ? age + '岁' : '';
+            return Number.isFinite(age) && age >= 0 ? age + '岁' : '';
           }
           /** 世界观的当前日期（没填就用本机今天兜底） */
           function nowForAge() {
@@ -8431,6 +9065,7 @@ onDoubleClick: () => {
           function capsuleList(title, fields) {
             const list = Array.isArray(draft.protagonist[title]) ? draft.protagonist[title] : [];
             const labelOf = (it) => {
+              if(title==='事业')return String(it?.名称||it?.名字||it?.name||'名称待补');
               if (!it || typeof it !== 'object') return '（空）';
               const v = fields.map((f) => it[f]).find((x) => x != null && String(x).trim());
               return v ? String(v).trim() : '（未命名）';
@@ -8579,7 +9214,7 @@ onDoubleClick: () => {
           /**
            * 长文本字段：跨整行、用多行框。其余短字段在网格里并排，不再各占一整行。
            */
-          const WIDE_FIELDS = ['外貌', '表性格', '里性格', '当前状态', '当前想法', '身体状态', '健康状况'];
+          const WIDE_FIELDS = ['外貌', '表性格', '里性格', '背景', '当前状态', '当前想法', '身体状态', '健康状况'];
           /** 带单位的字段：界面上把单位显示在输入框外面，框里只填数字 */
           const UNIT_OF = { 身高: 'cm', 体重: 'kg', 三围: 'cm', 年龄: '岁' };
           function charSec(title, fields) {
@@ -8638,6 +9273,43 @@ onDoubleClick: () => {
             return o;
           }
 
+          function prepareDraftCreation(discover=false) {
+            if(busy||creationRequestRef.current.pending)return Promise.resolve();creationRequestRef.current.pending=true;
+            setParseNote('核对开局资料…');
+            const requestGameId=gameId;const requestId=++creationRequestRef.current.id;setBusy(true);setErr('');
+            return call('prepareCreation',{world:draft.world,protagonist:normalizeArrs(draft.protagonist),extraInfo:draft.extraInfo,npcs:draft.npcs||[],skillsItems:draft.skills_items,relationships:draft.relationships,initialData:{realAssets:draft.实体资产,virtualAssets:draft.虚拟资产,simulation:draft.simulation},simulationOptions:draft.simulation||state.simulation,sourceText:nl,discover},gameId).then(result=>{if(creationRequestRef.current.id!==requestId||String(activeGameRef.current)!==String(requestGameId))return result;setState(result);setDraft(previous=>({...JSON.parse(JSON.stringify(result)),config:previous?.config||result.config}));setDps(JSON.parse(JSON.stringify(result)));setParseNote(creationStatus(result?.simulation?.creation));setErr('');creationRequestRef.current.pending=false;setBusy(false);return result;}).catch(error=>{if(creationRequestRef.current.id===requestId&&String(activeGameRef.current)===String(requestGameId)){creationRequestRef.current.pending=false;setBusy(false);setErr(msg(error));}throw error;});
+          }
+          function creationNotices(info) { return creationProcessNotices(info); }
+          function creationStatus(info) { const notes=creationNotices(info);return notes.length?'开局资料提醒：'+notes.join('；'):info?.ready?'开局资料已准备':'开局资料尚未核对'; }
+          function openingReminder() {
+            const notes=[...readCreationChecklist(state).filter(x=>x.status==='missing').map(x=>x.label+'待补充'),...creationNotices(state.simulation?.creation)];
+            if(phase!=='play'||Number(state.story?.current_message_index||0)>1||!notes.length)return null;
+            return h('details',{className:'sim-hint','aria-label':'开局资料提醒',role:'status'},h('summary',null,'开局资料提醒（'+notes.length+'）'),h('div',null,notes.join('；')));
+          }
+          function creationChecklistView() {
+            if(!hasCreationChecklist(draft))return null;
+            const checks=readCreationChecklist(draft),pending=checks.filter(x=>x.status==='missing').length,done=checks.filter(x=>x.status==='done').length;
+            return h('section',{className:'sim-creation-checklist','aria-label':'开局缺项检查清单'},h('header',{className:'sim-check-head'},h('div',{className:'sim-check-heading'},h('span',{className:'sim-check-emblem','aria-hidden':true},'✓'),h('span',{className:'sim-check-title'},'缺项检查清单')),h('div',{className:'sim-check-counts',role:'status'},h('span',null,pending+' 项待补'),done?h('span',{className:'is-done'},done+' 项已补'):null)),checks.length?h('ul',{className:'sim-check-scroll','aria-label':'缺项滚动列表',tabIndex:0,style:{maxHeight:'min(300px, 38vh)',overflowY:'auto',overscrollBehavior:'contain',scrollbarGutter:'stable'}},checks.map(item=>{const split=item.label.indexOf(' · '),group=split>=0?item.label.slice(0,split):'',field=split>=0?item.label.slice(split+3):item.label;return h('li',{key:item.id,className:'sim-check-row is-'+item.status,'data-check-path':item.pointer||'/'+item.path.join('/'),'data-check-status':item.status,title:item.label},h('span',{className:'sim-check-mark',role:'checkbox','aria-readonly':true,'aria-checked':item.status==='done'},item.status==='done'?'✓':item.status==='removed'?'−':'○'),h('div',{className:'sim-check-copy'},group?h('span',{className:'sim-check-group'},group):null,h('span',{className:'sim-check-field'},field)),h('span',{className:'sim-check-status'},item.status==='done'?'已补齐':item.status==='removed'?'已移除':'待补充'));})):h('div',{className:'sim-check-empty'},'本次解析未发现缺项'));
+          }
+          function creationReview() {
+            const info=draft.simulation?.creation||{};
+            return h('section',{className:'sim-creation-review','aria-label':'开局资料核对',style:{margin:'14px 0'}},h('div',{className:'sim-sec'},'开局资料'),h('div',{className:'sim-hint',role:'status','aria-label':'开局资料提醒'},creationStatus(info)),h('div',{className:'sim-chips',style:{alignItems:'center',gap:8}},h('span',null,'实体资产：'),(draft.实体资产||[]).map((x,i)=>h('button',{key:i,type:'button',className:'sim-chip','data-opening-asset-index':i,onClick:()=>setAssetOpen({key:'实体资产',i})},x.名称||x.名字||'名称待补'))),h('div',null,'权益：'+(draft.虚拟资产||[]).map(x=>x.名称||x.名字||'名称待补').join('、')),h(Btn,{disabled:busy,onClick:()=>prepareDraftCreation(false)},'核对开局资料'));
+          }
+          function applyOpeningPreset(id) {
+            if (busy || !['world', 'character'].includes(phase)) return false;
+            const preset = OPENING_PRESETS.find(item => item.id === id);
+            if (!preset) return false;
+            setNlw(preset.worldText);
+            setNl(preset.characterText);
+            return true;
+          }
+          function openingPresetPicker() {
+            if (!['world', 'character'].includes(phase)) return null;
+            return h('section', { className: 'sim-opening-presets', 'aria-label': '快捷开局', style: { marginBottom: 14 } },
+              h('div', { className: 'sim-hint', style: { marginBottom: 6 } }, '快捷开局'),
+              h('div', { className: 'sim-acts', style: { display: 'flex', flexWrap: 'wrap', gap: 6 } },
+                OPENING_PRESETS.map(preset => h('button', { key: preset.id, type: 'button', className: 'sim-btn', 'data-opening-preset': preset.id, disabled: busy, onClick: () => applyOpeningPreset(preset.id) }, preset.label))));
+          }
           const worldForm = h(
             'div',
             { className: 'sim-card' },
@@ -8647,11 +9319,12 @@ onDoubleClick: () => {
               h('span', { className: 'ic' }, '🌍'),
               h('div', null, h('div', { className: 't' }, '设定世界观'), h('div', { className: 's' }, '先确定时代、规则与基调，再创建你的主角。'))
             ),
+            openingPresetPicker(),
             h(
               'div',
               { className: 'sim-ai' },
               h('div', { className: 'sim-hint' }, '也可以直接描述想要的世界，让 AI 拆成下面的字段：'),
-              h('textarea', { className: 'sim-ta', value: nlw, placeholder: '例如：2012 年夏天，北京，一档选秀节目的海选现场……', onChange: (e) => setNlw(e.target.value) }),
+              h('textarea', { className: 'sim-ta', value: nlw, 'aria-label': '世界观解析文本', placeholder: '例如：2012 年夏天，北京，一档选秀节目的海选现场……', onChange: (e) => setNlw(e.target.value) }),
               h('div', { style: { marginTop: 8 } }, h(Btn, { primary: true, disabled: busy, onClick: () => aiParse('world') }, busy ? '解析中… ' + parseSec + 's' : '✨ AI 解析填入'))
             ),
             worldSec('时空', ['世界观类型', '时代与年份', '当前日期时间', '起始地点']),
@@ -8659,10 +9332,11 @@ onDoubleClick: () => {
             worldSec('规则', ['文明与技术水平', '超自然与力量体系', '种族与物种']),
             worldSec('环境', ['势力与组织', '危险与生存压力', '信息与传播']),
             worldSec('文化', ['风俗禁忌与礼节', '叙事基调']),
+            genericView('worldSetup'),
             h(
               'div',
               { className: 'sim-foot' },
-              h(Btn, { primary: true, big: true, disabled: busy, onClick: () => run(call('startWorld', { world: draft.world, extraInfo: draft.extraInfo }, gameId)) }, '下一步：创建主角 →')
+              h(Btn, { primary: true, big: true, disabled: busy, onClick: () => run(call('startWorld', { world: draft.world, extraInfo: draft.extraInfo, simulationOptions:draft.simulation }, gameId)) }, '下一步：创建主角 →')
             )
           );
 
@@ -8676,11 +9350,12 @@ onDoubleClick: () => {
                 h('span', { className: 'ic' }, '🎭'),
                 h('div', null, h('div', { className: 't' }, '创建主角'), h('div', { className: 's' }, '逐项填写，或用一句话描述让 AI 解析。'))
               ),
+              openingPresetPicker(),
               h(
                 'div',
                 { className: 'sim-ai' },
                 h('div', { className: 'sim-hint' }, '自然语言描述（越具体越好）：'),
-                h('textarea', { className: 'sim-ta', value: nl, placeholder: '例如：19 岁的练习生，五官清秀、小鹿眼、黑长直，个子不高，怕被淘汰……', onChange: (e) => setNl(e.target.value) }),
+                h('textarea', { className: 'sim-ta', value: nl, 'aria-label': '创角解析文本', placeholder: '例如：19 岁的练习生，五官清秀、小鹿眼、黑长直，个子不高，怕被淘汰……', onChange: (e) => setNl(e.target.value) }),
                 h('div', { style: { marginTop: 8 } }, h(Btn, { primary: true, disabled: busy, onClick: () => aiParse('character') }, busy ? '解析中… ' + parseSec + 's' : '✨ AI 解析填入')),
                 parseNote ? h('div', { className: 'sim-hint' }, parseNote) : null
               ),
@@ -8718,13 +9393,13 @@ onDoubleClick: () => {
                   h('span', null, '开启星途模拟')
                 ),
               charSec('身份', ['身份', '种族', '婚姻状况', '配偶', '子女']),
-              charSec('外貌与性格', ['外貌', '表性格', '里性格']),
+              charSec('外貌与性格', ['外貌', '表性格', '里性格', '背景']),
               charSec('身体', ['身高', '体重', '三围', '罩杯', '健康状况', '疾病与伤病']),
               charSec('当前', ['当前状态', '当前想法', '身体状态']),
               charSec('私密', ['性癖', '敏感点', '底线', '经验', '是否处女', '月经状态', '妊娠状态']),
               charSec('速记', ['标签', '特点']),
             capsuleList('技能', ['名字', '等级', '说明', '来源']),
-            capsuleList('住所', ['位置', '买入价格', '状态']),
+            capsuleList('住所', ['名称', '位置', '总面积', '户型', '楼层', '产权人', '居住人', '购入时间', '买入价格', '状态']),
             capsuleList('交通', ['车型', '买入价格', '状态']),
             capsuleList('事业', ['名称', '职务', '发展情况']),
           incomeEditor(),
@@ -8876,6 +9551,8 @@ onDoubleClick: () => {
               // ── 角色 ──
               // 解析出来的人放在主角字段最下面：这里能直接看到有谁、点开能改。
               // 点「进入正文」时这一份会跟着一起提交，开局消息里就会带上他们。
+              creationReview(),
+              genericView('creationReview'),
               h('div', { className: 'sim-sec' }, '角色' + (Array.isArray(draft.npcs) && draft.npcs.length ? '（' + draft.npcs.length + '）' : '')),
               Array.isArray(draft.npcs) && draft.npcs.length
                 ? h(
@@ -8900,6 +9577,7 @@ onDoubleClick: () => {
                   '+ 添加角色'
                 )
               ),
+              creationChecklistView(),
               h(
                 'div',
                 { className: 'sim-foot' },
@@ -8994,7 +9672,7 @@ onDoubleClick: () => {
                           'div',
                           { className: 'sim-issue', key: i },
                           h('span', { className: 'step' }, (STAGE_LABEL[x.step] && STAGE_LABEL[x.step][1]) || x.step),
-                          h('span', { className: 'why' }, x.why || '这一步没有成功'),
+                          renderIssueReason(x),
                           // 看过就关掉：删的是 transcript 里这一轮的 issues，刷新后也不会回来
                           h('button', {
                             className: 'sim-issue-x',
@@ -9049,7 +9727,7 @@ onDoubleClick: () => {
   ? h(
       'div',
       { style: { marginTop: 4, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' } },
-      h(Btn, { disabled: busy, onClick: () => run(call('regenerateLatestVars', {}, gameId)) }, '重算最新一段变量'),
+      h(Btn, { disabled: busy, onClick: () => run(call('regenerateLatestVars', {}, gameId)) }, state.simulation?.enabled ? '重核最新一段资料' : '重算最新一段变量'),
       h(Btn, { disabled: busy, onClick: () => { loadSnaps(); snapSave(); } }, snapNote || '📌 存快照'),
       h(Btn, { disabled: busy, onClick: () => { loadSnaps(); setSnapOpen(true); } }, '📂 读快照')
     )
@@ -9161,7 +9839,7 @@ onDoubleClick: () => {
                 h(Btn, { disabled: busy, onClick: () => { setTab('setup'); run(call('applyPreset', { id: p.id, mode: 'form' }, gameId), true); } }, '📥 载入到表单'),
                 h(Btn, { primary: true, disabled: busy, onClick: () => { ask('直接用「' + p.name + '」开局？当前正文会被清空并自动生成开场。').then((ok) => { if (ok) startGameFromPreset(p); }); } }, '⚡ 直接开局'),
                 h(Btn, { disabled: busy, onClick: () => { inputAsk('新名称', p.name).then((nn) => { if (nn && nn.trim()) runLight(call('savePreset', { id: p.id, name: nn.trim() }, gameId)).then(refreshPresets); }); } }, '✏️ 改名'),
-                h(Btn, { disabled: busy, onClick: () => { const d = sourceData(); ask('用当前内容覆盖「' + p.name + '」？').then((ok) => { if (ok) runLight(call('savePreset', { id: p.id, name: p.name, world: d.world, protagonist: d.protagonist, extraInfo: d.extraInfo }, gameId)).then(refreshPresets); }); } }, '♻ 覆盖'),
+                h(Btn, { disabled: busy, onClick: () => { const d = sourceData(); ask('用当前内容覆盖「' + p.name + '」？').then((ok) => { if (ok) runLight(call('savePreset', { id: p.id, name: p.name, world: d.world, protagonist: d.protagonist, extraInfo: d.extraInfo,npcs:d.npcs,relationships:d.relationships,skillsItems:d.skills_items,simulation:d.simulation,realAssets:d.实体资产,virtualAssets:d.虚拟资产,parseInput:state.parseInput }, gameId)).then(refreshPresets); }); } }, '♻ 覆盖'),
                 h(Btn, { danger: true, disabled: busy, onClick: () => { ask('删除预设「' + p.name + '」？不可恢复。').then((ok) => { if (ok) runLight(call('deletePreset', { id: p.id }, gameId)).then(refreshPresets); }); } }, '🗑 删除')
               )
             )
@@ -9177,7 +9855,7 @@ onDoubleClick: () => {
               h('div', { style: { fontWeight: 600, marginBottom: 6 } }, '保存为预设'),
               h('div', { className: 'sim-hint' }, phase === 'play' ? '当前在正文中：保存的是「开局时的世界观与主角」快照，不含游戏过程中的变化。' : '当前在创建中：保存你正在填写的世界观、主角与补充信息。'),
               h(Field, { label: '预设名称', value: psName, ph: '如：创造营101 · 练习生开局', onChange: setPsName }),
-              h('div', { className: 'sim-acts' }, h(Btn, { primary: true, disabled: busy, onClick: () => { const d = sourceData(); const nm = psName; setPsName(''); runLight(call('savePreset', { name: nm, world: d.world, protagonist: d.protagonist, extraInfo: d.extraInfo }, gameId)).then(refreshPresets); } }, '💾 保存为预设'))
+              h('div', { className: 'sim-acts' }, h(Btn, { primary: true, disabled: busy, onClick: () => { const d = sourceData(); const nm = psName; setPsName(''); runLight(call('savePreset', { name: nm, world: d.world, protagonist: d.protagonist, extraInfo: d.extraInfo,npcs:d.npcs,relationships:d.relationships,skillsItems:d.skills_items,simulation:d.simulation,realAssets:d.实体资产,virtualAssets:d.虚拟资产,parseInput:state.parseInput }, gameId)).then(refreshPresets); } }, '💾 保存为预设'))
             ),
             h('div', { className: 'sim-card' }, h('div', { style: { fontWeight: 600, marginBottom: 8 } }, '已保存的预设（' + presets.length + '）'), presets.length ? h('div', null, presetCards) : h('div', { className: 'sim-hint' }, '还没有预设。先在上面存一个。'))
           );
@@ -9225,7 +9903,7 @@ onDoubleClick: () => {
             return run(call('saveFields', { patch }, gameId), true);
           }
           function saveDraftAll() {
-            return run(call('saveDraft', { world: draft.world, protagonist: draft.protagonist, extraInfo: draft.extraInfo }, gameId), true);
+            return run(call('saveDraft', { world: draft.world, protagonist: draft.protagonist, extraInfo: draft.extraInfo,npcs:draft.npcs,relationships:draft.relationships,skillsItems:draft.skills_items,simulationOptions:draft.simulation }, gameId), true);
           }
           /** 组标题（比 sim-sub 醒目） */
           function sec(label) {
@@ -9292,16 +9970,13 @@ onDoubleClick: () => {
                 if (!shown.length) return null; // 整组都没内容就连标题一起不显示
                 return h('div', { key: g[0] }, block(g[0], h(KVView, { obj: draft.world, only: shown, twoCol: true })));
               }),
-              hasVal(draft.extraInfo)
-                ? block('补充', h(KVView, { obj: { 补充信息: draft.extraInfo }, twoCol: true }))
-                : null,
               h('div', { style: { marginTop: 10 } }, jsonEditor('world', '世界'), jsonEditor('extraInfo', '补充信息'))
             )
           );
 
 /**
            * 资产／技能这类「一堆对象」的列表：卡片墙 + 点开看详情。
-           * 卡片上只显示最关键的三行（名称 / 运营状态 / 位置这种），其余点开在弹窗里看。
+           * 公司卡仅显示全名并用红绿底色标状态；其他资产保留概览，完整资料点开查看。
            */
           const OBJ_LISTS = [
             {
@@ -9330,7 +10005,7 @@ onDoubleClick: () => {
               tagKeys: ['类型'],
               lineKeys: ['归属', '当前估值'],
               empty: '还没有虚拟资产。',
-              preferred: ['类型', '归属', '取得方式', '取得时间', '成本', '当前估值', '到期日', '收益方式', '状态', '风险与纠纷', '说明', '备注'],
+              preferred: ['类型', '归属', '权利标的', '简介', '权利内容', '行使方式', '限制与义务', '权利依据', '取得方式', '取得时间', '成本', '当前估值', '到期日', '收益方式', '状态', '风险与纠纷', '说明', '备注'],
             },
             {
               // 住所与交通各自是数组（一个人可能有多处住处、多辆车），条目结构与实体资产一致，
@@ -9350,7 +10025,7 @@ onDoubleClick: () => {
               lineKeys: ['买入价格', '当前估值'],
               empty: '还没有记住处。',
               preferred: [
-                '名称', '类别', '位置', '购入时间', '购入价格', '买入价格', '总面积', '当前估值', '产权',
+                '名称', '类别', '位置', '购入时间', '购入价格', '买入价格', '总面积', '户型', '楼层', '产权人', '居住人', '当前估值', '产权',
                 '每一层的设施', '安保与配套', '周边', '简介', '备注',
               ],
             },
@@ -9395,8 +10070,25 @@ onDoubleClick: () => {
             }
             return '';
           }
+          function companyCardState(it, L, nm) {
+            if (L.key !== '实体资产') return '';
+            const kind = firstVal(it, ['类别', '类型', 'kind', 'type']);
+            if (/厂房|门面|办公楼|住宅|房产|仓库|地块|土地|车辆|汽车/.test(kind)) return '';
+            if (!/公司|企业|集团|工作室|商行|商店|工厂|店铺|\b(?:company|enterprise|agency|business|label|workshop)\b/i.test(kind + ' ' + nm)) return '';
+            if (it.closed === true || it.bankrupt === true) return 'closed';
+            const raw = firstVal(it, ['运营状态', '经营状态', '状态', 'operatingStatus', 'status']) || firstVal(it.businessProfile, ['operatingStatus']);
+            const status = raw.toLowerCase().replace(/(?:尚未|还未|仍未|未)(?:复业|恢复(?:正常)?(?:经营|营业|运营))/g, '停业').replace(/(?:尚未|并未|没有|未曾|不再|未|无|避免|防止)(?:关停|倒闭|停业|破产|关闭)/g, '').replace(/(?:关停|倒闭|破产)(?:风险|危机|边缘)/g, '').replace(/\b(?:not|never)\s+(?:closed|bankrupt|shutdown)\b/g, '');
+            const states = status.match(/关停|倒闭|停业|歇业|停止(?:正常)?(?:经营|营业|运营)|关闭|破产|注销|吊销|解散|复业|重新(?:开业|营业|经营)|恢复(?:正常)?(?:经营|营业|运营)|正常(?:经营|营业|运营)|\b(?:closed|bankrupt|shutdown|operating|active|reopened)\b/g) || [];
+            const latest = states.at(-1) || '';
+            return /关停|倒闭|停业|歇业|停止|关闭|破产|注销|吊销|解散|^(?:closed|bankrupt|shutdown)$/.test(latest) ? 'closed' : 'operating';
+          }
           function objCard(it, i, L) {
             const nm = firstVal(it, L.nameKeys) || '未命名';
+            const companyState = companyCardState(it, L, nm);
+            if (companyState) {
+              const open = () => setAssetOpen({ key: L.key, i });
+              return h('div', { className: 'sim-acard sim-company-card is-' + companyState, key: L.key + '-' + i, title: nm, role: 'button', tabIndex: 0, 'aria-label': nm + '，' + (companyState === 'closed' ? '关停或倒闭' : '正常经营'), 'data-company-state': companyState, onClick: open, onKeyDown: event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); open(); } } }, h('span', { className: 'sim-company-name' }, nm));
+            }
             const tag = firstVal(it, L.tagKeys);
             // 卡片第二行可以把几个短字段串起来（如 归属 · 估值）
             const line = (L.lineKeys || [])
@@ -9413,8 +10105,14 @@ onDoubleClick: () => {
           function objGrid(key) {
             const L = objListOf(key);
             const arr = (L && L.get(dps)) || [];
-            if (!arr.length) return h('div', { className: 'sim-hint' }, L ? L.empty : '（空）');
-            return h('div', { className: 'sim-agrid' }, arr.map((it, i) => objCard(it, i, L)));
+            const dup = ((state.assetDuplicates || {})[key === '实体资产' ? 'real' : 'rights']) || 0;
+            const notice = phase === 'play' && dup > 0 && (key === '实体资产' || key === '虚拟资产')
+              ? h('div', { className: 'sim-hint', style: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 } },
+                  h('span', null, '有 ' + dup + ' 条重复的同主体记录。'),
+                  h(Btn, { disabled: busy, onClick: () => run(call('mergeDuplicateAssets', { gameId })) }, '合并重复项'))
+              : null;
+            if (!arr.length) return h('div', null, notice, h('div', { className: 'sim-hint' }, L ? L.empty : '（空）'));
+            return h('div', null, notice, h('div', { className: 'sim-agrid' }, arr.map((it, i) => objCard(it, i, L))));
           }
           /** 资产详情弹窗：字段只读展示 + 底部那条 JSON 编辑通道 */
           /**
@@ -9528,18 +10226,23 @@ onDoubleClick: () => {
           function assetModalView() {
             if (!assetOpen) return null;
             const L = objListOf(assetOpen.key);
-            const arr = (L && L.get(dps)) || [];
+            const assetData = phase === 'character' ? draft : dps;
+            const arr = (L && L.get(assetData)) || [];
             const it = arr[assetOpen.i];
-            const ancientAsset = isAncientWorld(dps);
+            const ancientAsset = isAncientWorld(assetData);
             if (!L || !it) return null;
             const nm = firstVal(it, L.nameKeys) || '未命名';
-            const chips = []
-              .concat(L.tagKeys.map((k) => it[k]))
-              .concat((it.类别 || it.类型) ? [it.类别 || it.类型] : [])
-              .filter((x) => x != null && String(x).trim());
+            const sim=assetData?.simulation||state.simulation||{},units=sim.management?.units||[],ref=String(it.managementUnitId||it.unitId||'').trim();
+            const matches=phase==='character'&&sim.enabled&&sim.settings?.managementEnabled&&companyCardState(it,L,nm)?units.filter(u=>ref?u.id===ref:u.name===nm):[];
+            const openingUnit=matches.length===1?matches[0]:null,dirty=!!openingUnit&&assetOpen.openingUnitId===openingUnit.id&&Object.prototype.hasOwnProperty.call(assetOpen,'openingBalanceDraft');
+            const openingValue=openingUnit?(dirty?assetOpen.openingBalanceDraft:openingUnit.balanceKnown===false?'':String(openingUnit.balance??'')):'';
+            const editOpening=value=>{if(!openingUnit||assetOpeningSavingRef.current)return;const baseline={balance:openingUnit.balance,known:openingUnit.balanceKnown,currency:openingUnit.currency};setAssetOpen(old=>old&&old.key===assetOpen.key&&old.i===assetOpen.i?{...old,openingUnitId:openingUnit.id,openingBalanceDraft:String(value),openingBaseline:old.openingUnitId===openingUnit.id&&old.openingBaseline?old.openingBaseline:baseline,openingError:''}:old);};
+            const saveOpening=async()=>{if(!openingUnit||!dirty||!String(openingValue).trim()||assetOpeningSavingRef.current)return;const requestedGame=gameId,key=assetOpen.key,index=assetOpen.i,baseline=assetOpen.openingBaseline;assetOpeningSavingRef.current=true;setAssetOpen(old=>old&&old.key===key&&old.i===index?{...old,openingSaving:true,openingError:''}:old);try{const next=await genericCall('simulationOpeningBalance',{unitId:openingUnit.id,amount:openingValue,expectedBalance:baseline.balance,expectedBalanceKnown:baseline.known,expectedCurrency:baseline.currency});if(next?.simulation&&String(activeGameRef.current)===String(requestedGame))setAssetOpen(old=>old&&old.key===key&&old.i===index?null:old);}catch(error){if(String(activeGameRef.current)===String(requestedGame))setAssetOpen(old=>old&&old.key===key&&old.i===index?{...old,openingError:msg(error)}:old);}finally{assetOpeningSavingRef.current=false;if(String(activeGameRef.current)===String(requestedGame))setAssetOpen(old=>old&&old.key===key&&old.i===index?{...old,openingSaving:false}:old);}};
+
+            const chips = [...new Set([...L.tagKeys.map(k=>it[k]),...(it.类别||it.类型?[it.类别||it.类型]:[])].filter(x=>x!=null&&String(x).trim()).map(x=>String(x).trim()))];
             return h(
               'div',
-              { className: 'sim-mask', onClick: () => setAssetOpen(null) },
+              { className: 'sim-mask', onClick: () => {if(!assetOpeningSavingRef.current)setAssetOpen(null);} },
               h(
                 'div',
                 { className: 'sim-modal', onClick: (e) => e.stopPropagation() },
@@ -9547,7 +10250,7 @@ onDoubleClick: () => {
                   'div',
                   { className: 'sim-modal-h' },
                   h('div', { className: 'who' }, h('div', { className: 'nm' }, nm), h('div', { className: 'chips' }, chips.map((x, j) => h('span', { className: 'sim-mchip', key: j }, String(x).trim())))),
-                  h('button', { className: 'sim-modal-x', title: '关闭', onClick: () => setAssetOpen(null) }, '✕')
+                  h('button', { className: 'sim-modal-x', title: '关闭', disabled:!!assetOpen.openingSaving, onClick: () => {if(!assetOpeningSavingRef.current)setAssetOpen(null);} }, '✕')
                 ),
                 h(
                   'div',
@@ -9555,20 +10258,21 @@ onDoubleClick: () => {
                   h(
                     'div',
                     { className: 'sim-panel' },
-                    h('div', { className: 'sim-panel-h' }, '📋 详情'),
+                    h('div', { className: 'sim-panel-h', style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12} }, h('span',null,'📋 详情'), phase==='play'&&['实体资产','虚拟资产'].includes(L.path[0])?h(Btn,{disabled:busy,onClick:()=>{const requestedGame=gameId;return run(call(L.path[0]==='虚拟资产'?'completeVirtualAssetDetails':'completeAssetDetails',{index:assetOpen.i,name:nm},requestedGame).then(next=>String(assetDetailsGameRef.current)===String(requestedGame)?next:undefined));}},'AI补全资料'):null),
                     // skip 只排除「名称」本身，不要用 L.nameKeys —— 那张表为了给卡片取标题
                     // 收了一堆同义词（位置／型号…），照着排除会让详情里把这些内容也一起丢掉
                     // （住所有一阵子只显示一个价格，就是这么来的）。
+                    openingUnit ? h('div', {className:'sim-grid','data-opening-unit':openingUnit.id,style:{maxWidth:420,marginBottom:16}},h(Field,{label:'初始余额',value:openingValue,unit:openingUnit.currency,ph:'请输入金额',onChange:editOpening}),assetOpen.openingError?h('div',{className:'sim-hint',role:'alert',style:{color:'var(--sim-bad,#b5483b)'}},assetOpen.openingError):null) : null,
                     h(KVView, { obj: it, skip: ['名称', '名字'].concat(ancientAsset ? MODERN_ONLY_KEYS : []), preferred: L.preferred, twoCol: true })
                   ),
-                  h(
+                  openingUnit ? null : h(
                     'div',
                     { className: 'sim-panel' },
                     h('div', { className: 'sim-panel-h' }, '🧩 编辑数据'),
                     advJson('这条数据', L.path.concat([assetOpen.i]), it, assetOpen.key + '-' + assetOpen.i)
                   )
                 ),
-                h('div', { className: 'sim-modal-f' }, h(Btn, { primary: true, disabled: busy, onClick: () => setAssetOpen(null) }, '关闭'))
+                h('div', { className: 'sim-modal-f' },h(Btn,{primary:!openingUnit,disabled:busy||!!assetOpen.openingSaving,onClick:()=>setAssetOpen(null)},openingUnit?'取消':'关闭'),openingUnit?h(Btn,{primary:true,disabled:busy||!!assetOpen.openingSaving||!dirty||!String(openingValue).trim(),onClick:saveOpening},'保存初始余额'):null)
               )
             );
           }
@@ -9611,7 +10315,7 @@ onDoubleClick: () => {
           /** 上面这些分组之外的字段（AI 自己加的）在最后一组里兜底显示 */
           const PROT_KNOWN = (function () {
             // 这几个各有专门的区块（货币一节、穿着胶囊、物品列表、身体折叠区），不进通用字段表
-            const all = ['货币名', '金钱', '穿着', '物品', '身体', '疾病与伤病'];
+            const all = ['货币名', '金钱', '穿着', '物品', '技能', '关系数值', '身体', '疾病与伤病'];
             // 「人物关系」是模型自己加的摘要字段（角色页已经有正式的关系表了），
             // 放进排除名单，免得它被兜底追加到「基本信息」里
             all.push('人物关系');
@@ -9991,11 +10695,13 @@ onDoubleClick: () => {
                 });
                 return h('div', null, cards.length ? h('div', { className: 'sim-chips' }, cards) : h('div', { className: 'sim-hint' }, '（空）'));
               })(),
+              phase === 'play' ? sec('技能') : null,
+              phase === 'play' ? playerSkillView() : null,
               // AI 自己加的字段（不在上面分组里的）兜底显示
               (function () {
                 // 这一串都是「已经另有地方渲染」的字段：穿着/物品是胶囊、粉丝是横条、
                 // 身体是部位条、舆论是分圈层框 —— 让兜底再显示一遍就是 JSON 原文糊一屏。
-                const SELF_RENDERED = ['穿着', '物品', '粉丝', '舆论', '身体', '身体状态'];
+                const SELF_RENDERED = ['穿着', '物品', '技能', '关系数值', '粉丝', '舆论', '身体', '身体状态'];
                 const extra = Object.keys(draft.protagonist || {}).filter(
                   (k) => PROT_KNOWN.indexOf(k) < 0 && SELF_RENDERED.indexOf(k) < 0
                 ).filter((k) => hasVal(draft.protagonist[k]));
@@ -10018,8 +10724,8 @@ onDoubleClick: () => {
             h(
               'div',
               { className: 'sim-card' },
-              sec('技能'),
-              objGrid('技能'),
+              phase === 'play' ? null : sec('技能'),
+              phase === 'play' ? null : objGrid('技能'),
               sec('状态值'),
               h(KVView, { obj: (dps.skills_items && dps.skills_items.状态值) || {}, twoCol: true }),
               h('div', { style: { marginTop: 10 } }, jsonEditor('skills_items', '技能与状态值'))
@@ -10889,7 +11595,7 @@ function pregBar(obj, compact) {
           /** 角色弹窗里要列的字段（长字段会被 WIDE_KEYS 挑出来单独成块） */
           // 「出生地」放最前：它是基础信息，和种族身高一样该在基本信息里露出来。
           // （这块面板是 strict 模式，只显示这个列表里点到的字段 —— 不列出来就等于藏起来。）
-          const PREF_NPC = ['出生地', '生日', '年龄', '种族', '身高', '体重', '三围', '罩杯', '是否处女', '月经状态', '外貌', '表性格', '里性格', '性格', '与主角关系', '当前状况', '当前状态', '当前想法', '好感度', '信任度', '欲望', '依据', '备注', '曾用名', '生理周期', '艺人咖位', '经纪公司', '所属组合', '出道时间', '微博账号', '全网粉丝数', '主要奖项', '当前代言', '商业报价', '粉丝称呼', '当前舆论评价', '合约到期'];
+          const PREF_NPC = ['出生地', '生日', '年龄', '种族', '身高', '体重', '三围', '罩杯', '是否处女', '月经状态', '外貌', '表性格', '里性格', '背景', '性格', '与主角关系', '当前状况', '当前状态', '当前想法', '好感度', '信任度', '欲望', '依据', '备注', '曾用名', '生理周期', '艺人咖位', '经纪公司', '所属组合', '出道时间', '微博账号', '全网粉丝数', '主要奖项', '当前代言', '商业报价', '粉丝称呼', '当前舆论评价', '合约到期'];
 
 /** NPC 的演艺资料：查看态单独成块，不混在「基本信息」里（那些字段值都很长） */
 const NPC_STAR_KEYS = [
@@ -10975,10 +11681,10 @@ function toggleFans(npc) {
             return h(
               'div',
               {
-                key: kind + '-' + idx,
+                key: npc?.actorId || kind + '-' + idx,
                 className: 'sim-npc' + (c.male ? ' male' : ''),
                 title: '点开查看',
-                onClick: () => setNpcOpen({ kind, i: idx, editing: phase === 'character' }),
+                onClick: () => setNpcOpen({ kind, actorId:npc?.actorId||'', i: idx, editing: phase === 'character' }),
               },
               // 头像在左，信息在右 —— 点头像换头像，点别处打开角色卡
               avatarNode(npc || rel, 'sim-av sim-npc-av', '', {
@@ -11372,13 +12078,14 @@ function toggleFans(npc) {
             };
             const list = pickSrc(kind === 'npc' ? 'npcs' : 'relationships');
             const arr = Array.isArray(list) ? list : [];
-            const obj = arr[npcOpen.i];
+            const npcIndex = kind === 'npc' && npcOpen.actorId ? arr.findIndex(x=>x.actorId===npcOpen.actorId) : npcOpen.i;
+            const obj = arr[npcIndex];
             if (!obj || typeof obj !== 'object') return null;
             const nm = nameOf(obj);
             const npc = kind === 'npc' ? obj : pickSrc('npcs').filter((n) => nameOf(n) === nm)[0];
             const rel = kind === 'npc' ? relFor(nm) : obj;
             const c = cardData(npc, rel);
-            const setObj = (v) => writeSrc(kind === 'npc' ? 'npcs' : 'relationships', arr.map((x, j) => (j === npcOpen.i ? v : x)));
+            const setObj = (v) => writeSrc(kind === 'npc' ? 'npcs' : 'relationships', arr.map((x, j) => (j === npcIndex ? v : x)));
             // 标题条上的胶囊：性别 / 身份 / 年龄 / 关系。年龄直接写「19岁」，不加前缀。
             const HEAD_KEYS = ['姓名', '性别', '年龄', '身份', '与主角关系'];
             const ancient = isAncientWorld(state); // 古风局：不显示微博/粉丝数这类现代字段
@@ -11521,6 +12228,7 @@ function toggleFans(npc) {
                 h(
                   'div',
                   { className: 'sim-modal-b' },
+                  npc?.actorId && state.simulation?.enabled ? h('section',null,genericView('records',{key:gameId+':'+npc.actorId+':records',actorId:npc.actorId}),h('h3',{className:'sim-career-heading',style:{fontSize:14,lineHeight:1.4,margin:'10px 0 6px'}},state.simulation.profile?.roleLabel||'任职'),genericView('careers',{key:gameId+':'+npc.actorId+':careers',actorId:npc.actorId})) : null,
                   // 查到的真实资料：点胶囊填入（再点撤回）；正文由 renderRealBody 渲染
                   editing && realInfo
                     ? h('div', { className: 'sim-panel' },
@@ -11748,7 +12456,7 @@ function toggleFans(npc) {
                           const tip = wearTip(slot, k, male2, npc);
                           const lvl2 = ['袜子', '内衣', '内裤'].indexOf(k) >= 0 && !male2 ? scentLevel(slot) : -1;
                           return chip({
-                            id: 'nw-' + npcOpen.i + '-' + k,
+                            id: 'nw-' + npcIndex + '-' + k,
                             title: slot.物品,
                             // 状态与穿着时长只在悬浮详情里看；袜子/内衣/内裤各给一个浓度环
                             badge: (function () {
@@ -11775,7 +12483,7 @@ function toggleFans(npc) {
                                 if (it && it[k2] != null && String(it[k2]).trim()) tip.push([k2, String(fmtVal(it[k2]))]);
                               });
                               return chip({
-                                id: 'ni-' + npcOpen.i + '-' + j,
+                                id: 'ni-' + npcIndex + '-' + j,
                                 title: inm,
                                 // 品质不贴在名字后面，只在悬浮详情里看（胶囊配色仍按品质）
                                 badge: '',
@@ -11793,6 +12501,7 @@ function toggleFans(npc) {
                         : h('div', { className: 'sim-hint' }, '这个角色还没有物品。')
                     );
                   })(),
+                  h('div',{className:'sim-panel sim-npc-skills'},h('div',{className:'sim-panel-h'},'✨ '+(state.simulation?.profile?.skillLabel||'技能')),actorSkillView(npc,npc?.actorId||'')),
                   // 关系数据放在最后：先看人（基本信息），再看外观（穿着/物品），
                   // 最后才是关系数值。同样只读，要改用最下面的「编辑 JSON」。
                   h(
@@ -11867,13 +12576,13 @@ function toggleFans(npc) {
                     { className: 'sim-panel' },
                     h('div', { className: 'sim-panel-h' }, '🧩 编辑角色数据'),
                     kind === 'npc'
-                      ? advJson('这个角色', ['npcs', npcOpen.i], npc || obj, 'npc-' + npcOpen.i)
-                      : advJson('这个关系条目', ['relationships', npcOpen.i], obj, 'rel-' + npcOpen.i),
+                      ? advJson('这个角色', ['npcs', npcIndex], npc || obj, 'npc-' + npcIndex)
+                      : advJson('这个关系条目', ['relationships', npcIndex], obj, 'rel-' + npcIndex),
                     (function () {
                       if (kind !== 'npc' || !rel || rel === npc) return null;
                       const at = (Array.isArray(dps.relationships) ? dps.relationships : []).findIndex((x) => nameOf(x, ['对象', '姓名', '名字']) === nm);
                       if (at < 0) return null;
-                      return advJson('关系条目', ['relationships', at], rel, 'relof-' + npcOpen.i);
+                      return advJson('关系条目', ['relationships', at], rel, 'relof-' + npcIndex);
                     })()
                   )
                 ),
@@ -12199,205 +12908,7 @@ function toggleFans(npc) {
          * 设定页的「更新与提交」卡片。
          * 手机浏览器上用：按钮整行、结果多行可滚、出错时把 git 的原话摆出来。
          */
-        function GitCfg() {
-          const [info, setInfo] = React.useState(null);
-          const [chk, setChk] = React.useState(null);
-          const [busy, setBusy] = React.useState('');
-          const [out, setOut] = React.useState('');
-          const [repo, setRepo] = React.useState('');
-          const [url, setUrl] = React.useState('');
 
-          function pull() {
-            Promise.resolve(call('gitStatus'))
-              .then((r) => {
-                setInfo(r);
-                if (r && r.repo) setRepo((v) => v || r.repo);
-              })
-              .catch((e) => setOut('读取版本失败：' + String((e && e.message) || e)));
-          }
-          React.useEffect(() => {
-            pull();
-          }, []);
-
-          function act(name, args, label, confirmText) {
-            if (confirmText) {
-              ask(confirmText).then((ok) => {
-                if (ok) act(name, args, label, '');
-              });
-              return;
-            }
-            setBusy(label);
-            setOut('');
-            Promise.resolve(call(name, args))
-              .then((r) => {
-                setBusy('');
-                if (!r || !r.ok) {
-                  setOut('✗ ' + ((r && r.error) || '失败'));
-                  return;
-                }
-                if (name === 'checkUpdate') {
-                  setChk(r);
-                  setOut(r.behind ? '有 ' + r.behind + ' 个新提交' : '已是最新');
-                  return;
-                }
-                if (name === 'cloneRepo') {
-                  setOut('已克隆到 ' + (r.head || '') + '\n现在可以点「更新到最新」了。');
-                  pull();
-                  return;
-                }
-                if (name === 'pullUpdate') {
-                  setChk(null);
-                  setOut('已更新到 ' + (r.head || '') + '（' + (r.copied || '') + '）\n重启 DSH 后生效。');
-                  pull();
-                  return;
-                }
-                if (name === 'commitPush') {
-                  setOut('已上传：' + (r.head || '') + '\n' + (r.committed || ''));
-                  pull();
-                  return;
-                }
-                setOut('完成');
-              })
-              .catch((e) => {
-                setBusy('');
-                setOut('✗ ' + String((e && e.message) || e));
-              });
-          }
-
-          const row = (label, v) =>
-            h(
-              'div',
-              { style: { display: 'flex', gap: 8, marginTop: 6, fontSize: 'var(--sim-fs-2)' } },
-              h('span', { style: { flex: '0 0 58px', color: 'var(--sim-t2)' } }, label),
-              h('span', { style: { flex: '1 1 auto', minWidth: 0, wordBreak: 'break-all' } }, v || '—')
-            );
-
-          return h(
-            'div',
-            { className: 'sim-card' },
-            h('div', { style: { fontWeight: 600, marginBottom: 4 } }, '更新与提交'),
-            h('div', { className: 'sim-hint' }, '仓库与插件目录不是同一份文件，提交和更新都会在两边各拷一次。'),
-            row('当前', info && info.ok ? (info.head || '') + (info.date ? ' · ' + info.date : '') : ''),
-            row('远端', info && info.ok ? info.remote : ''),
-            h(
-              'div',
-              { className: 'sim-field' },
-              h('label', null, '仓库目录'),
-              h('input', {
-                value: repo,
-                placeholder: '默认 workspace/_repo/anotherlife',
-                onChange: (e) => setRepo(e.target.value),
-              }),
-              h(
-                Btn,
-                {
-                  disabled: !!busy,
-                  onClick: () =>
-                    Promise.resolve(call('setRepoDir', { repoDir: repo }))
-                      .then(() => {
-                        setOut('仓库目录已记住');
-                        pull();
-                      })
-                      .catch((e) => setOut('✗ ' + String((e && e.message) || e))),
-                },
-                '记住'
-              )
-            ),
-            h(
-              'div',
-              { className: 'sim-field' },
-              h('label', null, '远端地址'),
-              h('input', {
-                value: url,
-                placeholder: 'https://github.com/ntyt123/anotherlife.git',
-                onChange: (e) => setUrl(e.target.value),
-              }),
-              h(
-                Btn,
-                {
-                  disabled: !!busy,
-                  onClick: () =>
-                    act(
-                      'cloneRepo',
-                      { url: url, dir: repo },
-                      '克隆',
-                      '把远端仓库克隆到上面的「仓库目录」。\n该目录必须是空的或不存在。\n\n确定继续？'
-                    ),
-                },
-                busy === '克隆' ? '克隆中…' : '克隆到这里'
-              )
-            ),
-            h('div', { className: 'sim-hint', style: { marginTop: 4 } }, '仓库目录要填一个空目录，不是插件目录。'),
-            h(
-              'div',
-              { className: 'sim-acts', style: { marginTop: 10, flexWrap: 'wrap' } },
-              h(
-                Btn,
-                { big: true, disabled: !!busy, onClick: () => act('checkUpdate', {}, '检查', null) },
-                busy === '检查' ? '检查中…' : '检查更新'
-              )
-            ),
-            chk && chk.behind
-              ? h(
-                  'div',
-                  { className: 'sim-hint', style: { marginTop: 6, whiteSpace: 'pre-wrap' } },
-                  chk.log.join('\n')
-                )
-              : null,
-            h(
-              'div',
-              { className: 'sim-acts', style: { marginTop: 8, flexWrap: 'wrap' } },
-              h(
-                Btn,
-                {
-                  big: true,
-                  disabled: !!busy,
-                  onClick: () =>
-                    act(
-                      'pullUpdate',
-                      {},
-                      '更新',
-                      '更新会把仓库和插件目录都对齐到远端，本地未提交的改动会全部丢弃。\n\n确定继续？'
-                    ),
-                },
-                busy === '更新' ? '更新中…' : '更新到最新'
-              ),
-              h(
-                Btn,
-                {
-                  big: true,
-                  disabled: !!busy,
-                  onClick: () =>
-                    act(
-                      'commitPush',
-                      {},
-                      '提交',
-                      '会把插件目录和卡片拷进仓库，然后提交并上传。\n\n确定继续？'
-                    ),
-                },
-                busy === '提交' ? '上传中…' : '提交并上传'
-              )
-            ),
-            out
-              ? h(
-                  'div',
-                  {
-                    className: 'sim-hint',
-                    style: {
-                      marginTop: 8,
-                      whiteSpace: 'pre-wrap',
-                      wordBreak: 'break-all',
-                      maxHeight: 160,
-                      overflow: 'auto',
-                      fontFamily: 'ui-monospace,Menlo,Consolas,monospace',
-                    },
-                  },
-                  out
-                )
-              : null,
-            h('div', { className: 'sim-hint', style: { marginTop: 6 } }, '更新完要重启 DSH，宿主侧代码才会重新加载。')
-          );
-        }
         function SoundCfg() {
           const so = Object.assign({ on: true, vol: 1 }, liftOldVol((dcfg && dcfg.sound) || {}));
           const on = so.on !== false;
@@ -12462,14 +12973,7 @@ function toggleFans(npc) {
                 return run(call('saveReasoning', { reasoning: r }, gameId));
             }
             /** 正文的思考强度（主模型那一档） */
-            function pickBodyReason(v) {
-                const cfg = Object.assign({}, dcfg);
-                const r = Object.assign({}, cfg.reasoning || {});
-                r.body = v;
-                cfg.reasoning = r;
-                upd({ config: cfg });
-                return run(call('saveReasoning', { reasoning: r }, gameId));
-            }
+
 
 
             function applySlot() {
@@ -12679,6 +13183,8 @@ const STYLE_NOTES_DEFAULT = [
   '  ③ 在脑子里预演到能直接落笔。第一个想到的是最平庸的那版 —— 再往前想一层。',
   '· 落笔时用画面语言：镜头、光线、布料被压出的褶子、温度、声音、呼吸的节奏。不写名词。'
 ].join('\n');
+          const visibleStyleNotes = state.simulation?.enabled && (dcfg.styleNotes == null || String(dcfg.styleNotes).replace(/\r\n/g,'\n') === STYLE_NOTES_DEFAULT.replace(/\r\n/g,'\n')) ? '' : dcfg.styleNotes == null ? STYLE_NOTES_DEFAULT : dcfg.styleNotes;
+
 /** think 块是不是漂成英文了。中文不到英文的一半、且英文超过 40 个字母，就判定跑偏。
  *  为什么要提示：一旦用英文想，那七节的结构就不跟了，自检等于没做。 */
 function thinkDrifted(t) {
@@ -12877,13 +13383,13 @@ function thinkDrifted(t) {
                 h('div', { className: 'sim-field', style: { marginTop: 10 } },
                   h('label', null, '自己的调整'),
                   h('textarea', {
-                    key: 'notes:' + String((dcfg && dcfg.styleNotes) == null ? STYLE_NOTES_DEFAULT : dcfg.styleNotes),
+                    key: 'notes:' + String(visibleStyleNotes),
                     style: { minHeight: 88, width: '100%', boxSizing: 'border-box', padding: '8px 10px', fontSize: 'var(--sim-fs-2)', lineHeight: 1.6, borderRadius: 8, border: '1px solid var(--sim-bd)', background: 'var(--sim-bg)', color: 'var(--sim-t1)', resize: 'vertical' },
-                    defaultValue: (dcfg && dcfg.styleNotes) == null ? STYLE_NOTES_DEFAULT : dcfg.styleNotes,
+                    defaultValue: visibleStyleNotes,
                     placeholder: '写你不满意的地方。比如：音乐是美的，不是噪音／主角不抽烟／别写宿命感……',
                     onBlur: function (e) {
                       var v = String(e.target.value || '');
-                      if (v === String((dcfg && dcfg.styleNotes) == null ? STYLE_NOTES_DEFAULT : dcfg.styleNotes)) return;
+                      if (v === String(visibleStyleNotes)) return;
                       var c = Object.assign({}, dcfg);
                       c.styleNotes = v;
                       upd({ config: c });
@@ -13011,6 +13517,68 @@ function thinkDrifted(t) {
                   '列表里带括号的是非写作类 skill（purpose 不是 writing）。'
                 ),
               ),
+            ),
+
+            /* ── 提示词 ── */
+            group(
+              'prompts',
+              '提示词',
+              promptList ? (promptList.filter(x => x.modified).length ? promptList.filter(x => x.modified).length + ' 段已修改' : '全部为默认') : '点开读取',
+              h(
+                'div',
+                { className: 'sim-card' },
+                h('div', { className: 'sim-hint' }, '这些文本会原样进入发给模型的提示词，跨存档共用。'),
+                h(
+                  'div',
+                  { className: 'sim-acts', style: { marginTop: 8 } },
+                  h(Btn, {
+                    disabled: promptBusy,
+                    onClick: () => {
+                      setPromptBusy(true);
+                      promptCall('promptOverrides').then(() => setPromptBusy(false)).catch((e) => { setPromptBusy(false); setErr(String((e && e.message) || e)); });
+                    },
+                  }, '重新读取')
+                ),
+                !promptList
+                  ? null
+                  : promptList.map((p) =>
+                      h(
+                        'div',
+                        { key: p.key, style: { marginTop: 12 } },
+                        h('div', { style: { fontWeight: 600 } }, p.label, p.modified ? ' · 已修改' : ''),
+                        p.note ? h('div', { className: 'sim-hint' }, p.note) : null,
+                        h('textarea', {
+                          className: 'sim-inp',
+                          rows: 18,
+                          style: { width: '100%', minHeight: 280, fontFamily: 'inherit', lineHeight: 1.7 },
+                          value: p.text || p.default || '',
+                          onChange: (e) => {
+                            const v = e.target.value;
+                            setPromptList((list) => list.map((x) => (x.key === p.key ? { ...x, text: v } : x)));
+                          },
+                        }),
+                        h(
+                          'div',
+                          { className: 'sim-acts', style: { marginTop: 6 } },
+                          h(Btn, {
+                            disabled: promptBusy,
+                            onClick: () => {
+                              setPromptBusy(true);
+                              const cur = (promptList.find((x) => x.key === p.key) || {}).text || '';
+                              promptCall('promptSave', { key: p.key, text: cur }).then(() => setPromptBusy(false)).catch((e) => { setPromptBusy(false); setErr(String((e && e.message) || e)); });
+                            },
+                          }, '保存'),
+                          h(Btn, {
+                            disabled: promptBusy,
+                            onClick: () => {
+                              setPromptBusy(true);
+                              promptCall('promptReset', { key: p.key }).then(() => setPromptBusy(false)).catch((e) => { setPromptBusy(false); setErr(String((e && e.message) || e)); });
+                            },
+                          }, '重置')
+                        )
+                      )
+                    )
+              )
             ),
 
             /* ── 破限词 ── */
@@ -13231,7 +13799,7 @@ function thinkDrifted(t) {
                         Promise.resolve(call('importBegin', {}, gameId))
                           .then(async () => {
                             for (let i = 0; i < parts.length; i++) {
-                              await call('importChunk', { data: parts[i] }, gameId);
+                              await call('importChunk', { data: parts[i], index: i }, gameId);
                             }
                             return call('importCommit', {}, gameId);
                           })
@@ -13308,6 +13876,10 @@ function thinkDrifted(t) {
               'local',
               '本局与调试',
               stInfo ? fmtKB(stInfo.bytes) + ' · ' + (stInfo.turns || 0) + ' 轮' : '',
+              h('div', { className: 'sim-card' },
+                h('div', { style: { fontWeight: 600, marginBottom: 6 } }, '资料核对'),
+                h(Btn, { disabled: dataRepairBusy, onClick: repairBasicDataNow }, dataRepairBusy ? '正在核对…' : '核对资料')
+              ),
               /* ── 历史小结 ── */
               h('div', { className: 'sim-card' },
                 h('div', { style: { fontSize: 'var(--sim-fs-4)', fontWeight: 600, marginBottom: 6 } }, '重建历史小结'),
@@ -13325,17 +13897,19 @@ function thinkDrifted(t) {
                       call('rebuildSummaries', {}, gameId)
                         .then(function (r) {
                           setRebuildBusy(false);
-                          setNote('重建完成：' + (r && r.已重写 != null ? r.已重写 : '?') + ' / ' + (r && r.总轮数 != null ? r.总轮数 : '?') + ' 条');
-                          try { load(); } catch (e) {}
+                          setMaintenanceNote('重建完成：' + (r && r.已重写 != null ? r.已重写 : '?') + ' / ' + (r && r.总轮数 != null ? r.总轮数 : '?') + ' 条');
+                          Promise.resolve(call('getState', {}, gameId)).then(setState).catch((error) => setMaintenanceNote('刷新失败：' + String(error && error.message || error)));
                         })
                         .catch(function (e) {
                           setRebuildBusy(false);
-                          setNote('重建失败：' + String((e && e.message) || e));
+                          setMaintenanceNote('重建失败：' + String((e && e.message) || e));
                         });
                     });
                   },
                 }, rebuildBusy ? '正在重建…' : '开始重建')
               ),
+
+              maintenanceNote ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, maintenanceNote) : null,
 
               /* ── 旧档补电话 ── */
               h('div', { className: 'sim-card', style: { marginTop: 14 } },
@@ -13353,12 +13927,12 @@ function thinkDrifted(t) {
                         var 待 = r && r.待补 != null ? r.待补 : '?';
                         var 空 = r && r.留空 != null ? r.留空 : 0;
                         setPhoneFillInfo({ 补: 补, 待: 待, 空: 空, 文件: (r && r.文件) || '', 说明: (r && r.说明) || '' });
-                        setNote(待 === 0 ? '所有人都有电话了' : '补了 ' + 补 + ' / ' + 待 + ' 人' + (空 ? '，' + 空 + ' 人留空' : ''));
-                        try { load(); } catch (e) {}
+                        setMaintenanceNote(待 === 0 ? '所有人都有电话了' : '补了 ' + 补 + ' / ' + 待 + ' 人' + (空 ? '，' + 空 + ' 人留空' : ''));
+                        Promise.resolve(call('getState', {}, gameId)).then(setState).catch((error) => setMaintenanceNote('刷新失败：' + String(error && error.message || error)));
                       })
                       .catch(function (e) {
                         setPhoneFillBusy(false);
-                        setNote('补电话失败：' + String((e && e.message) || e));
+                        setMaintenanceNote('补电话失败：' + String((e && e.message) || e));
                       });
                   },
                 }, phoneFillBusy ? '正在补…' : '补齐电话'),
@@ -13466,7 +14040,7 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
               'dev',
               '开发',
               null,
-              h(GitCfg, { key: 'gitcfg' }),
+              h(GitCfg, { ask }),
             h('div', { className: 'sim-card' },
               h('div', { style: { fontWeight: 600, marginBottom: 6 } }, '快照'),
               h('div', { className: 'sim-hint' }, '把当前进度整份存下来，随时回到这一刻。最多 ' + snapMax + ' 份。'),
@@ -13529,9 +14103,13 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
           else if (phase === 'world') view = worldForm;
           else if (phase === 'character') view = charFormView();
           else if (tab === 'play') view = playView;
-          else if (tab === 'protagonist') view = protEditor;
+          else if (tab === 'protagonist') view = h(React.Fragment, null,
+            h('div', { className: 'sim-acts' }, [['data','资料'],['careers',state.simulation?.profile?.roleLabel || '任职'],['skills','技能']].map(([id,label]) => h('button', { key:id, className:'sim-btn' + (genericCharacterTab === id ? ' primary' : ''), onClick:() => setGenericCharacterTab(id) }, label))),
+            genericCharacterTab === 'data' ? h(React.Fragment, null, protEditor, genericView('records')) : genericView(genericCharacterTab));
           else if (tab === 'star') view = starEditor;
-          else if (tab === 'world') view = worldEditor;
+          else if (tab === 'world') view = h(React.Fragment, null, worldEditor, genericView('world'));
+          else if (tab === 'management') view = genericView('management');
+          else if (tab === 'boundSystem') view = genericView('system');
           else if (tab === 'gallery') view = h(GalleryView, {
   ask: ask,
             list: () => call('galleryList', {}, gameId),
@@ -13604,17 +14182,47 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
               : null;
 
           /** 发一轮：发出去的同时开始轮询进行到哪一步了 */
+          function renderIssueReason(issue) {
+            const details=issue?.step==='资料'&&Array.isArray(issue.details)?issue.details:[];
+            if(!details.length)return h('span',{className:'why'},issue?.why||'这一步没有成功');
+            const match=String(issue.why||'').match(/^(\d+)项资料更新已跳过/),total=match?Number(match[1]):details.length;
+            const labels={protagonist:'主角',world:'世界',npcs:'角色',relationships:'关系',skills_items:'技能与物品',实体资产:'实体资产',虚拟资产:'虚拟资产',simulation:'经营'};
+            return h('div',{className:'why'},
+              h('div',null,match?match[0]:'以下资料更新已跳过'),
+              h('ul',{style:{margin:'4px 0 0',paddingLeft:18,whiteSpace:'pre-wrap',overflowWrap:'anywhere'}},details.map((d,index)=>{
+                const path=Array.isArray(d?.path)?d.path.filter(p=>typeof p==='string'||typeof p==='number'):[];
+                const field=path.map((p,i)=>typeof p==='number'?'第'+(p+1)+'项':i===0&&Object.prototype.hasOwnProperty.call(labels,p)?labels[p]:p).join(' / ')||'未记录字段';
+                const hasValue=typeof d?.attemptedValueText==='string';
+                return h('li',{key:index},
+                  h('div',null,field+'：'+String(d?.why||d?.reason||'格式或取值无效')),
+                  h('div',{className:'sim-hint',style:{marginTop:3,overflowWrap:'anywhere'}},'提交路径：',h('code',null,typeof d?.attemptedPathText==='string'?d.attemptedPathText:JSON.stringify(path))),
+                  hasValue?h('details',{open:true,style:{marginTop:4}},h('summary',{style:{cursor:'pointer'}},d.attemptedValueCandidates?'模型拟写入的冲突值（均未应用）':'模型拟写入的新值（未应用）'),h('pre',{style:{whiteSpace:'pre-wrap',overflowWrap:'anywhere',overflowY:'auto',maxHeight:'min(35vh,320px)',margin:'6px 0',padding:8,background:'var(--sim-bg2)',borderRadius:6,fontSize:'var(--sim-fs-2)'}},d.attemptedValueText),d.attemptedValueRedacted?h('div',{className:'sim-hint'},'凭据字段已隐藏'):null)
+                    :h('div',{className:'sim-hint',style:{marginTop:4}},d?.attemptedValueMissing?'本次提交没有提供新值':d?.attemptedValueUnavailable||'该轮未保存拟写入值'));
+              })),
+              total>details.length?h('div',{className:'sim-hint',style:{marginTop:4}},'另有'+(total-details.length)+'项未保存字段明细'):null);
+          }
+
           function sendTurn() {
-            const t = input;
-            if (!t.trim() || busy) return;
+            const pendingActions = genericPending.slice();
+            const t = input.trim() ? input : pendingActions.length ? '执行已选择的经营操作。' : '';
+            if (!t.trim() || busy || genericSendingRef.current) return;
+            genericSendingRef.current = true;
             setInput('');
             setOptsOpen(false);
             // 生成失败时这一轮不会写进存档（正文里没有可点「重发」的那一行），
             // 所以把行动还给输入框：直接再点一次「行动」就是重试，不用重新打一遍。
-            return runTurnCall(run(call('generateStory', { input: t }, gameId))).catch((e) => {
+            return runTurnCall(run(call('generateStory', { input: t, simulationActions: pendingActions }, gameId))).then((result) => {
+              const latest = (result && result.transcript || []).filter(x => x.role === 'assistant').slice(-1)[0];
+              if (latest && latest.simulationActionsCommitted && latest.simulationTurnComplete !== false) {
+                const submittedIds = new Set(pendingActions.map(x => x.id));
+                const ids = new Set((latest.simulationConsumedActionIds || [...submittedIds]).filter(id => submittedIds.has(id)));
+                setGenericPendingGroup(old => String(old.gameId) === String(gameId) ? { gameId, actions: old.actions.filter(x => !ids.has(x.id)) } : old);
+              }
+              return result;
+            }).catch((e) => {
               setInput((cur) => (String(cur || '').trim() ? cur : t));
               throw e;
-            });
+            }).finally(() => { genericSendingRef.current = false; });
           }
 
           /**
@@ -13698,8 +14306,10 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
               ? h(
                   'div',
                   { className: 'sim-input-wrap' },
+                  openingReminder(),
                   busy || stage ? stageBar() : null,
                   optsPanel,
+                  genericPending.length ? h(GenericPending, { key: String(gameId) + ':pending', actions: genericPending, busy, onChange: actions => setGenericPendingGroup({gameId,actions}) }) : null,
                   h(
                     'div',
                     { className: 'sim-input' },
@@ -13727,7 +14337,7 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
                     }),
                     busy
                       ? h(Btn, { onClick: () => run(call('stopGenerate', {}, gameId)) }, '停止')
-                      : h(Btn, { primary: true, disabled: !input.trim(), onClick: () => sendTurn() }, '行动')
+                      : h(Btn, { primary: true, disabled: !input.trim() && !genericPending.length, onClick: () => sendTurn() }, '行动')
                   )
                   // 阶段进度条不放这里：它一出现就会改 inputBar 的高度 → 正文容器被浏览器
                   // 重算尺寸时把滚动位置清掉（跳顶的根因）。改到正文末尾显示。
@@ -13806,6 +14416,7 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
             npcModalView(),
             assetModalView(),
             itemModalView(),
+            skillFloatView(),
             objEditModal(),
             UiPreviewModal(uiPrevOpen, () => setUiPrevOpen(false)),
             // 自己的确认框（替代 window.confirm —— 后者在 webview 里会把焦点弄丢）
@@ -13963,11 +14574,11 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
                                 else if (phoneApp2) { back = 'apphome'; }
                                 else { back = 'threads'; }
                                 }
-                              else if (phoneView === 'person') back = 'contacts';
+                              else if (phoneView === 'person') back = phonePerson?.scope === 'addressBook' ? 'addressbook' : 'contacts';
                               else if (phoneView === 'photo') back = 'album';
                               else if (inApp) back = 'apphome';
                               setPhoneBackTo('');
-                              if (back === 'home') { setPhoneThreadId(''); setPhoneWho(''); setPhoneApp2(''); }
+                              if (back === 'home' || back === 'addressbook') { setPhoneThreadId(''); setPhoneWho(''); setPhoneApp2(''); }
                               setPhoneView(back);
                             },
                           }, '‹'),
@@ -14295,11 +14906,7 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
           } catch (e) {
             const m = e && e.message ? e.message : String(e);
             console.error('[dsh-tavern-simulator] openOverlay 失败', e);
-            try {
-              setErr('模拟器打开失败：' + m);
-            } catch (_) {
-              /* 忽略 */
-            }
+            throw new Error('模拟器打开失败：' + m);
           }
         }
 

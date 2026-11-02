@@ -7,3 +7,6 @@ _backup/
 node_modules/
 .DS_Store
 Thumbs.db
+
+# Tavern 自动生成的入口（已跟踪项本轮不改索引）
+**/.tavern-entry.mjs

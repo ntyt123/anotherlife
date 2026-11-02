@@ -1,0 +1,14 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {BLOCK_DEFAULTS} from '../lib/prompt-defaults.mjs';
+import {initPromptStore,promptFilePath,registerPromptDefaults,listPrompts,savePrompt,resetPrompt,promptOverride,applyBlockOverrides,promptText,loadPrompts} from '../lib/prompt-overrides.mjs';
+const files={};
+initPromptStore('C:/fake-workspace/',{read:async p=>files[p]||'',write:async(p,body)=>{files[p]=body;}});
+registerPromptDefaults({appearance:'默认外貌规则',npcProfile:'默认人物规则',wardrobe:'默认衣着规则',simulation:'默认结算规则',phone:'默认手机规则',initialData:'默认开局规则',worldCreation:'默认世界规则'});
+test('提示词存在共享目录的同一个文件里，保存后重新载入仍能读到',async()=>{assert.equal(promptFilePath(),'C:/fake-workspace/simulator-prompts.json');await savePrompt('appearance','我改过的外貌规则');assert.ok(files[promptFilePath()],'应写入共享文件');initPromptStore('C:/fake-workspace/',{read:async p=>files[p]||'',write:async(p,body)=>{files[p]=body;}});await loadPrompts();assert.equal(promptOverride('appearance'),'我改过的外貌规则');assert.equal(promptText('appearance','默认外貌规则'),'我改过的外貌规则');});
+test('重置单条回到默认，其他条目的修改不受影响',async()=>{await savePrompt('appearance','改A');await savePrompt('npcProfile','改B');await resetPrompt('appearance');await loadPrompts();assert.equal(promptOverride('appearance'),'');assert.equal(promptOverride('npcProfile'),'改B');const a=listPrompts().find(x=>x.key==='appearance');assert.equal(a.modified,false);assert.equal(a.text,'');assert.equal(a.default,'默认外貌规则');});
+test('保存与默认相同的内容视为未修改，文件里不保留多余覆盖',async()=>{await savePrompt('npcProfile','默认人物规则');await loadPrompts();assert.equal(promptOverride('npcProfile'),'');assert.equal(listPrompts().find(x=>x.key==='npcProfile').modified,false);});
+test('未知提示词键被拒绝，不写坏文件',async()=>{await assert.rejects(()=>savePrompt('nope','x'),/未知提示词/);await assert.rejects(()=>resetPrompt('nope'),/未知提示词/);});
+test('正文四段可按标题整段替换，未修改时原样返回',async()=>{const text=['【输出格式】原格式','1) 正文','【反模式清单】原反模式','· 别全知','【写作要求】原写作要求','· 视角第三人称'].join('\n');assert.equal(applyBlockOverrides(text),text);await savePrompt('writer',['【写作要求】全文{{人称}}，以{{视角人物}}为视角人物。','· 我改过的写作要求'].join('\n'));await loadPrompts();const out=applyBlockOverrides(text);assert.match(out,/我改过的写作要求/);assert.match(out,/\{\{人称\}\}/);assert.doesNotMatch(out,/原写作要求/);assert.match(out,/【输出格式】原格式/);assert.match(out,/【反模式清单】原反模式/);});
+
+test('正文四段有静态默认文本，打开界面时不是空框',async()=>{initPromptStore('C:/fake-workspace/',{read:async()=>'',write:async()=>{}});registerPromptDefaults({...BLOCK_DEFAULTS,appearance:'默认外貌规则'});await loadPrompts();const list=listPrompts();for(const key of ['writer','anti','output','world']){const item=list.find(x=>x.key===key);assert.ok(item.default.length>50,key+' 默认文本为空');assert.equal(item.text,'');assert.equal(item.modified,false);}assert.ok(list.find(x=>x.key==='writer').default.includes('【写作要求】'));assert.ok(list.find(x=>x.key==='anti').default.includes('【反模式清单】'));});

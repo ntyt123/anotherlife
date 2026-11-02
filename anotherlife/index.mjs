@@ -1,3 +1,36 @@
+import {castParseTool,decodeCastResult,CAST_PARSE_RULES} from './lib/cast-protocol.mjs';
+import {readCreationChecklist,refreshCreationChecklist} from './lib/creation-checklist.mjs';
+import {cleanSkillAndItemNotes,PLACEHOLDER_RULE,stripPlaceholderNotes,dedupeStoryLists} from './lib/description-hygiene.mjs';
+import {cleanNewsItems,NEWS_RULES} from './lib/news-text.mjs';
+import {CREATION_WARDROBE_RULES} from './lib/creation-wardrobe.mjs';
+import {assetOwnerNames,duplicateAssetSummary,mergeDuplicateAssets,mergeDuplicateRights,sameAssetEntity} from './lib/asset-identity.mjs';
+import {CHARACTER_VOICE_RULES,cleanCharacterProfiles} from './lib/character-voice.mjs';
+import { planActorIdentities } from './lib/actor-identities.mjs';
+import { createGenericHost } from './lib/generic-host.mjs';
+import { SIMULATION_UPDATE_SCHEMA, SIMULATION_RULES, updateSimulationSettings, normalizeSimulation } from './lib/generic-simulation.mjs';
+import { INITIAL_LOCATION_RULES, sanitizeInitialLocations } from './lib/initial-location.mjs';
+import { scentStepHours, isAdultScentActor } from './lib/scent-clock.mjs';
+import { APPEARANCE_RULES, APPEARANCE_SCHEMA, assertGeneratedAppearances, cleanGeneratedAppearanceNotes, stripAppearanceMeta, appearanceBasis } from './lib/appearance.mjs';
+import { OCCUPATION_RULES, NPC_PROFILE_RULES, NPC_PROFILE_GENERATION_RULES, NPC_PROFILE_SCHEMA, NPC_PROFILE_FIELDS, npcProfileTasks, npcProfileTool, inspectNpcProfiles, readNpcProfile, protectNpcProfileUpdate, protectNpcProfileExtras, reconcileNpcProfileIssues, refreshNpcProfileIssues, npcProfileAuditDiff } from './lib/npc-profile.mjs';
+import { feedStorySnapshot, recordFeedOperation, findFeedOperation } from './lib/feed-story.mjs';
+import { buildPhoneStoryBridge } from './lib/phone-story.mjs';
+import { phoneCharacterContext, phoneMissingPersonality, phoneStoryMemory, PHONE_CONTINUITY_RULES, phoneConversationMessages } from './lib/phone-context.mjs';
+import {normalizeSettlementUpdate,COMPAT_DAILY_FIELDS} from './lib/settlement-compat.mjs';
+import { BASIC_WEAR_KEYS, cleanGeneratedValue, extraModelDiffs, rejectedUpdateDetail, dedupeModelDiffs, wardrobeReviewDiff, wardrobeTasks, completionPlan, restrictCompletion, completionAttemptDiff, dataIntegrityIssues, COMPLETION_TOOL } from './lib/data-integrity.mjs';
+import { WARDROBE_RULES, wardrobeCompletionTool, inspectWardrobeResult, currentWardrobeIssues, reconcileWardrobeIssues, refreshStoredWardrobeIssues, wardrobeDiagnosticDiff } from './lib/wardrobe-repair.mjs';
+import { INITIAL_DATA_RULES, initialParseTool, mergeInitialData, sanitizeInitialHomes, initialDataIssues, initialRepairPatch, seedInitialAssets } from './lib/initial-data.mjs';
+import {createCreationHost,worldCreationTool,creationWorldResult,normalizeCreationCareer,recordCreationWarnings,syncCreationWardrobes,creationBasis,WORLD_CREATION_RULES} from './lib/creation-flow.mjs';
+import {initPromptStore,registerPromptDefaults,applyBlockOverrides,promptText,loadPrompts,PROMPT_FILE_NAME} from './lib/prompt-overrides.mjs';
+import {BLOCK_DEFAULTS} from './lib/prompt-defaults.mjs';
+import { feedPeople, canReadFeed, assertFeedAccess, visibleFeed, commentRecords, replyTarget, appendFeedComment, findFeedAction, normalizeGeneratedFeed } from './lib/feed-core.mjs';
+import { seedInitialFriends, seedGamePhoneNumbers, phonePlatform, contactAddress, isPhoneContact, phoneContactRecord, addPhoneContact, listPhoneGroups, findPhoneGroup, createPhoneGroup, listPhoneThreads, deletePhoneThread, syncPhoneThreadVisibility } from './lib/phone-core.mjs';
+import { AsyncLocalStorage } from 'node:async_hooks';
+import { createAuxiliaryTransactions } from './lib/state-transactions.mjs';
+import { normalizeWeiboCache, matchWeiboPost, mergeWeiboActions, findReplyAction } from './lib/weibo-core.mjs';
+import { createHash, randomUUID } from 'node:crypto';
+import { createSerialQueue, createReplyStore, readJsonFile, assertSafePath, isSafePath, assertSafeValue, waitForStreamStep, closeStreamIterator } from './lib/runtime-core.mjs';
+import {plainStoryFallback} from './lib/story-fallback.mjs';
+import { ROUTE_NAMES, stripNoteTags, optionLineText, isOptionLine, collectOptionLines, splitTrailingOptions, splitStory } from './lib/story-parser.mjs';
 /**
  * 人生模拟器 — 宿主侧（stage 2a：完整数据层）
  *
@@ -15,16 +48,23 @@ export const inject = ['tavern'];
 
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { existsSync, cpSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
+import { existsSync, cpSync, mkdirSync, readdirSync, rmSync, readFileSync } from 'node:fs';
+import { execFile } from 'node:child_process';
 
 const P = 'dsh-tavern-simulator/';
   // phone：手机里的短信／微信／微博文字生成。单独一档 —— 它便宜、量大，
   // 不该跟结算抢同一个模型。留空则退回主模型。
-  const KEY_SLOTS = ['retrieve', 'settle', 'summary', 'assistant', 'phone'];
+  const KEY_SLOTS = ['retrieve', 'settle', 'summary', 'assistant', 'phone', 'weibo'];
 
 /** 每次改动宿主侧都改一下这个版本号：ping 会回报它，用来确认 Tavern 到底加载的是哪一版 */
-const REV = 'host-v70-notes-20261018r';
+const REV = (() => {
+  try {
+    const version = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')).version;
+    const hash = createHash('sha256');
+    for (const name of ['index.mjs', 'lib/runtime-core.mjs', 'lib/story-parser.mjs', 'lib/weibo-core.mjs', 'lib/state-transactions.mjs', 'lib/data-integrity.mjs', 'lib/phone-core.mjs', 'lib/initial-data.mjs', 'lib/feed-core.mjs', 'lib/wardrobe-repair.mjs']) hash.update(readFileSync(new URL('./' + name, import.meta.url), 'utf8').replace(/\r\n/g, '\n'));
+    return 'host-v71-' + version + '-' + hash.digest('hex').slice(0, 12);
+  } catch { return 'host-v71-source-unavailable'; }
+})();
 
 /**
  * 只有这一局用的是这些卡时，插件才出现在界面上（其余卡片游玩时完全不打扰）。
@@ -79,6 +119,8 @@ const STORE_DIR = (() => {
   if (dshData) return noTailSlash(path.join(dshData, 'workspace')).replace(/\\/g, '/') + '/';
   return 'C:/Users/yidan_zhou/AppData/Local/DSH-Tavern/data/workspace/';
 })();
+initPromptStore(STORE_DIR);
+registerPromptDefaults({...BLOCK_DEFAULTS,creationWardrobe:CREATION_WARDROBE_RULES,news:NEWS_RULES,appearance:APPEARANCE_RULES,npcProfile:NPC_PROFILE_RULES,wardrobe:WARDROBE_RULES,simulation:SIMULATION_RULES,phone:PHONE_CONTINUITY_RULES,initialData:INITIAL_DATA_RULES,worldCreation:WORLD_CREATION_RULES});
 const LEGACY_STATE = STORE_DIR + 'simulator-state.json';
 const PRESET_FILE = STORE_DIR + 'simulator-presets.json';
 /**
@@ -103,9 +145,21 @@ function keyRef(slot) {
 
 export function apply(ctx) {
   const fs = ctx.get('fs');
+  initPromptStore(STORE_DIR,{read:async p=>{const j=await readJsonFile(fs,[p,relOf(p)]);return j?JSON.stringify(j):'';},write:async(p,body)=>{const t=await fs.resolve(relOf(p)||p);await fs.writeText(t,body);}});
+  loadPrompts().catch(()=>{});
   const llm = ctx.get('llm');
   const adm = ctx.get('agentDefaultModel');
   const cred = ctx.get('credentials');
+  const serial = createSerialQueue();
+  const logSerial = createSerialQueue();
+  const replies = createReplyStore();
+  const stagedExtras = new WeakMap();
+  const revisions = new Map();
+  const requestContext = new AsyncLocalStorage();
+  const transactions = createAuxiliaryTransactions({ readJson, writeJson, statePath, readExtras: readBundleExtras, writeExtras: writeBundleExtras, warn: (message) => turnLog(message) });
+  const readonlyHandles = new Set(['ping', 'getState', 'turnProgress', 'stopGenerate', 'replyChunk', 'releaseReply', 'mainModel', 'modelChoices', 'modelsOf', 'readLogs', 'stateInfo', 'reasoningOptions', 'cardName']);
+  const sharedHandles = new Set(['saveWritingPrefs', 'saveJailbreak', 'savePerson', 'saveWritingSkill', 'applyPreset', 'saveOracleAgent', 'setKey', 'setSkin', 'saveConfig', 'saveReasoning', 'saveTokens', 'listPresets', 'savePreset', 'deletePreset', 'setRepoDir', 'gitStatus', 'checkUpdate', 'pullUpdate', 'commitPush', 'cloneRepo', 'galleryList', 'galleryGet', 'galleryAdd', 'galleryRename', 'galleryRemove']);
+  ctx.effect(() => () => replies.clear());
 
   // ────────────────────────────── 常量与空模板 ──────────────────────────────
 
@@ -442,8 +496,10 @@ const WEAR_KEYS = ['头部', '上衣', '内衣', '内裤', '下衣', '袜子', '
       /* 同上 */
     }
   }
-  async function appendLog(fileName, line) {
-    return appendLogRaw(fileName, stampAt(Date.now()) + ' ' + String(line) + '\n');
+  async function appendLog(fileName, line, detail) {
+    const file = fileName === 'summary' ? 'simulator-summary.log' : fileName;
+    const text = detail === undefined ? String(line) : '[' + String(line) + '] ' + String(detail);
+    return logSerial(String(file), () => appendLogRaw(file, stampAt(Date.now()) + ' ' + text + '\n'));
   }
   function titleLog(line) {
     return appendLog('simulator-title.log', line);
@@ -544,13 +600,13 @@ async function avatarToFile(key, dataUrl) {
   const v = String(dataUrl || '');
   if (!v || !v.startsWith('data:')) return v;   // 已经是文件名了
   // 指纹：长度 + 中间一段 + 末尾一段。够区分，又不怕截断太长。
-  const 指纹 = (v.length + '-' + v.slice(20, 34) + '-' + v.slice(-34)).replace(/[^A-Za-z0-9_-]/g, '').slice(0, 56);
+  const 指纹 = createHash('sha256').update(v).digest('hex');
   const name = safeId(String(key || 'x')).slice(0, 24) + '-' + 指纹 + '.img';
   const p = AVATAR_PREFIX + name;
   try {
     const t0 = await fs.resolve(p);
     const old = await fs.readText(t0);
-    if (old && old.length === v.length) return name;   // 同一个内容，不重写
+    if (old === v) return name;   // 同一个内容，不重写
   } catch (e) {
     /* 读不到就是还没写过，往下写 */
   }
@@ -663,17 +719,8 @@ async function avatarFromFile(name) {
   }
 
   /** 先试绝对路径，再试相对路径；两种都失败才算失败 */
-  async function readJson(path) {
-    for (const p of [path, relOf(path)]) {
-      try {
-        const t = await fs.resolve(p);
-        const text = await fs.readText(t);
-        return JSON.parse(text);
-      } catch (e) {
-        /* 换下一种路径 */
-      }
-    }
-    return null;
+  async function readJson(file) {
+    return readJsonFile(fs, [file, relOf(file)]);
   }
 
   /**
@@ -937,7 +984,24 @@ async function activeWritingSkill() {
     // 气味文案一直走的是内置三池兜底（日志里 [scent] 一次都没出现过）。
     await loadScentLines();
     await loadScentUnder();
-    let raw = await readJson(statePath(gameId));
+    await transactions.recover(gameId);
+    let raw;
+    let recoveryInfo = null;
+    try {
+      raw = await readJson(statePath(gameId));
+      if (raw != null) {
+        if (typeof raw !== 'object' || Array.isArray(raw)) throw new Error('存档结构无效');
+        validateImportState(Object.assign({ transcript: [] }, raw));
+      }
+    }
+    catch (error) {
+      const backup = await readJson(backupPath(gameId));
+      if (!backup || typeof backup !== 'object' || Array.isArray(backup)) throw error;
+      validateImportState(Object.assign({ transcript: [] }, backup));
+      raw = backup;
+      recoveryInfo = { source: 'backup', message: '主存档损坏，已读取备份' };
+    }
+    if (raw != null && (typeof raw !== 'object' || Array.isArray(raw))) throw new Error('存档结构无效');
     if (!raw) {
       // 一次性迁移：很早期的版本只存了一个全局单档。
       // 迁移完立刻把它清空，否则每开一个新故事都会被灌一次同样的数据。
@@ -1002,6 +1066,13 @@ async function activeWritingSkill() {
     s.summaries = Array.isArray(src.summaries) ? src.summaries : [];
     s.starting = src.starting && typeof src.starting === 'object' ? src.starting : null;
     s.gameId = gameId;
+    s._revision = Number.isSafeInteger(Number(s._revision)) && Number(s._revision) >= 0 ? Number(s._revision) : 0;
+    revisions.set(String(gameId), Math.max(revisions.get(String(gameId)) || 0, s._revision));
+    s.weiboPending = mergeWeiboActions(s.weiboPending);
+    WB_PENDING[String(gameId)] = s.weiboPending;
+    s.wbMine = Array.isArray(s.wbMine) ? s.wbMine : [];
+    for (const entry of s.transcript || []) if (entry && !entry.textVersion) entry.textVersion = createHash('sha256').update(String(entry.body || '')).digest('hex').slice(0, 24);
+    if (recoveryInfo) s.recoveryInfo = recoveryInfo;
     // 一致性：正文一段都没有 = 这局还没真正开始，不该停在「正文中」
     if (!s.transcript.length && s.phase === 'play') s.phase = 'world';
     // 读档时就把「穿着」补齐：开局那次盘点漏掉的角色（家人这种
@@ -1011,9 +1082,11 @@ async function activeWritingSkill() {
     // 老存档里袜子「气味」是模型写的单句，换成三句格式。
     // 放这里而不是 tickSockScent：那个只在生成新一轮时才跑，
     // 玩家停着不动的话老文本永远不会被换掉。
-    if (migrateScentText(s) > 0) {
-      try { await saveState(s); } catch (e) { /* 存不下就下次再说 */ }
-    }
+    migrateScentText(s); // 读取只迁移内存；下一次正常保存时落盘。
+    cleanCharacterProfiles(s); // 只归一化当前内存，下一次正常保存再落盘。
+    cleanSkillAndItemNotes(s);
+    dedupeStoryLists(s);
+    cleanNewsItems(s);
     return s;
   }
 
@@ -1057,7 +1130,19 @@ async function activeWritingSkill() {
    * 写这一局的状态。
    */
   async function saveState(s) {
+    if (s.simulation?.enabled) {
+      const identities = planActorIdentities(s);
+      const changes = identities.diffs;
+      if (JSON.stringify(s.simulation.actorRefs || []) !== JSON.stringify(identities.refs)) changes.push({path:['simulation','actorRefs'],to:identities.refs});
+      if (changes.length) {
+        applyDiffs(s,changes);
+        const last=(s.transcript||[]).slice().reverse().find(t=>t.role==='assistant');
+        if(last&&Array.isArray(last.diffs))last.diffs.push(...changes);
+      }
+    }
+    syncPhoneThreadVisibility(s);
     slimContext(s);
+    s._revision = Math.max(Date.now(), (revisions.get(String(s.gameId)) || 0) + 1, (Number(s._revision) || 0) + 1);
     const out = Object.assign({}, s);
     // 头像从存档里搬出去：这里只留文件名，内容在独立文件里。
     // 转换失败（写不进磁盘）就原样留着 dataURL —— 宁可存档大一点，不能把头像弄丢。
@@ -1070,9 +1155,14 @@ async function activeWritingSkill() {
     }
     delete out.keyStatus;
     delete out.gameId;
+    delete out.recoveryInfo;
     const target = statePath(s.gameId);
     const seq = Number((s.story && s.story.current_message_index) || 0);
-    if (seq % BACKUP_EVERY === 0) {
+    if (s.recoveryInfo) {
+      const damaged = await fs.readText(await fs.resolve(target));
+      await fs.writeText(await fs.resolve(target + '.corrupt-' + Date.now() + '.json'), damaged);
+    }
+    if (!s.recoveryInfo && seq % BACKUP_EVERY === 0) {
       const prev = await readJson(target);
       if (prev) {
         try {
@@ -1082,7 +1172,12 @@ async function activeWritingSkill() {
         }
       }
     }
-    await writeJson(target, out);
+    const extras = stagedExtras.get(s);
+    try {
+      await transactions.commit(s.gameId, out, extras, () => writeJson(target, out));
+      revisions.set(String(s.gameId), s._revision);
+    } finally { stagedExtras.delete(s); }
+    delete s.recoveryInfo;
     return s;
   }
 
@@ -1166,30 +1261,33 @@ async function activeWritingSkill() {
     return String(toText(v)).replace(/\s+/g, ' ').slice(0, n || 40);
   }
   function setByPath(obj, path, value) {
+    assertSafePath(path);
+    assertSafeValue(value);
     let v = obj;
     for (let i = 0; i < path.length - 1; i++) {
       const k = path[i];
-      if (v[k] == null || typeof v[k] !== 'object') v[k] = {};
+      if (!Object.prototype.hasOwnProperty.call(v, k) || v[k] == null || typeof v[k] !== 'object') v[k] = typeof path[i + 1] === 'number' ? [] : {};
       v = v[k];
     }
     v[path[path.length - 1]] = value;
   }
 
   function getByPath(obj, path) {
+    if (!isSafePath(path)) return undefined;
     let v = obj;
-    for (let i = 0; i < path.length; i++) {
-      if (v == null || typeof v !== 'object') return undefined;
-      v = v[path[i]];
+    for (const key of path) {
+      if (!v || typeof v !== 'object' || !Object.prototype.hasOwnProperty.call(v, key)) return undefined;
+      v = v[key];
     }
     return v;
   }
 
   function delByPath(obj, path) {
-    if (!Array.isArray(path) || !path.length) return;
+    if (!isSafePath(path)) return;
     let v = obj;
     for (let i = 0; i < path.length - 1; i++) {
       const k = path[i];
-      if (v[k] == null || typeof v[k] !== 'object') return;
+      if (!Object.prototype.hasOwnProperty.call(v, k) || v[k] == null || typeof v[k] !== 'object') return;
       v = v[k];
     }
     const last = path[path.length - 1];
@@ -1209,11 +1307,12 @@ async function activeWritingSkill() {
    */
   function applyDiffs(s, diffs) {
     for (const d of diffs || []) {
-      if (!d || !Array.isArray(d.path) || !d.path.length) continue;
+      if (!d || !isSafePath(d.path)) continue;
+      try { assertSafeValue(d.to); } catch (e) { continue; }
       // 顶层白名单。模型偶尔把路径写成 [身体] 而不是 [protagonist, 身体]，
       // 那样会在存档根上凭空多一个键，界面读不到，等于这条更新静默丢了。
       // 这里直接挡掉并记一笔，好过留一堆垃圾键。
-      if (['world', 'protagonist', 'npcs', 'relationships', 'story'].indexOf(d.path[0]) < 0) {
+      if (['world', 'protagonist', 'npcs', 'relationships', 'story', 'skills_items', '实体资产', '虚拟资产', 'simulation'].indexOf(d.path[0]) < 0) {
         try { turnLog('[diff] 丢掉异常顶层：' + d.path.join('.')); } catch (e) {}
         continue;
       }
@@ -3510,8 +3609,10 @@ function migrateScentText(s) {
     const sv = Number(w.气味强度);
     if (!Number.isFinite(sv)) return;        // 没强度的留给 tickSockScent 补
     const mat = w.材质 || detectSockMaterial(w.物品);
-    if (!byAI) w.气味 = scentTextOf(scentLevel(sv), mat, w.物品, String(n.姓名 || ''));
-    changed++;
+    if (!byAI) {
+      const next = scentTextOf(scentLevel(sv), mat, w.物品, String(n.姓名 || ''));
+      if (next !== w.气味) { w.气味 = next; changed++; }
+    }
   });
   return changed;
 }
@@ -3835,7 +3936,7 @@ function tickUnderScent(s, dh, body) {
   if (!s.story.underSeedV2) {
     s.story.underSeedV2 = 1;
     npcs0.forEach((n, i) => {
-      if (String(n && n.性别 || '').indexOf('男') >= 0) return;
+      if (!isAdultScentActor(n, s.world && s.world.当前日期时间)) return;
       const w = n && n.穿着;
       if (!w || typeof w !== 'object') return;
       ['内衣', '内裤'].forEach((key) => {
@@ -3862,7 +3963,7 @@ function tickUnderScent(s, dh, body) {
   list.forEach(({ owner, base }) => {
     if (!owner || typeof owner !== 'object') return;
     // 只算女性（跟袜子气味、沾染同一条设定）
-    if (String(owner.性别 || '').indexOf('男') >= 0) return;
+    if (!isAdultScentActor(owner, s.world && s.world.当前日期时间)) return;
     const w = owner.穿着;
     if (!w || typeof w !== 'object') return;
     ['内衣', '内裤'].forEach((key) => {
@@ -3938,11 +4039,11 @@ function tickUnderScent(s, dh, body) {
       }
       
       // ① 累加：只在时间推进时
-      if (!(dh > 0)) return;
+      if (!(scentStepHours(dh) > 0)) return;
       // 不在场就不跟时间走（跟袜子一个道理：我们不知道她换没换）
       const who = String(owner.姓名 || '').trim();
       if (bodyText && who.length >= 2 && bodyText.indexOf(who) < 0) return;
-      const dhEff = Math.min(dh, 24);
+      const dhEff = scentStepHours(dh);
       const rate = 100 / full;
       const before = Number(slot.气味强度) || 0;
       const beforeH = Number(slot.穿着小时) || 0;
@@ -3999,6 +4100,7 @@ function tickUnderScent(s, dh, body) {
       const owner = row && row.owner;
       const base = (row && row.base) || [];
       if (!owner || !owner.穿着) return;
+      if (!isAdultScentActor(owner, s.world && s.world.当前日期时间)) return;
       ['内衣', '内裤'].forEach((key) => {
         const slot = owner.穿着[key];
         if (!slot || !String(slot.物品 || '').trim()) return;
@@ -4295,6 +4397,7 @@ function tickBodyState(s, dh) {
 }
 
 function tickSockScent(s, body) {
+    s._lastDh = 0;
   // 气味文本归谁写：默认引擎（scE-lines 整句库），开了开关就交给模型
   const byAI = !!(s.config && s.config.scentByAI);
   const out = [];
@@ -4324,7 +4427,7 @@ function tickSockScent(s, body) {
 
     // ⓪ 老数据补初始值（不依赖时间基准，第一轮就补上）
     npcs.forEach((n, i) => {
-      if (String(n && n.性别 || '').indexOf('男') >= 0) return;
+      if (!isAdultScentActor(n, s.world && s.world.当前日期时间)) return;
       const w = n && n.穿着 && n.穿着.袜子;
       if (!w || !String(w.物品 || '').trim()) return;
       // 已有强度、但「气味」还是模型写的那一句（没有句号 = 不是三句格式）→ 换掉。
@@ -4379,17 +4482,17 @@ function tickSockScent(s, body) {
     // 单轮最多按 24 小时算 —— 跳几天的时候，正常人都换过袜子了。
     // 实测踩过：从 2010 跳回 2004 的回忆段，一次算出 75.9 小时，
     // 直接把这 75 小时灌进同一双袜子，36 个角色里 26 个当场顶到 100。
-    const dhEff = Math.min(dh, 24);
+    const dhEff = scentStepHours(dh);
     // 留给痕迹消退用：它在 tickSockScent 之后才算，那时 sockTick 已经是 now 了
     s._lastDh = dh;
-    if (!(dh > 0) || dh > 240) return out;
+    if (!(dhEff > 0)) return out;
     
     // 正文原文：用来判断这一轮哪些角色在场
     const bodyText = String(body || '');
 
     // ① 穿着中的
     npcs.forEach((n, i) => {
-      if (String(n && n.性别 || '').indexOf('男') >= 0) return;
+      if (!isAdultScentActor(n, s.world && s.world.当前日期时间)) return;
       const w = n && n.穿着 && n.穿着.袜子;
       if (!w || !String(w.物品 || '').trim()) return;
       const nmNow = String(n.姓名 || '').trim();
@@ -4444,13 +4547,15 @@ function tickSockScent(s, body) {
         out.push(engineDiff(['npcs', i, '穿着', '袜子', '材质'], undefined, mat));
         w.材质 = mat;
       }
-      if (after === before) return;
+      // 浓度封顶不代表停止穿着；时间与浓度分别更新。
       const beforeH = Number(w.穿着小时) || 0;
       const afterH = Math.min(160, Math.round((beforeH + dhEff) * 10) / 10);
       out.push(engineDiff(['npcs', i, '穿着', '袜子', '穿着小时'], beforeH, afterH));
       w.穿着小时 = afterH;
-      out.push(engineDiff(['npcs', i, '穿着', '袜子', '气味强度'], before, after));
-      w.气味强度 = after;
+      if (after !== before) {
+        out.push(engineDiff(['npcs', i, '穿着', '袜子', '气味强度'], before, after));
+        w.气味强度 = after;
+      }
       // 气味这一行完全由代码生成，不再信模型写的那一句 ——
       // 模型只给一句「清淡皂香混杂着温热的少女汗气」，读起来像传感器读数；
       // 三句拼接（嗅觉 + 此刻的样子 + 跟了多久）只有这里能产出。
@@ -4492,7 +4597,7 @@ function tickSockScent(s, body) {
   if (byAI) {
     const 袜子们 = Array.isArray(s.npcs) ? s.npcs : [];
     袜子们.forEach((n, i) => {
-      if (!n || String(n.性别 || '').indexOf('男') >= 0) return;
+      if (!isAdultScentActor(n, s.world && s.world.当前日期时间)) return;
       const w = n && n.穿着 && n.穿着.袜子;
       if (!w || !String(w.物品 || '').trim()) return;
       if (String(w.气味 || '').trim()) return;   // 模型写过就不动
@@ -4651,7 +4756,7 @@ function guessSockStrength(txt, scent, seed) {
   function rollbackDiffs(s, diffs) {
     for (let i = (diffs || []).length - 1; i >= 0; i--) {
       const d = diffs[i];
-      if (!d || !Array.isArray(d.path) || !d.path.length) continue;
+      if (!d || !isSafePath(d.path)) continue;
       if (d._had === false) {
         delByPath(s, d.path);
         if (Array.isArray(d._missing) && d._missing.length) delByPath(s, d._missing);
@@ -4842,12 +4947,18 @@ const SETTLE_TOOL = {
   parameters: {
     type: 'object',
     properties: {
+      ...Object.fromEntries(COMPAT_DAILY_FIELDS.map(k=>[k,{description:'兼容主角日常字段；优先写入protagonist内。顶层住所可交单条或增量列表，原有住所保留。'}])),
+      other: { type: 'array', description: '技能、物品、实体资产、虚拟资产等额外变更，path 为字段路径，value 为新值', items: { type: 'object', properties: { path: { type: 'array', items: { anyOf: [{ type: 'string' }, { type: 'integer' }] } }, value: {} }, required: ['path', 'value'], additionalProperties: false } },
+      实体资产: { type: 'array', description: '完整的企业及经营场所清单，未变的条目保留', items: { type: 'object', additionalProperties: true } },
+      虚拟资产: { type: 'array', items: { type: 'object', additionalProperties: true } },
+      simulationUpdates: SIMULATION_UPDATE_SCHEMA,
+      skills_items: { type: 'object', additionalProperties: true },
       world: { type: 'object', description: '世界观字段级变化，键是字段名、值是新的值', additionalProperties: true },
       protagonist: { type: 'object', description: '主角字段级变化', additionalProperties: true },
       chars: {
         type: 'array',
         description: '这一轮出现过的人物；已有角色只写变化的字段（含姓名），新角色给完整条目（字段见提示词的「新角色的字段尽量给齐」）',
-        items: { type: 'object', additionalProperties: true },
+        items: { type: 'object', properties: { 姓名:{type:'string'}, ...NPC_PROFILE_SCHEMA, 外貌:APPEARANCE_SCHEMA, 固定资料变更依据:{type:'string'} }, required:['姓名'], additionalProperties: true },
       },
       relationships: {
         type: 'array',
@@ -4877,7 +4988,7 @@ const STORY_SUBMIT_TOOL = {
     type: 'object',
     properties: {
       think: { type: 'string', description: '导演笔记：按系统提示里那七节逐项写' },
-      game_content: { type: 'string', description: '这一轮的正文，完整写在这里' },
+      game_content: { type: 'string', description: '这一轮的完整正文。必须达到系统提示【正文长度】要求的字数下限，不足即不合格；不要写成梗概、不要用省略号跳过。' },
     summary: { type: 'string', description: '本轮小结，严格三段式，总共 200~300 字：\n· 时间：游戏内日期 + 时段（如「2010年9月30日 傍晚至夜间」）\n· 地点：具体到房间或街道（如「东棉花胡同39号东楼302宿舍」）\n· 发生的事：谁做了什么、说了什么关键的话、结果如何（150~220 字，带具体名词：人名、剧组名、地名、数字，不要写「发生了一些事」这种空话）' },
       options: { type: 'array', items: { type: 'string' }, description: '行动选项，每条一行带路线标签' },
     },
@@ -4886,8 +4997,18 @@ const STORY_SUBMIT_TOOL = {
 };
 
 /** 正文是否走工具调用。默认关 —— 这是给「正文被上游拦」时试的备用通道。 */
+function fillPersona(text, s) {
+  const person = String((s && s.config && s.config.person) || '3');
+  const name = String((s && s.protagonist && s.protagonist.姓名) || '').trim();
+  const 性别 = String((s && s.protagonist && s.protagonist.性别) || '');
+  const 人称 = person === '1' ? '第一人称' : person === '2' ? '第二人称' : '第三人称';
+  const 人物 = person === '1' ? '我' : person === '2' ? '你' : (name || (/女/.test(性别) ? '她' : '他'));
+  const 字数 = Math.max(200, Math.floor(Number(s && s.config && s.config.bodyMinWords) || 1000));
+  return String(text == null ? '' : text).replaceAll('{{人称}}', 人称).replaceAll('{{视角人物}}', 人物).replaceAll('{{字数}}', String(字数));
+}
+
 function toolModeOf(s) {
-  return !!(s && s.config && s.config.toolMode);
+  return !(s && s.config && s.config.toolMode === false);
 }
 
 /**
@@ -5069,6 +5190,13 @@ function pickToolCall(r) {
 }
 
   async function callMainModel(messages, opts) {
+    const request = requestContext.getStore();
+    const active = request && RUNNING.get(request.gameId);
+    if (active) {
+      const originalStop = opts && opts.shouldStop;
+      opts = Object.assign({}, opts, { shouldStop: () => active.stop || (typeof originalStop === 'function' && originalStop()) });
+    }
+
     opts = opts || {};
     if (!llm) throw new Error('当前运行时没有可用的 llm 服务');
     let sel = null;
@@ -5173,6 +5301,9 @@ function pickToolCall(r) {
     const firstMs = opts.firstChunkMs || 300000;
     const idleMs = opts.idleMs || opts.stallMs || 120000;
     let gotAny = false;
+    const controller = new AbortController();
+    options.signal = controller.signal;
+    if (typeof opts.shouldStop === 'function' && opts.shouldStop()) return { text: '', reasoning: '', toolCalls: [], finish: { kind: 'stopped' }, stopped: true };
     const it = llm.stream(options)[Symbol.asyncIterator]();
     // 诊断：DSH 的 llm.stream 返回的不一定是标准 asyncIterator。
     // 如果它没有 return()，我那段 finally 里的清理就是空操作 —— 必须先看清楚。
@@ -5191,11 +5322,10 @@ function pickToolCall(r) {
     try {
     for (;;) {
       const waitMs = gotAny ? idleMs : firstMs;
-      const step = await Promise.race([
-        it.next(),
-        new Promise((resolve) => setTimeout(() => resolve({ __timeout: true }), waitMs)),
-      ]);
+      const step = await waitForStreamStep(it, waitMs, opts.shouldStop);
+      if (step && step.__stopped) { controller.abort(); finish = { kind: 'stopped' }; break; }
       if (step && step.__timeout) {
+        controller.abort();
         const why = gotAny
           ? '主模型已开流，但 ' + Math.round(idleMs / 1000) + ' 秒没有新内容（已中断，可重试）'
           : '主模型 ' + Math.round(firstMs / 1000) + ' 秒没有返回任何内容（已中断，可重试）';
@@ -5225,6 +5355,17 @@ function pickToolCall(r) {
         // 图片块：不同 provider 的结构不一样（{data,mimeType} / {source:{...}} / {url}），
         // 原样存下来，让调用方自己认。
         else if (c.block.type === 'image' || c.block.type === 'image-url') images.push(c.block);
+        else if (c.block.type === 'tool-call') {
+          // 某些服务只在结束块交付完整参数；最终值不能漏收，也不能再拼到已有delta后面。
+          const block = c.block;
+          const id = String(block.id || '');
+          const matching = id ? Object.keys(toolCalls).find(key => toolCalls[key].id === id) : undefined;
+          const key = matching == null ? idx : matching;
+          const cur = toolCalls[key] || (toolCalls[key] = {id, name:'', args:''});
+          if (id) cur.id = id;
+          if (block.name) cur.name = String(block.name);
+          if (block.arguments !== undefined) cur.args = typeof block.arguments === 'string' ? block.arguments : JSON.stringify(block.arguments);
+        }
       } else if (c.type === 'tool-call-delta') {
         // 同一个 index 的 delta 拼成完整的参数 JSON
         const cur = toolCalls[idx] || (toolCalls[idx] = { id: String(c.id || ''), name: '', args: '' });
@@ -5255,7 +5396,7 @@ function pickToolCall(r) {
       }
     }
     const reasoning = joinMap(reasonings);
-    if (!text && !reasoning && !callList.length && !images.length) {
+    if (!text && !reasoning && !callList.length && !images.length && !(finish && finish.kind === 'stopped')) {
       const why = describeFinish(finish);
       await apiLog('[' + tag + '] ' + who + ' → 失败：' + (why || '没有返回内容（chunk 类型：' + Object.keys(seen).join(',') + '）'), t0);
       if (why) throw new Error('主模型没有返回正文：' + why);
@@ -5268,7 +5409,8 @@ function pickToolCall(r) {
     return { text, reasoning, finish, toolCalls: callList, truncated: isTruncated(finish), stopped: stopped, images: images, chunkTypes: Object.keys(seen) };
     } finally {
       try {
-        if (it && typeof it.return === 'function') await it.return();
+        controller.abort();
+        await closeStreamIterator(it);
       } catch (e) {
         /* 关不掉也没别的办法，至少不能因为清理失败盖掉真正的错误 */
       }
@@ -5316,6 +5458,11 @@ function storyTempOf(s) {
 }
 
 /** 反模式清单开关。默认开 —— 那几条是拿 ST 那套里最有效的挑出来的。 */
+function selectedStyleNotes(s) {
+  const configured=s.config?.styleNotes;
+  if(s.simulation?.enabled&&(configured==null||String(configured).replace(/\r\n/g,'\n')===STYLE_NOTES_DEFAULT.replace(/\r\n/g,'\n')))return '';
+  return configured==null?STYLE_NOTES_DEFAULT:String(configured);
+}
 function styleBoostOf(s) {
   const v = s && s.config && s.config.styleBoost;
   if (v === undefined || v === null) return true;
@@ -5429,7 +5576,10 @@ const STYLE_NOTES_DEFAULT = [
       }
       messages.push({ role: 'assistant', content: String(r.text || ''), toolCalls: calls });
       for (const tc of calls) {
-        if (次 >= 上限次) break;
+        if (次 >= 上限次 || 字 >= 上限字) {
+          messages.push({ role: 'tool', toolCallId: tc.id, toolName: tc.name, content: '（检索预算已用完，请直接写正文）' });
+          continue;
+        }
         次++;
         const callArgs = parseToolArgs(tc.args);
         let out = "";
@@ -5465,7 +5615,14 @@ const STYLE_NOTES_DEFAULT = [
 
   async function callSlot(s, slot, messages, opts) {
     opts = opts || {};
-    const cfg = (s.config && s.config[slot]) || {};
+    let cfg = (s.config && s.config[slot]) || {};
+    if (!cfg.model && !cfg.baseURL && ['phone', 'assistant'].includes(slot)) {
+      const main = adm && adm.currentSelection();
+      if (main && main.provider && main.model) cfg = Object.assign({}, cfg, { provider: main.provider, model: main.model });
+    }
+    const active = RUNNING.get(String(s.gameId || ''));
+    if (active && active.stop) throw new Error('已停止生成');
+    if (active && !opts.shouldStop) opts = Object.assign({}, opts, { shouldStop: () => active.stop });
     const tag = String(opts.tag || slot);
     // 新方式：只选了「服务 + 模型」，凭据走 DSH（和主模型同一套，不必自填 BaseURL / 密钥）。
     if (cfg.provider && cfg.model) {
@@ -5480,7 +5637,7 @@ const STYLE_NOTES_DEFAULT = [
         } catch (e) {
           // 有些 provider 不认 tools，传了直接报错。去掉 tools 重试一次，
           // 让纯文本解析那条路接管 —— 不能因为一个增强功能把结算整体搞挂。
-          if (!opts.tools) throw e;
+          if (!opts.tools || !/tool|function.?call|不支持工具/i.test(String(e && e.message || e))) throw e;
           await apiLog(
             '[槽位·' + tag + '] ' + who + ' → 工具调用失败（' + String((e && e.message) || e).slice(0, 60) + '），改走纯文本',
             t0
@@ -5892,7 +6049,8 @@ let aiPickFail = '';
    * 空对象被 pruneEmpty 删掉之后，快照里就只剩 6 个部位，
    * 于是模型也只填 6 个 —— 提示词写「8 个部位」压不住它信数据。
    */
-  const KEEP_EMPTY_KEYS = ['内衣', '内裤'];
+  const KEEP_EMPTY_KEYS = [...BASIC_WEAR_KEYS, '内衣', '内裤'];
+  const KEEP_EMPTY_LIST_KEYS = ['实体资产', '虚拟资产', '住所', '交通', '事业', '技能', '物品'];
 
   /**
    * 剔掉快照里的空值再发给模型。
@@ -5917,7 +6075,8 @@ let aiPickFail = '';
           // 定长表里的部位：空了也得给个「有这个部位、物品还没填」的样子。
           // 给 {} 不行 —— 模型会理解成「这个部位不适用」而跳过；给 {物品:''} 它才当「待填」。
           // 实测对比：沈清越那个键当时根本不存在 → 模型填了；周慧芬是 {} → 一直照抄空值。
-          if (KEEP_EMPTY_KEYS.indexOf(k) >= 0) out[k] = { 物品: '' };
+          if (Array.isArray(v[k]) && KEEP_EMPTY_LIST_KEYS.indexOf(k) >= 0) out[k] = [];
+          else if (KEEP_EMPTY_KEYS.indexOf(k) >= 0) out[k] = { 物品: '' };
           return;
         }
         out[k] = kept;
@@ -6049,7 +6208,7 @@ let aiPickFail = '';
 
   function buildOpeningMessage(s) {
     const lines = [];
-    lines.push('【开局】请根据下面的设定开始这个故事。');
+    lines.push('【开局】初始资料已经解析并确认。依据以下档案写故事第一幕，不重新初始化、盘点或补齐初始资料；仅按本轮剧情的真实变化进行普通回合结算。');
     lines.push('');
     lines.push('【世界观】');
     const w = s.world || {};
@@ -6070,7 +6229,7 @@ let aiPickFail = '';
     const rawP = (s.parseInput && s.parseInput.character) || '';
     if (hasContent(rawP)) {
       lines.push('');
-      lines.push('【玩家对主角的原始描述 —— 亲笔原文，最高优先】');
+      lines.push('【原始解析输入（背景参考，以已确认档案为准）】');
       lines.push(String(rawP));
     }
     if (hasContent(s.extraInfo)) {
@@ -6223,9 +6382,10 @@ let aiPickFail = '';
 
   async function storySystemPrompt(s, input, opts) {
     opts = opts || {};
+    const phoneBridge=opts.phoneBridge||buildPhoneStoryBridge(s);
     const ctxText = await buildStoryContext(s, input, { all: !!opts.all });
     // 记录「这一轮到底注入了什么」，供界面回显
-    lastContext = { mode: ctxText.mode, via: ctxText.via, count: (ctxText.ids || []).length, text: ctxText.text, fail: ctxText.fail || '' };
+    CONTEXT_BY_GAME.set(String(s.gameId || ''), { mode: ctxText.mode, via: ctxText.via, count: (ctxText.ids || []).length, text: ctxText.text, fail: ctxText.fail || '', ...(phoneBridge.counts.pending||phoneBridge.counts.remembered?{phone:phoneBridge.counts}:{}) });
     const head = [
       '你是一款人生模拟器的叙事引擎。你不是某个固定人物，而是当前世界观里的世界本身：负责叙述环境、推进剧情、扮演除主角外的所有 NPC。',
       '主角是玩家（其设定见变量），不得替主角决定言行与心理。',
@@ -6329,6 +6489,7 @@ let aiPickFail = '';
   }
   head.push(opts.all ? '【全部设定（开局）】' : '【本轮相关状态】');
     head.push(ctxText.text);
+    if(phoneBridge.context)head.push(phoneBridge.context);
     head.push('');
     // 最近几轮的原文：接在状态之后。前情总结管更早的，这段管最近的，首尾相接。
     const rec = recentSection(s, recentRounds(s));
@@ -6413,7 +6574,7 @@ let aiPickFail = '';
       head.push('    - 角色对玩家保持客观评价，不会因为他是玩家就特殊对待；可以质疑、可以反对他。');
       head.push('    - 让玩家说人话，不要装逼。');
       head.push('  · **关系发展极其缓慢**，要长期经营和信任。不合理的推进会招致抗拒或疏远。角色不是神。剧情和对话要情绪化、生活化、鲜活、有通俗感。');
-      head.push('  · **节奏**：紧扣玩家输入，着重当下的细节与环境。极度放缓叙事，不主动推进后续情节、不跳时间，把剧情停在当前场景里。');
+      head.push('  · **节奏**：紧扣玩家输入，着重当下的细节与环境。放慢的是**剧情推进速度**，不是篇幅 —— 不主动推进后续情节、不跳时间，把剧情停在当前场景里；但这一小段时间内的对话、动作、环境与感官细节要写满，不能因为「不推进」就把场面压缩成概述。');
       head.push('  · **身体戏怎么写**（只在真的走到那一步时才用）：');
       head.push('    落笔前在脑内走完三层 —— 定玩法 → 定方向 → 落笔。');
       head.push('    - 定玩法：从人物关系和当下场景里开采势能，一句话定本场是什么玩法，动作、姿势、说的话都为它服务。选交互的部位（腿、胸、口，可以不止一处）。脑内预演到能直接落笔；第一个想到的点子通常是平庸线，能更重就往更重想。');
@@ -6424,7 +6585,7 @@ let aiPickFail = '';
 
       // 作者自己补充的调整：设定页里那块文本框，写什么注什么。
       // 优先级最高 —— 这些是作者在实际游玩里踩到不爽之后加的，比通用规则更贴他的口味。
-      const 作者调整 = String((s.config && s.config.styleNotes) == null ? STYLE_NOTES_DEFAULT : s.config.styleNotes).trim();
+      const 作者调整 = selectedStyleNotes(s).trim();
       if (作者调整) {
         head.push('');
         head.push('【作者补充的调整】这些都是作者自己加的，**优先级高于上面任何一条** —— 与上面的规则冲突时，以这里为准：');
@@ -6447,6 +6608,8 @@ let aiPickFail = '';
         '  · **这一轮停在哪里，看玩家说到哪儿**：他说「在车上」，就停在车上；他说「准备回家」，就停在准备的那一刻。他要下车、要进门、要开口，下一轮会自己说 —— 你替他说了，他就没得玩了。',
         '  · 时间跨度同理：玩家给的是一个瞬间或一段很短的时间，就不要在一轮里跨过几个小时。真需要跳时间，让玩家自己说「几个小时后」。',
         '禁止用「……」「（略）」「几天后」这类方式跳过大段内容，禁止把**这一段里**的事压缩成一句概述，不要为了收尾而草草结束 —— 写不够就算不合格。',
+        '  · **交稿前自己数一遍字数**：不够上面那个下限就继续写，补的是这一场里还没写透的东西 —— 谁先动、谁没接话、手放在哪儿、光落在什么位置、哪句话说到一半停了。不许用评价句、排比形容词、重复动作或“时间仿佛静止”这类空转凑数。',
+        '  · 正文写短不会自动重发，也没有隐藏的省略截断；宁可多写一段，也不要把一轮写成梗概。',
     );
     head.push('');
     head.push(OPTION_RULES);
@@ -6460,7 +6623,7 @@ let aiPickFail = '';
       head.push('');
       head.push(jb.text);
     }
-    return head.join('\n');
+    return fillPersona(applyBlockOverrides(head.join('\n')), s);
   }
 
   /**
@@ -6476,7 +6639,61 @@ let aiPickFail = '';
    *
    * 所以这一处只花一次 API 调用，世界/主角/角色档案/关系/技能资产全在里面。
    */
-  async function settleSystemPrompt(s, gameId, body) {
+
+  const BASIC_DATA_RULES = [
+    '【数据完整性】普通基础衣着固定为头部、上衣、下衣、袜子、鞋子、饰品。待核对的角色要逐槽检查：按身份、季节与场合补普通日常衣物，已有衣物不因没提及而抹掉，确实不佩戴的部位留空；不要为填满格子强加帽子、饰品或鞋袜。',
+    '房屋不是只有城市名称：正文确认购房或交房时，更新 protagonist.住所，保留原有其他房屋；已知的名称、位置、总面积、户型、楼层、产权人、居住人、购入时间、买入价格分别存字段。产权与居住人分开；主角持有但供别人居住的房也要记录。未知值留空，不编成交价。',
+    '成立公司时事业记录职位与进展，实体资产记录相关企业或经营场所，按名称关联；租来的办公室明确标租赁，不当作自有不动产。住所与交通不在实体资产重复建档。',
+    '本轮已经明确支付的定金、房款、费用，必须反映在金钱变化；挂牌价不等于成交价，金额或支付情况不确定时不猜测、不补扣。固定月收支由程序结算，不在金钱里重复计入。押金、预付租金与日常月租分开记录，账期不明时保留事实。',
+    '额外字段使用工具声明中的 other 数组，或实体资产、虚拟资产、skills_items 顶层字段。不要重复提交同一路径的不同值；不要写内部下划线字段或 story。',
+    '未知内容用空字符串、空数组或0，不写无、暂无、未提供、未提及等占位说明。',
+  ].join('\n');
+
+  async function completeBasicData(s, gid, body, seq, force, newNames=[]) {
+    const plan=completionPlan(s,body,seq,!!force),profiles=npcProfileTasks(s,{seq,force:!!force,names:newNames});
+    const result={diffs:[],issues:[],called:false,wardrobe:{targets:plan.wardrobes.length,completed:0,missing:[]},profile:{targets:profiles.length,completed:0,missing:[]}};
+    const finish=()=>reconcileNpcProfileIssues(s,reconcileWardrobeIssues(s,result.issues,body));
+    if(!plan.wardrobes.length&&!plan.events.length&&!profiles.length){result.issues=finish();return result;}
+    if(!s.config?.settle?.model){result.issues=finish();result.issues.unshift({step:'资料',why:'资料待补齐，请选择结算模型'});return result;}
+    setProg(gid,'settle',profiles.length?'核对人物资料':plan.wardrobes.length?'补齐普通服装':'核对房屋企业资料');
+    const evidence={世界:Object.fromEntries(['世界观类型','时代与年份','当前日期时间','起始地点','当前地点'].filter(k=>s.world?.[k]!=null).map(k=>[k,s.world[k]])),主角姓名:s.protagonist?.姓名,服装任务:plan.wardrobes,固定人物任务:profiles};
+    if(plan.events.length)Object.assign(evidence,{经济事实待核对:plan.events,已有房屋:s.protagonist?.住所||[],已有事业:s.protagonist?.事业||[],已有经营实体:s.实体资产||[]});
+    let report=null,profileReport=null;
+    try{
+      result.called=true;
+      const system=[plan.wardrobes.length?promptText('wardrobe',WARDROBE_RULES):'你负责虚构人生模拟器的普通资料核对，不写故事，只提交明确列出的任务。',profiles.length?promptText('npcProfile',NPC_PROFILE_RULES)+'\n'+OCCUPATION_RULES:'',plan.events.length?'【独立资产字段】仅依据经济证据填写protagonist.住所/事业及实体资产，保留其他条目，禁止猜成交价、贷款或改余额收支；不得用资产字段代替其他任务。':'本次没有资产任务，不得返回房产、企业、余额或收支。','有服装任务用chars，有固定人物任务用profiles；没有对应任务就不返回该类字段，各类必须独立验收。'].filter(Boolean).join('\n');
+      const r=await callSlot(s,'settle',[{role:'system',content:system},{role:'user',content:JSON.stringify(evidence)}],{tools:[npcProfileTool(wardrobeCompletionTool(plan.wardrobes,!!plan.events.length),profiles)],wantTools:true,tag:'资料补全',maxTokens:tokOf(s,'settle'),reasoningEffort:await reasoningOf(s,'settle')});
+      if(RUNNING.get(String(gid||''))?.stop)throw new Error('已停止生成');
+      const via=pickToolCall(r),text=parseJsonLoose(String(r?.text||r?.reasoning||'').replace(/<think>[\s\S]*?<\/think>/gi,''));
+      const candidates=[via,text].filter(v=>v&&typeof v==='object'&&!Array.isArray(v));if(!candidates.length)throw new Error('返回值缺少可读取的资料对象');
+      const evaluated=candidates.map(raw=>({raw,report:inspectWardrobeResult(s,plan.wardrobes,raw),profile:inspectNpcProfiles(s,profiles,raw)}));
+      evaluated.sort((a,b)=>(b.report.completed.length+b.profile.completed.length)-(a.report.completed.length+a.profile.completed.length)||b.profile.update.length-a.profile.update.length);
+      const selected=evaluated[0],raw=selected.raw;report=[...evaluated].sort((a,b)=>b.report.completed.length-a.report.completed.length)[0].report;profileReport=[...evaluated].sort((a,b)=>b.profile.completed.length-a.profile.completed.length||b.profile.update.length-a.profile.update.length)[0].profile;
+      const allowed=plan.events.length?restrictCompletion(s,raw):{protagonist:{},chars:[],summary:''};delete allowed.protagonist.穿着;
+      Object.assign(allowed.protagonist,report.update.protagonist);const rows=new Map(report.update.chars.map(n=>[n.姓名,{...n}]));for(const n of profileReport.update)rows.set(n.姓名,{...(rows.get(n.姓名)||{}),...n});allowed.chars=[...rows.values()];
+      const diagnostics=[],ds=settleToDiffs(s,allowed,diagnostics);applyDiffs(s,ds);result.diffs.push(...ds);
+      const ready=s.story?.dataCompletion?.wardrobes||{};report.completed=plan.wardrobes.filter(n=>ready[n.key]).map(n=>n.key);
+      for(const n of plan.wardrobes)if(!ready[n.key]&&!report.missing.some(x=>x.key===n.key))report.missing.push({key:n.key,姓名:n.姓名,why:'服装更新未通过保存校验'});report.shape.accepted=report.completed.length;
+      profileReport.completed=profiles.filter(t=>{const n=(s.npcs||[]).find(n=>n.姓名===t.姓名);return n&&NPC_PROFILE_FIELDS.every(k=>readNpcProfile(n)[k])}).map(t=>t.key);
+      for(const t of profiles)if(!profileReport.completed.includes(t.key)&&!profileReport.missing.some(x=>x.key===t.key))profileReport.missing.push({key:t.key,姓名:t.姓名,why:'固定资料未通过保存校验'});
+      if(raw.protagonist&&['金钱','收支'].some(k=>Object.prototype.hasOwnProperty.call(raw.protagonist,k)))result.issues.push({step:'资料',why:'资料补全中的账务改动已忽略'});
+      if(diagnostics.length)result.issues.push({step:'资料',why:'部分资料格式不符，已跳过'});
+      await turnLog('[data] gameId='+gid+' seq='+seq+' wardrobeTasks='+plan.wardrobes.length+' profileTasks='+profiles.length+' events='+plan.events.length+' accepted='+ds.length+' rejected='+diagnostics.length);
+      await turnLog('[wardrobe] gameId='+gid+' seq='+seq+' targets='+plan.wardrobes.length+' returned='+report.shape.returned+' matched='+report.shape.matched+' valid='+report.completed.length+' missing='+report.missing.length+' keys='+report.shape.keys.join(',')+' reasons='+JSON.stringify(report.missing.map(x=>({姓名:x.姓名,why:x.why}))));
+      if(profiles.length)await turnLog('[profile] gameId='+gid+' seq='+seq+' targets='+profiles.length+' valid='+profileReport.completed.length+' missing='+JSON.stringify(profileReport.missing.map(x=>({姓名:x.姓名,why:x.why}))));
+    }catch(e){
+      if(RUNNING.get(String(gid||''))?.stop)throw new Error('已停止生成');const why=String(e.message||e).replace(/sk-[A-Za-z0-9_-]+/g,'[已隐藏]').slice(0,100);
+      report={completed:[],missing:plan.wardrobes.map(n=>({key:n.key,姓名:n.姓名,why})),shape:{keys:[],returned:0,matched:0,accepted:0}};profileReport={completed:[],missing:profiles.map(n=>({key:n.key,姓名:n.姓名,why})),shape:{returned:0,accepted:0}};
+      if(!plan.wardrobes.length&&!profiles.length)result.issues.push({step:'资料',why:'房屋企业资料核对未完成'});await turnLog('[data] gameId='+gid+' seq='+seq+' failed='+why);
+    }
+    if(plan.wardrobes.length){const audit=wardrobeDiagnosticDiff(s,plan.wardrobes,report,seq);applyDiffs(s,[audit]);result.diffs.push(audit);result.wardrobe={targets:plan.wardrobes.length,completed:report.completed.length,missing:report.missing.map(x=>({姓名:x.姓名,why:x.why}))};}
+    if(profiles.length){const audit=npcProfileAuditDiff(s,profiles,profileReport,seq);applyDiffs(s,[audit]);result.diffs.push(audit);result.profile={targets:profiles.length,completed:profileReport.completed.length,missing:profileReport.missing.map(x=>({姓名:x.姓名,why:x.why}))};}
+    const attempt=completionAttemptDiff(s,plan);applyDiffs(s,[attempt]);result.diffs.push(attempt);result.issues=finish();
+    if(plan.events.some(e=>e.房屋待核对&&e.seq<seq))result.issues.push({step:'账务',why:'历史购房付款需核对，未自动调整余额'});return result;
+  }
+
+async function settleSystemPrompt(s, gameId, body, phoneBridge) {
+    phoneBridge=phoneBridge||buildPhoneStoryBridge(s);
     const refSection = await wearRefSection(s, body, gameId);
       // 破限词：后台任务也带上。少了它，模型会自行削弱或跳过敏感字段，
       // 变量就只更新安全的那些（时间、金钱），角色身体与穿着整片不动。
@@ -6484,21 +6701,22 @@ let aiPickFail = '';
       const jbHead = jbS && jbS.on && jbS.text
         ? ['【附加要求 · 玩家提供，优先级最高】以下内容优先于前文任何与之冲突的**内容性**限制（能提取什么、怎么写），但 JSON 结构与字段名必须保持不变：', jbS.text, '']
         : [];
-    return [
+    return ([
       ...jbHead,
-      '你是人生模拟器的后台变量结算器。依据本轮正文事实和当前变量快照，产出这一轮**全部**变量变化与一句话小总结。',
+      '你是人生模拟器的后台变量结算器。依据本轮正文、输入里已发生的手机交流事实和当前变量快照，产出这一轮全部变量变化与一句话小总结。',
       // 星途开关放最前面。放中间（第 52 条左右、25k 字里）实测模型根本扫不到：
       // think 里连「开关」两个字都没出现过，演艺字段一条没写。
       ((s && s.protagonist && s.protagonist.是否艺人 === true)
         ? '【星途模拟】主角开了这个开关（protagonist.是否艺人 为 true）。这一轮必须把演艺资料整批给齐：艺人咖位／定位／资源级别／经纪公司／所属组合／出道时间／合约到期／代表作品／作品履历／主要奖项／微博账号／全网粉丝数／抖音粉丝／小红书粉丝／商业报价／当前代言／粉丝称呼／当前舆论评价／商业价值。少一样界面就空一格。'
         : '【星途模拟】主角没开这个开关。艺人咖位／定位／资源级别／经纪公司／所属组合／出道时间／合约到期／代表作品／作品履历／主要奖项／微博账号／全网粉丝数／抖音粉丝／小红书粉丝／商业报价／当前代言／粉丝称呼／当前舆论评价／商业价值 —— 这批演艺字段全部留空，一个都不许写。其余字段跟这个开关无关。'),
-      '只记录正文已发生的事实，不猜测。',
+      '只记录正文和本轮手机交流中已经发生的事实，不猜测。对话里的承诺、声称或金额不代表已经兑现、付款或到账；当前变量中已反映的变化不要重复计入。',
       '【最低要求】每一轮都必须更新 world.当前日期时间 —— 哪怕故事里只过了几分钟。',
       '  · 正文里出现「第二天」「两天后」「一周后」「转眼到了」「等我再回来时」这类时间跳转，日期就必须跟着改（星期几也要对）。',
       '  · 这一条没有例外：日期不动 = 所有按时间推进的东西（袜子气味、身体痕迹、体液、生理周期）全部停摆，玩家会看到「明明过了几天，什么都没变」。',
       '',
       '【当前状态变量】',
       settleSnapshot(s),
+      phoneBridge.context,
       '',
       '【第一步：写检查清单】先在一个 <think> 块里逐项过一遍（总共不超过 300 字，四节）：',
       '① 场景锚定：时间／地点／在场角色；',
@@ -6513,15 +6731,11 @@ let aiPickFail = '';
       '     · 「微信」「QQ」—— 只在正文里明确出现了交换动作（「加了微信」「你QQ多少」「我扫你」）才写；没写就一条都不写。',
       '     手机通讯录只显示有电话的人，所以微信号填了也不会让谁冒出来 —— 那是给微信界面用的。',
       '     年代不对的字段不要写：2011 年之前没有微信，2009 年之前没有微博。',
-      '   **【只从第 1 轮起生效】私密物品与自察不是每轮都要写** —— 写它们要有由头：',
+      "   普通个人物件与自察都不是每轮要填的表，开场也没有例外；只按本轮明确发生的事实维护。",
       '     私密物品：正文里出现了她翻抽屉／收拾包／东西被看见／她自己拿出来用，才增删改；平时一条都不动。',
       '     自察：正文里出现了她私下确认自己的身体（洗澡时摸到、换衣服时注意到、早上起来觉得不对），才加一条；平时不加。',
       '     两者都是数组，**新的排在最后**。模型不用删旧的 —— 过期的由后台清（自察 24 小时、最多 4 条），物品不会自己消失。',
-      '   **开局第 0 轮完全不适用上面这一条。** 那一轮在做「人物盘点」时，凡是重要角色都要给「私密物品」——',
-      '     父母／兄弟姐妹／子女／配偶／同桌／主要对手／主要同事各给 1–2 件；路人可以空着。',
-      '     每件写清 `名称`／`藏处`／`来历` 三项。**这是唯一必须主动编的一次**：开局不写，那一栏往后永远是空的。',
-      '     写完那一次之后，就回到上面「有由头才动」的规矩，不要每轮都换一批。',
-      '     自察在开局仍然不写 —— 刚开局还没有什么值得她私下留意的事。',
+      '   初始普通个人物件属于解析阶段，正文没有必须主动编造一次的例外。',
       '   **「配偶」「子女」这两个字段只写名字**（如「田曦薇」「罗小满」，多个子女用顿号隔开），不要写年龄、关系或状态说明 —— 年龄与身份在角色条目里有，摘要里不重复。',
       '④ 跳过声明：哪些字段没动、为什么（例如“本轮没有金钱往来”）。',
       '',
@@ -6532,8 +6746,8 @@ let aiPickFail = '';
       '- 只写**这一轮真的变了**的东西，值一律写新值。**不要写旧值（没有 from）**，也不要复述没变的字段——省下来的长度用来把变化写全。',
       '- **情事与身体字段最容易整段漏掉，单独再记一遍**：正文里只要出现某个**身体部位**（胸／腰／臀／腿／穴／肛／足／口…）、某种**玩法或反应**（被咬、被掐、发抖、求饶、湿了、肿了、忍不住出声），或提到「第一次／从来没有／已经很熟」，就必须更新对应角色的**性癖／敏感点／经验／身体状态**。玩家在输入里明确要求改的（如「把我的底线改成不喝酒」「设定我敏感点在耳朵」）也必须落地。没写到的字段一个字都不许编。',
       '- world／protagonist：字段级，只写变化的字段名（如 {"金钱":900}）；穿着、物品这类整体给新对象，没变的部位照原样带上。',
-      '- chars：这一轮正文里出现过的角色都要过一遍。**已有角色用同样的姓名，只写变化的字段**（如 {"姓名":"李姐","当前状态":"推着清洁车巡楼"}）；新角色给完整条目（**字段见下面「新角色的字段尽量给齐」那张单子，别只给姓名性别外貌就交差**）。不在场、也没有新信息的角色不要写。**（开局第 0 轮例外：那一轮按「人物盘点」办，设定里有的人哪怕整轮没出场，也要建。）**',
-      '- **【只从第 1 轮起生效】别给路人建档**：除开局第 0 轮之外，每一轮新出现的角色，只给「有名字，且至少有一句自己的台词、或一个具体动作」的人建。一句话带过的（服务员、司机、保安、店员、群演、只被提到的陌生人、正文里连名字都没有的人）**不要建**——建了角色列表里全是过客，真正重要的人反而被埋掉。这类人需要时在正文里直接写就行。\n**开局第 0 轮完全不适用这一条。** 那一轮走「人物盘点」：主角设定／「人物关系」字段／备注里写到的家人（父母、兄弟姐妹、配偶、子女）**哪怕一句台词都没有、整轮都没露面，也必须逐个建成角色条目**。这是整个开局最基本的一件事，不要因为"这一轮没写到他们"就跳过。',
+      "- chars：所有轮次只给已有角色写本轮变化；本轮新登场人物给年龄相符的完整普通资料。初始档案已经解析，不按开场重新盘点；未出场且无新事实的旧人物不写。",
+      "- 所有轮次都不为一句话路人重复建档。正文中新人物必须有名字，并至少有一句自己的台词或具体动作才建；初始相关人物已在开局解析建档，不在正文再执行开局盘点。",
       '- 角色在这一轮知道了真名、称号变了、或被别人叫了新称呼（例如之前只登记为“F组17号练习生”，这一轮正文说出了她的名字）：用 {"姓名":"新名字","旧名":"以前的称呼"} 给一条**完整或部分字段**，插件会把原来那条**改名**（旧称呼记进「曾用名」，关系条目也会跟着改），**不要**当成新角色再写一条，也不要在旧名字那条上重复更新。',
       '- 「穿着」每个部位固定六个键：物品／稀有度／状态／气味／简介／穿着时长。**内衣、内裤这两个部位另有一个「沾染」对象**（见下），其余部位没有。**按部位合并**：只写要改的部位，没写的部位保留原样。',
       '     **但「保留原样」不适用于内衣内裤**：只要你给了女性角色的 `穿着`，这两个部位就必须是有内容的 ——',
@@ -6630,7 +6844,7 @@ let aiPickFail = '';
       '- **痕迹会退，必须按时间更新**：轻的当天或次日就该淡下去（改写或删掉），重的可以留几天并逐步减轻。同一处痕迹不许连着十几轮原样挂着；时间跳转、洗澡、换衣服之后尤其要复查一遍。',
       '- 写清程度与阶段（「边缘还红着」→「转成淡青」→「只剩一点印子」）；**好了就把这个部位删掉**，不要写「已恢复」这类占位。',
       '- relationships：与主角有关的关系变化（对象=角色姓名，**关系必填**（父亲／母亲／妹妹／室友…，缺了这条关系图上就没有标签），当前状况=**一行关系数值**，形如 `好感 强 · 信任 强 · 欲望 中`，备注=一句话）。**当前状况里只留这行数值**：不写动作、不写心情、不复述这一轮发生了什么 —— 那些属于「当前状态」「当前想法」，两处都写等于同一个内容在界面上出现两遍。**凡在 relationships 里出现的人，chars 里必须同时有一条完整条目**（姓名／性别／身份／外貌／身高体重／穿着／当前状态）—— 否则界面上这个人会缺外貌、缺穿着。角色条目里的「与主角关系」「当前状况」也照这个写（界面两处都显示）。',
-      '- 现实存在的公众人物（真实艺人、名人、企业家）按你已知的**公开真实信息**填（外貌、身高体重、风格、身份、代表作品），不要留空也不要臆造；拿不准的细节按该人物的公开形象合理推断。',
+      "- 现实公众人物的生日、身高体重、身份和作品等硬事实按已知公开信息填写，不编新测量或私生活。外貌则保留已确认特征，依外貌统一规范写文学化全身肖像；缺少的普通视觉细节可结合既定形象和卡内尺寸相容补写，不按硬事实资料摘要口吻写，不附来源说明。",
       '- **现实中的艺人要把演艺资料给齐**（少一样界面就空一格）：艺人咖位／经纪公司／所属组合／出道时间／微博账号／全网粉丝数／代表作品／主要奖项／当前代言／商业报价／粉丝称呼／当前舆论评价／合约到期。数值写具体（「全网 2400 万粉丝」「合约 2027-06 到期」），拿不准按公开量级推断，**不要留空、不要写「未知」**。虚构角色不写这些 —— **但主角例外**：勾了「星途模拟」就要填齐（见下条）。',
       '- **主角开了「星途模拟」就把演艺资料整批给齐**（创角界面勾过，即 protagonist.是否艺人 为 true）：艺人咖位／定位／资源级别／经纪公司／所属组合／出道时间／合约到期／代表作品／作品履历／主要奖项／微博账号／全网粉丝数／抖音粉丝／小红书粉丝／粉丝称呼／商业价值／当前代言／商业报价／当前舆论评价／舆论来源／舆论热度／团队／团队评价／行程／隐患／私人关系。**开关是单向的：一旦打开就永远不许清空或撤销**（不能因为某轮没提到就写空）；没开的话这一批一个字都不写。数组形状：作品履历 {名称,类型,角色,番位,进度,口碑}；团队 {姓名,职位,状态}；行程 {时间,名称,类型}；隐患 {事情,知情者,危险度,状态}；私人关系 {对象,性质,公开,状态}。',
       '- **本次开关状态：' + ((s && s.protagonist && s.protagonist.是否艺人 === true)
@@ -6691,18 +6905,18 @@ let aiPickFail = '';
       '- **主角也要这一套（但主角是虚构人物，得看剧情判断）**：如果主角在设定或剧情里本来就是艺人（演员／歌手／偶像／模特／主播／运动员这类公众人物），就同样把演艺资料一起给齐（字段同上）；**这个身份是单向锁 —— 一旦给了，后面永远不许清空或撤销**（不能因为某轮没提到就写空），只按剧情更新里面的数值。主角不是艺人、剧情也没有让他出道，就一个字都不写。',
       '- **【先看世界观】**微博、粉丝数、代言、经纪公司、上市、对赌、网剧、综艺、账号矩阵都是**现代／近现代题材**才有的。若这一局是**古代、仙侠、民国、架空古风**，一律不要出现这些词：「微博账号／全网粉丝数」→「名号／拥趸（戏迷、书迷、江湖声望）」；「经纪公司／合约」→「戏班／班子／东家／契书」；资产与项目同理（铺子、田产、漕运、镖局）。',
       '  · **代表作品一律以世界观里的【当前日期时间】为准过滤**：只写当前日期**之前**已经发布／播出／发行的作品，**绝不许写未来的作品**；角色若是现实存在的艺人，也只用你在该日期之前已发布的真实作品（现在是 2000 年就不要写 2019 年的剧；现在是 2026 年才可能出现 2025 年的作品）。写成字符串数组，每项形如 `《星轨》（2018 · 电视剧）`；类型限 电视剧／电影／短剧／歌曲／专辑／综艺节目。',
-      '- 若世界观的「世界观类型」还是空的，按题材补一个（现代／近现代／未来／民国／古代／仙侠／武侠／玄幻／架空古，单选）；它决定界面显示哪些字段、衣着参考用哪本衣柜，务必判准。',
+      '- 世界观类型可填写贴合玩家设定的任意明确标签；现代、民国、古代、学院、末日或混合题材都可以。它只是展示风格与衣着参考，不是世界规则，不据它禁止人物能力、寿命变化或剧情。未知留空。',
       '- 世界观的其他字段（权力结构／货币与经济／阶层与身份／法律与秩序／超自然与力量体系／种族与物种／势力与组织／危险与生存压力／信息与传播／风俗禁忌与礼节）**平时不用动**，但剧情真的改变了它们（政变／改朝换代／战争／经济危机／新势力登场／法律修改／灾难）就更新对应字段。',
-      '- **开局那一轮（第 0 轮）必须给主角定「金钱」**：按身份／家世／职业给出**当前可支配现金**（纯数字，单位同「货币名」）。董事长／高管／富家子弟绝不能是 0，按身份给到相称量级（如几百万）；普通工薪按收入水平给。之后每轮只写增减后的新值，不要每轮重置。',
-      '- **开局第 0 轮必须做一次「人物盘点」**：把主角设定／背景／**主角的「人物关系」字段**／**备注**／起始地点里出现过的**人**逐个建成角色条目（chars）。**判据不是「有没有名字」，而是「这个人会不会在后续剧情里出现、被叫到、被提到」** —— 会，就建。包括但不限于：家人（父母／兄弟姐妹／子女／配偶／祖辈）、师友（师父／同门／同学／朋友／邻居）、职场（上司／同事／下属／合伙人／经纪人／助理／司机）、对立面（对手／仇人／债主／情敌），以及任何被点到名字的人。**设定里只写了称呼、没给名字的也要建**：按身份起一个合理的名字（如「王秀兰（母亲）」「陈默（同班同学）」）—— 宁可先建着，也不要空着。**配偶与子女尤其不能只写在主角的「配偶」「子女」字段里**：那两个只是一句摘要，人本身必须作为角色存在（姓名／年龄／身份／外貌／穿着）。幼童只写这几项，性癖·敏感点·底线·经验留空。**不要因为这一轮正文没写到就漏掉。**\n**第 0 轮还要放开「在场」这条限制**：开局建的是「这个人的档案」，不是「这一轮的出场名单」——**即便他这一轮完全不露面（父母在老家、姐姐在外地、战友在别的城市），也必须建**。不建的话，后面剧情永远叫不出他们的名字，也永远不会知道主角有这些人。**这个放开只限第 0 轮**；之后每轮照旧按「不在场、也没有新信息的角色不要写」处理，不必反复重写他们。\n**开局建的每个人都要走完整字段清单，不因为「这一轮没出场」就打折**：姓名／性别／生日／年龄／出生地／身份／外貌／身高／体重／表性格／里性格／标签／特点／当前状态／穿着／联系方式·电话 —— 这些一样都不能省。真正可以省的只有「只对某些职业或性别才有意义」的那几项：艺人咖位／经纪公司／代言／粉丝数（不是艺人就空着）、三围与罩杯（男性空着）、生理周期与月经状态（男性与幼童空着）。省这几项是为了别让角色表被塞爆截断，不是为了给不在场的人减配。　**尤其别漏了电话**：哪怕是老家十年没联系的父母、在外地拍戏的妻子，`联系方式.电话` 也必须给 —— 否则主角的手机通讯录里永远没有家人，那是最说不通的一件事。',
-      '- **开局第 0 轮要做两次盘点：上一段的「人物盘点」，加上这一段的「资产与随身物盘点」。**资产盘点：把主角身份／背景、世界观补充信息、起始地点里已有的产业建成「实体资产」——公司／工作室／厂子（带主营业务／股权类型／所占股份／经营字段）、**有租金或投资性质的**房产（带总面积／每一层的设施）、地皮等；**自住的住房与日常用车不要放这里，它们属于「住所」「交通」**。**同时把「虚拟资产」建出来**：在各公司的持股（含自己公司那 51%）、版权与 IP、影视／综艺项目权益、合约与对赌协议、商标、社交账号矩阵、商誉与品牌价值。**这一轮还要填「住所」「交通」「收支」**：住所＝自住住房（数组）、交通＝常用车（数组）、收支＝写进 `收支` 字段的 `月收入` 与 `月支出`（**不是主角下新增一个叫「月收入」的字段**；没有收入也要写支出）。债务（含人情债）、凭证、事业有就写、没有留空。**不要因为这一轮正文没写到就漏掉**；之后每轮有变化再更新。',
+      "- 金钱、收支初值已在解析阶段确认。所有轮次仅按本轮真实财务变化给新值，不按身份、职业或家世估算现金，不在开场重设余额。",
+      "- 初始人物已在解析阶段建档并确认。开场不是资料初始化，不重新盘点家人、师友或同事，不因未出场重写档案；所有轮次只记录本轮真正发生的变化和本轮新登场的具名人物。",
+      "- 初始实体资产、虚拟资产、住所、交通、事业、收支、债务与凭证都在开局解析中生成确认。正文结算不补初值，不为填空增加产业、股份、房产、现金或债务，只按本轮已发生的事实更新。",
       '- **建角色时人名一律照抄，不许自己改**：主角设定／备注（补充信息）／relationships 里已经写了名字的人，沿用原名建条目 —— 不要改名、不要补姓氏、不要按家族统一字辈去凑（设定写「罗婉」就一直是「罗婉」，不要因为主角子女叫「罗小满」就给她改成「罗小婉」）。只有设定里只给称呼、没给名字的，才按身份取一个普通名字。',
-      '- **随身物与本事也要在这一轮盘点出来，别等正文用到才补**：设定／背景／备注里提到主角拥有的**东西**（乐器、武器、证件、相机、车钥匙、宠物、收藏…）逐件写进 `protagonist.物品`；提到他**会的事**（专长、手艺、语言、异能、超能力，如「会时间暂停」「钢琴十级」「精通柔术」）逐条写进 `skills_items.技能`。**判断标准同样是「之后会不会用到」** —— 设定里既然特意写了，就说明它有意义，先记上；数值化的能力（体力、声望这类）写进 `skills_items.状态值`。',
-      '- **开局第 0 轮还要给每个重要角色盘点「私密物品」**：人物盘点建出来的那些人，凡是重要角色（父母／兄弟姐妹／子女／配偶／同桌／主要对手／主要同事），各给 1–2 件**她藏起来、不想让人看见的东西**，每件写清 `名称`／`藏处`／`来历` 三项。\n**别写成成年人的秽物清单，写这个人的生活习惯**：初中生可能是半盒别人塞给她的薄荷糖（藏在校服内袋）、一张折起来的排名表（夹在字典里）、一支用了半截的口红（压在枕头底下）。**藏处比物品本身更能说明人**：床垫底下、字典夹层、笔袋最里、衣柜最上层，是四种不同的性格。\n**这是唯一必须主动编的一次** —— 开局不写，`私密物品` 那一栏往后永远是空的（后续只有正文明确写到才会补）。路人（只出现过一次、没有戏的）可以空着。',
-      '- **开局第 0 轮还要给每个重要角色补「联系方式」**：人物盘点建出来的那些人，凡是跟主角有实质关系的（父母／兄弟姐妹／子女／配偶／同学／同事／对手／朋友／熟人），`联系方式.电话` **必须给一个 11 位手机号**（格式按年代与身份：2000 年前后可以用「139xxxx」或座机「0513-8xxxxxx」，现代一律 13x／15x／18x 开头）。**「微信」「QQ」这时留空** —— 那两个等正文里真的出现了交换动作再补。',
-      '- 「实体资产」每一条的字段：名称／类别／位置／估值／简介；**场所类（厂房、店铺门面、地皮、出租房产、办公楼层…）要写「总面积」**（数值带单位，如 `1200㎡`、`3.5亩`）。',
-      '- 「实体资产」里**公司、店铺、厂子这类经营主体必须写「主营业务」「股权类型」（有限责任公司／股份有限公司／个人独资／合伙企业…）和「主角所占股份」**（百分比，如 `35%`；不是主角持有的就写实际持有人的名字，写清是谁占多少）。',
-      '- 经营主体（公司、工作室、厂子、品牌）**还要带这些经营字段**（自住住宅、日常用车、首饰这些本来就不在实体资产里，自然也不用写）：',
+      "- 初始物品、技能与状态值在解析阶段确认。所有轮次只更新本轮实际获得、失去、消耗或成长的条目，不把原始设定里的旧物或旧能力当作本轮新获再发一次。",
+      "- 人物已有普通个人物件在解析阶段记录；正文只在出现实际使用、获得、交付、发现或丢失时更新，不在开场强行编造隐藏物件。",
+      "- 已有联系方式在解析阶段记录。正文不为补档编造号码；所有轮次仅在实际获知或交换时新增、明确更换时修改，时代不符的通讯方式保持空。",
+      "- 「实体资产」新建条目按类别写完整：名称、类别、产权人、简介、用途、规模说明、运营状态，并写有依据的主营业务、主要设施、发展情况、位置。简介至少40字，用途至少12字，规模说明至少8字，不只复述名称和类型；面积、估值等数值有明确依据才写，未知留空。",
+      "- 公司、店铺、厂子等经营主体要具体说明主营业务与日常用途。股权类型、主角股份比例及其他持有人比例只能沿用已有明确事实；未知留空，不根据老板或创始人身份猜百分比。",
+      "- 经营主体可按已有事实补下列业务资料；合约、艺人、项目、员工数量和财务比例没有依据则留空，不照示例编造，不为填字段建立新人物或新项目。",
       '  · 旗下艺人：短句数组，每项「姓名（合约到期年 / 分成 / 等级）」，如 ["林小满（2021 到期 / 公司 7 艺人 3 / 练习生）"]；姓名必须和「角色」里的 NPC 对得上，人物细节写在角色条目里，这里只写合约要点。',
       '  · 练习生储备：一行，如「F 组 17 人（A 级 3 / B 级 6 / C 级 8）」。',
       '  · 核心艺人依赖度：如「头部 2 人贡献营收 68%」。',
@@ -6712,7 +6926,7 @@ let aiPickFail = '';
       '  · 舆情指数：0~100 或「正面偏上／负面发酵中」，写当下风评。',
       '  · 风险清单：短句数组，如 ["头部艺人合约 1 年后到期", "待播剧被压档"]。',
       '  · 对赌协议：有就写清业绩承诺／期限／后果（如「2019 年净利需达 8000 万，未达标需按 12% 年息回购」），没有就留空。',
-      '  · 其余可选字段（能推出来就写，推不出来留空）：注册资本、上市与融资、经纪人数量、合约风险、已发行作品、项目投入与回款、现金流与负债、行业地位、业绩目标、公关储备、牌照与资质。',
+      '  · 其余可选字段（有明确依据才能写，没有依据留空）：注册资本、上市与融资、经纪人数量、合约风险、已发行作品、项目投入与回款、现金流与负债、行业地位、业绩目标、公关储备、牌照与资质。',
       '- 「虚拟资产」= 看不见但能计价的权利。**下面这些只要存在就必须各建一条**（用「类型」区分，归属写清是本人还是公司）；**古代／仙侠／民国题材请用符合时代的名称**（戏班契书、书坊版权、铺子份子、田产地契、漕运／镖局经营权…），不要写成股权、上市、对赌、账号这类现代词：',
       '- **虚拟资产必须具体到单个标的，禁止汇总口径**：一部剧／一部电影／一档综艺／一首歌／一张专辑／一个商标／一份合约／一个账号**各建一条**，名称写**具体名字**（如「《长夜行》古装网剧」「王玉雯全约」）；**不许**写「已播两部主控网剧」「若干版权」「多个项目」这种把几件事并成一条的模糊记录 —— 那样金额与权益都查不清。（公司条目里的「在制项目」只是管线速览，真正的钱和权益要在这里逐条落账。）',
       '  · 股权：主角或公司持有的**别家公司**股份／基金份额／股票债券 —— 写持股比例、取得成本、当前估值、是否代持或质押。**主角在自己公司里的持股（如 51%）也要单独建一条**，不能只写在公司条目的「主角所占股份」里。',
@@ -6722,14 +6936,14 @@ let aiPickFail = '';
       '  · 商标：公司名／组合名／艺名／Logo 的注册类别、有效期、是否被抢注。',
       '  · 账号矩阵：社交账号／粉丝会籍／MCN 账号 —— 平台、粉丝量、变现方式、估值。',
       '  · 牌照与资质、应收账款／未回款、商誉与品牌价值（估值＋来源）。',
-      '  · 每条都要给：名称／类型／归属／取得方式与时间／成本／当前估值／**到期日**（版权年限、合约期、商标 10 年；没有期限就留空）／收益方式（分账比例、授权费、分红）／状态（持有中／已授权他人／质押／诉讼中）／风险与纠纷／备注。',
-      '- 「实体资产」的**收支**：能产生收益的（公司、店铺、出租房产、项目…）必须写「每年收入」「每年支出」「净利润」（都写纯数字，单位同估值；净利润＝收入−支出，算清楚）和「运营状态」（正常经营／出租中／停业／空置…）；不可变现的（首饰、收藏品）这几项留空，不要写 0。**自住住宅与日常用车本来就不该在实体资产里，它们在「居所」。**',
-      '- 「实体资产」里的**场所类（公司、店铺、基地、厂房、学校、医院、会所、出租或投资的住宅／别墅／老洋房…）必须有「每一层的设施」**——写成多行 `楼层=设施`，一行一层，设施用顿号分隔（例：`一层=玄关、会客厅、餐厅、厨房`、`二层=主卧、客卧、书房`）。确实没有楼层的（车辆、首饰、收藏品、股票等）留空，不要硬编楼层。',
-      '- other：装不下的变量用 {"path":["…"],"value":新值} 整体替换（path 相对 state 根）。**路径必须用下面这些原名，不要自己造**：英文名**只有 skills_items 这一处**，别把别的字段也翻成英文 —— 实测模型写过 `current_state`／`current_thoughts`／`金钱名`，本应是 `当前状态`／`当前想法`／`货币名`。写错的结果是同一件事在存档里存成两份、内容还不一样，界面上两个都会显示出来。可用：skills_items.技能／skills_items.状态值／实体资产／虚拟资产／疾病与伤病／婚姻状况／配偶／子女／私人关系／隐患／收支／债务／凭证／事业／住所／交通。**写成不存在的路径（如 virtual_assets）会把内容丢进界面上看不见的孤儿键。**',
+      "- 虚拟资产每条明确名称／类型／归属／权利标的／简介／权利内容／行使方式／限制与义务；简介至少40字，后三项各至少12字，按所有权、版权、合约、账号等类型分别写。只描述既有权益；通用机制必须写为以已确认份额和约定为限的条件，不擅自授予控制、分红、独占或转授权。成本、估值、股份、分成、取得时间、到期日、交易方和具体条款只沿用明确事实，未知留空；所有者不代表100%持股，不为补字段编造合同或财务事实。",
+      "- 实体资产的收入、支出、净利润、估值、成本、贷款和余额只在原文或本轮已发生经济事实明确时记录；未知留空，不凭业务类型、身份或规模猜数字，不为了补资料改账。运营状态仍需描述清楚。自住住房与日常用车仍只在住所／交通。",
+      "- 实体资产有已知楼层时，可按楼层写主要设施；未知楼层、面积或员工数不凑数字。已声明虚构经营主体可设计与用途相容的普通办公或生产功能，但这不代表新增产权、设备采购、账户或支出。",
+      '- other/diffs：额外变化优先用 {"path":["protagonist","住所"],"value":新值}（也兼容to）。路径相对state根。主角的疾病与伤病、婚姻状况、配偶、子女、私人关系、隐患、收支、债务、凭证、事业、住所、交通均在protagonist下面；技能与状态值在skills_items，随身物品在protagonist.物品；实体资产和虚拟资产在state根。兼容直接顶层日常字段、中文主角/世界/角色/人物关系容器和点路径/JSON指针，但优先用规范位置，不混交同一变量的不同值。明确路径提交的列表按完整新列表替换，须保留未变条目；顶层住所只交新增或变更记录即可，会按精确房屋标识增量更新，不按城市猜测合并。',
       '- **字段名一律用上面列出的那个，不要用界面上的显示名**：收支（不是「月收入」「月支出」）、债务（不是「债务与欠账」）、凭证（不是「凭证与资格」）、事业（不是「事业与投资」）、住所／交通（不是「居所」）。名字写错不会报错，但内容会落到界面上看不见的地方去。',
-      '- **归属钉死，别写重**：技能与状态值一律写到 skills_items 下，**不要写进主角对象**；随身物品一律写 protagonist.物品（{名字,品质,获取时间,简介,属性提升}），**不要再写「背包」**；实体资产＝房/车/设备/地皮等身外之物，虚拟资产＝股权/版权/项目/合约/账号/商誉等无形权利。',
+      '- **归属钉死，别写重**：技能与状态值一律写到 skills_items 下，**不要写进主角对象**；随身物品一律写 protagonist.物品（{名字,品质,获取时间,简介,属性提升}），**不要再写「背包」**；实体资产＝已声明经营主体、投资房产、设备、土地与收藏品；自住住房和日常用车只在住所／交通，不重复建立产业，虚拟资产＝股权/版权/项目/合约/账号/商誉等无形权利。',
       '- 【当前日期时间】要随剧情推进，始终保持 `2018年8月21日 星期六 12:00:03 晴 端午节` 这一行格式：年月日 → 星期 → 时分秒 → 天气（1~2 字）→ 特殊日期（没有就省略）。时间没变化也要按实际写出当前时刻，不要留模糊描述。',
-      '- 主角的「标签」「表性格」「里性格」「当前想法」由玩家自己维护，不要写；**NPC 的这几个字段都要写**（NPC 没有玩家编辑面板，全靠你维护）。',
+      '- 主角的「标签」「表性格」「里性格」「当前想法」由玩家自己维护，不要写；**NPC新建或缺项时必须写表性格、里性格、背景；既有非空固定资料不重写，重大长期变化须给固定资料变更依据。当前想法和当前状态单独更新，不代替固定人设。**',
       '- 新角色的字段尽量给齐（之后每轮只补有变化的部分）：姓名／性别／**生日**／年龄（有生日就不用写）／**出生地**／种族／身份／外貌／身高／体重（女性还要三围、罩杯）／**健康状况**／**疾病与伤病**／**表性格**／**里性格**／**标签**／**特点**／当前想法／当前状态／**联系方式**（对象：{电话, 微信, QQ}。**「电话」必须给** —— 凡是跟主角有实质关系的角色（父母／兄弟姐妹／子女／配偶／同学／同事／对手／朋友）都要有一个手机号，11 位，格式按年代和身份给（2000 年前后可以用「139xxxx」这种，或座机「0513-8xxxxxx」；现代一律 13x/15x/18x 开头）。**「微信」「QQ」先留空**，等正文里明确出现了「加了微信」「QQ 多少」才补）／**私密物品**（数组，可空：{名称, 藏处, 来历}，如「用完一半的润唇膏／笔袋夹层／去年生日同学送的」；**只写她藏起来、不想让人看见的东西**，不超过 3 件）／**自察**（数组，可空：{时刻, 部位, 感觉}，如「昨晚睡前／小腹／摸到一小块硬的」；**只写她自己私下留意到的身体变化**，不超过 2 条）／**与主角关系**（她是谁：父亲／母亲／妹妹／室友…，不是「父子」这种关系性质）。**和主角真的没关系就留空** —— 只是同学的父母、只见过一面的路人，这个字段留空就行；「是谁的谁」这种说明写进「特点」，**不要写「无（沈清越的父亲）」**，那会让他在关系图上长出一条假线／好感度／信任度／穿着。标签与特点用短词（三五个字，数组或顿号分隔都行，如 ["勤快","嘴碎"]）。**「出生地」写籍贯或老家**（如「北京东城」「江南苏州」），不是现在住的地方；按他的年龄、身份、口音合理给一个，别留空。',
       '- **表性格／里性格／性格写成一句话**（顿号连起来也算一句，如「娇憨灵动、软糯甜美、依恋顺从」），**不要写成数组** —— 只有「标签」「特点」「疾病与伤病」这类才是短词数组。',
       '- **疾病与伤病是数组**（主角和角色都要写）：按角色的年龄／职业／生活方式给常见的那些小毛病，每条只写「程度 + 病名」，6~10 字（如 ["轻度腰肌劳损","中度脂肪肝"]）；不要写成因、来历、症状（不要写「因常年伏案签署文件偶有轻微颈椎劳损」）。年轻健康的角色留空数组，不要写「无」「健康」。已有角色身体出问题时也按同样格式补进去。',
@@ -6744,7 +6958,7 @@ let aiPickFail = '';
       '  · 凭运气：可以，但要让人看得出这是运气（对手失误、场地帮忙、别人放了水），而不是他本来就该赢。',
       '  · 什么都不凭：那就是写崩了，改掉。',
       refSection,
-    ].join('\n');
+    ].join('\n')) + '\n\n' + BASIC_DATA_RULES + '\n\n' + NPC_PROFILE_GENERATION_RULES + '\n待核对普通衣着角色：' + JSON.stringify(wardrobeTasks(s).map((n) => ({ 姓名: n.姓名, 部位: BASIC_WEAR_KEYS })));
   }
 
   /**
@@ -6767,20 +6981,41 @@ let aiPickFail = '';
     const s = String(v == null ? '' : v);
     return s.split(/\s*[—–]{1,2}\s*|\s*--\s*/)[0].trim();
   }
-  function settleToDiffs(s, sj) {
-    const diffs = [];
-    if (!sj || typeof sj !== 'object') return diffs;
+  function settlementIssueFromDiagnostics(diagnostics) {
+    const details = diagnostics.slice(0,32).map(d => ({kind:String(d?.kind || 'invalid-update').slice(0,80),path:Array.isArray(d?.path)?d.path.slice(0,10).filter(x=>typeof x==='string'||typeof x==='number').map(x=>typeof x==='string'?x.slice(0,80):x):[],why:String(d?.why || d?.reason || '格式或取值无效').slice(0,160),...(typeof d?.source==='string'?{source:d.source.slice(0,80)}:{}),...(typeof d?.attemptedPathText==='string'?{attemptedPathText:d.attemptedPathText}:{}),...(typeof d?.attemptedValueText==='string'?{attemptedValueText:d.attemptedValueText}:{}),...(d?.attemptedValueMissing===true?{attemptedValueMissing:true}:{}),...(typeof d?.attemptedValueUnavailable==='string'?{attemptedValueUnavailable:d.attemptedValueUnavailable}:{}),...(d?.attemptedValueRedacted===true?{attemptedValueRedacted:true}:{}),...(d?.attemptedValueCandidates===true?{attemptedValueCandidates:true}:{})}));
+    const roots = {protagonist:'主角',world:'世界',npcs:'角色',实体资产:'资产',虚拟资产:'权益',simulation:'经营'};
+    const notes = details.slice(0,3).map(d => { const root=Object.prototype.hasOwnProperty.call(roots,d.path[0])?roots[d.path[0]]:'资料';const fields=d.path.slice(1).filter(x=>typeof x==='string'&&/[\u4e00-\u9fff]/.test(x)).map(x=>x.slice(0,24));const internal=d.path.some(x=>typeof x==='string'&&x.startsWith('_'));return root+(internal?'·内部状态':fields.length?'·'+fields.join('·'):'')+'：'+d.why; });
+    return {why:diagnostics.length+'项资料更新已跳过：'+notes.join('；'),details};
+  }
+  function refreshRecalculatedIssues(s, turn, {before=null,diagnostics=[],existingOnly=false}={}) {
+    const old=Array.isArray(turn?.issues)?turn.issues:[];
+    const computed=x=>x&&((x.step==='房产'&&x.why==='购房事项尚未形成房屋更新')||(x.step==='账务'&&['购房付款尚未入账，请核对实际付款金额','首期付款与固定租金需核对账期'].includes(x.why)));
+    if(existingOnly&&!old.some(computed))return;
+    let baseline=before;
+    if(!baseline){baseline=JSON.parse(JSON.stringify(s));rollbackDiffs(baseline,turn.diffs||[]);}
+    const fresh=dataIntegrityIssues(baseline,s,turn.body,turn.diffs||[]).filter(computed);
+    let issues=old.filter(x=>x&&(computed(x)?existingOnly&&fresh.some(y=>y.step===x.step&&y.why===x.why):existingOnly||!(x.step==='settle'||x.step==='资料'&&/^\d+项资料更新已跳过/.test(String(x.why||'')))));
+    if(!existingOnly){issues.push(...fresh);if(diagnostics.length){const current=settlementIssueFromDiagnostics(diagnostics);issues.push({step:'资料',why:current.why,details:current.details});}}
+    if(issues.length)turn.issues=issues;else delete turn.issues;
+  }
+
+  function settleToDiffs(s, sj, diagnostics = [], submittedForOverride = null) {
+    const originalUpdate=sj;
+    if (!sj || typeof sj !== 'object') return [];
+    const compatibility=normalizeSettlementUpdate(s,sj,diagnostics);
+    sj = cleanGeneratedValue(compatibility.update);
+    cleanCharacterProfiles(sj);
+    cleanSkillAndItemNotes(sj);
+    if(sj.other)cleanSkillAndItemNotes({skills_items:{技能:sj.other,背包:[]}});
+    cleanGeneratedAppearanceNotes(sj,{dropEmpty:true});
+    let diffs = extraModelDiffs(protectNpcProfileExtras(s,sj), diagnostics, originalUpdate, submittedForOverride || compatibility.submittedFor);
     const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-    // 兼容：万一模型仍按老格式给了 diffs 数组，也认
-    if (Array.isArray(sj.diffs)) {
-      sj.diffs.forEach((d) => {
-        if (d && Array.isArray(d.path) && d.path.length) diffs.push(d);
-      });
-    }
     ['world', 'protagonist'].forEach((root) => {
       const box = sj[root];
       if (!box || typeof box !== 'object' || Array.isArray(box)) return;
       Object.keys(box).forEach((k) => {
+        if (s.simulation?.enabled && (k === '技能' )) return;
+        if (k.startsWith('_')) { diagnostics.push({ kind: 'invalid-update', path: [root, k], why: '不允许修改内部状态', ...rejectedUpdateDetail({path:[root,k],to:originalUpdate?.[root]?.[k]}) }); return; }
         const cur = (s[root] || {})[k];
         // 主角的「穿着」也按部位合并：模型只给了一个部位时，别把其他部位抹掉
         if (root === 'protagonist' && k === '穿着') {
@@ -6815,6 +7050,7 @@ let aiPickFail = '';
         at = npcs.findIndex((x) => nameOf(x, ['姓名', '名字']) === alias);
         if (at >= 0) renamedFrom = alias;
       }
+      const fixed=protectNpcProfileUpdate(at<0?{}:npcs[at],item);for(const k of Object.keys(item))delete item[k];Object.assign(item,fixed);
       if (at < 0) {
         npcAppend.push(item);
         return;
@@ -6836,7 +7072,7 @@ let aiPickFail = '';
         }
       }
       Object.keys(item).forEach((k) => {
-        if (k === '姓名') return;
+        if (k === '姓名' || k.startsWith('_')) return;
         const cur = npcs[at][k];
         if (k === '穿着') {
           const merged = mergeWear(cur, item.穿着, !!(s.config && s.config.scentByAI));
@@ -6873,11 +7109,23 @@ let aiPickFail = '';
     relAppend.forEach(function (x, k) {
       diffs.push({ path: ['relationships', rels.length + k], to: x });
     });
-    return diffs;
+    const reviewed = wardrobeReviewDiff(s, sj);
+    if (reviewed) diffs.push(reviewed);
+    if (s.simulation?.enabled) {
+    diffs=diffs.filter(d=>d.path[0]!=='simulation'&&!(d.path[0]==='protagonist'&&(d.path.length===1||d.path[1]==='技能'))&&!(d.path[0]==='skills_items'&&(d.path.length===1||d.path[1]==='技能')));
+    diffs=diffs.filter(d=>!(d.path[0]==='npcs'&&d.path[d.path.length-1]==='actorId')).map(d=>{if(d.path[0]!=='npcs'||d.to==null||typeof d.to!=='object')return d;const value=JSON.parse(JSON.stringify(d.to));if(Array.isArray(value)){for(const row of value){if(row&&typeof row==='object')delete row.actorId;}}else delete value.actorId;return {...d,to:value};});
+    const modelDiffs=dedupeModelDiffs(diffs,diagnostics),projected=JSON.parse(JSON.stringify(s));applyDiffs(projected,modelDiffs);
+    const identities=planActorIdentities(projected,s.npcs),identityDiffs=identities.diffs;
+    if(JSON.stringify(projected.simulation.actorRefs||[])!==JSON.stringify(identities.refs))identityDiffs.push({path:['simulation','actorRefs'],to:identities.refs});
+    applyDiffs(projected,identityDiffs);
+    const engineDiffs=genericHost.settle(projected,sj.simulationUpdates||{},diagnostics,Number(s.story?.current_message_index)||0,s._simulationStagedActions||[]);
+    return [...modelDiffs,...identityDiffs,...engineDiffs];
+  }
+  return dedupeModelDiffs(diffs, diagnostics);
   }
 
   /** 8 条行动路线的名字：用来在没有 [行动选项] 抬头时认出正文末尾那一段选项 */
-  const ROUTE_NAMES = ['稳健路线', '激进路线', '创新路线', '视角切换', '双线叙事', '镜头转换', '时间跳转', 'NSFW-A'];
+
 
   /** 一条选项是否合法：[路线名] 内容，且路线名必须是那 8 个之一 */
   function optionOk(line) {
@@ -6903,42 +7151,19 @@ let aiPickFail = '';
     return (a.length >= b.length ? a : b);
   }
 
-  function optionLineText(line) {
-    return String(line == null ? '' : line)
-      .trim()
-      .replace(/^\s*\d+\s*[.、)）]\s*/, '')
-      .replace(/^\s*[-*•]\s*/, '')
-      .trim();
-  }
+
 
   /** 这一行是不是「[路线名] 内容」 */
-  function isOptionLine(line) {
-    const m = optionLineText(line).match(/^[\[【]\s*([^\]】]{1,16}?)\s*[\]】]/);
-    if (!m) return false;
-    const tag = m[1].trim();
-    return ROUTE_NAMES.some((r) => r === tag || r.toLowerCase() === tag.toLowerCase());
-  }
 
-  function collectOptionLines(lines) {
-    return (lines || []).map(optionLineText).filter(Boolean).slice(0, 12);
-  }
+
+
 
   /**
    * 模型经常忘记写 [行动选项] 这个抬头，直接把 8 条选项当成正文的结尾。
    * 那样正文里会多出一段选项，输入框左边的「行动选项」面板也拿不到内容。
    * 这里兜底：把正文末尾连续的一段「[路线名] …」切出来当选项。
    */
-  function splitTrailingOptions(text) {
-    const lines = String(text || '').replace(/\r/g, '').split('\n');
-    let end = lines.length - 1;
-    while (end >= 0 && lines[end].trim() === '') end--;
-    let start = end;
-    while (start >= 0 && isOptionLine(lines[start])) start--;
-    if (end - start < 2) return null; // 至少两条才算选项段，避免误伤正文
-    const body = lines.slice(0, start + 1).join('\n').replace(/\s+$/, '');
-    if (!body.trim()) return null;
-    return { body, options: collectOptionLines(lines.slice(start + 1, end + 1)) };
-  }
+
 
   /**
    * 剥掉导演笔记的壳。
@@ -6947,63 +7172,9 @@ let aiPickFail = '';
    * 甚至 reasoning 里也照抄了那对标签。标签不是内容，直接塞进「思考过程」面板
    * 就是裸露的 <导演笔记>，看着像插件没解析干净。
    */
-  function stripNoteTags(t) {
-    return String(t == null ? '' : t)
-      .replace(/<\s*\/?\s*(?:导演笔记|think|思考过程|思考)\s*>/gi, '')
-      .replace(/^\s*```[a-zA-Z]*\s*\n/, '')
-      .replace(/\n\s*```\s*$/, '')
-      .trim();
-  }
   
-  function splitStory(raw) {
-    let think = '';
-    let rest = String(raw || '').trim();
-    // 两种都认：<导演笔记> 是现在要求的，<think> 留给旧存档和模型自己发挥的情况。
-    const m = rest.match(/<(?:导演笔记|think)>([\s\S]*?)<\/(?:导演笔记|think)>/);
-    if (m) {
-      think = m[1].trim();
-      rest = rest.replace(m[0], '').trim();
-    }
-    // 没闭合就按行特征切 —— 模型偷懒不写 </导演笔记>，或者被长度上限截断时，
-    // 上面那条正则匹配不到，整块导演笔记会原样留在正文最前面。
-    if (!m) {
-      const 开m = rest.match(/<\s*(?:导演笔记|think)\s*>/);
-      if (开m) {
-        const 后 = rest.slice(开m.index + 开m[0].length);
-        const 行 = 后.split('\n');
-        // 导演笔记的每一行都以 ①..⑩ 或 · 开头；遇到第一行不是这样的，就当正文开始
-        const 像笔记 = (t) => /^[①②③④⑤⑥⑦⑧⑨⑩⑪⑫]|^[·•\-*](\s|$)|^\d+[.、)]|^$/.test(t);
-        let 止行 = 0;
-        for (let i2 = 0; i2 < 行.length; i2++) {
-          if (像笔记(行[i2].trim())) { 止行 = i2; continue; }
-          break;
-        }
-        const 切出 = 行.slice(0, 止行 + 1).join('\n').trim();
-        const 留下 = 行.slice(止行 + 1).join('\n').trim();
-        // 只有切出来确实像笔记（带编号或够长）才认，避免误伤正文里偶然出现的标签
-        if (留下 && /[①②③④⑤⑥⑦⑧⑨⑩]|^[·•]/m.test(切出)) {
-          think = 切出;
-          rest = 留下;
-        }
-      }
-    }
-    let body = rest;
-    let options = [];
-    // 行动选项段落：从 [行动选项] 或「行动选项：」开始，到文末
-    const idx = rest.search(/\[行动选项\]|【行动选项】|行动选项\s*[:：]/);
-    if (idx >= 0) {
-      body = rest.slice(0, idx).trim();
-      const tail = rest.slice(idx).replace(/^\s*(\[行动选项\]|【行动选项】|行动选项\s*[:：])\s*/, '');
-      options = collectOptionLines(tail.split('\n'));
-    } else {
-      const split = splitTrailingOptions(rest);
-      if (split) {
-        body = split.body;
-        options = split.options;
-      }
-    }
-    return { think, body, options };
-  }
+
+
 
   /** 穿着按部位合并：新的有值就用新的，没有就保留原来的（别把已填的部位清空） */
   function mergeWear(base, incoming, byAI) {
@@ -7382,15 +7553,21 @@ function seasonText(s) {
    * 副作用（可接受）：第一次跑到这段代码时，老存档里所有角色都没有「最近出场」，
    * 会被统一设成本轮 —— 相当于"从现在开始重新计"，之后按真实出场更新。
    */
-  function markAppearances(s, body, round) {
+  function markAppearances(s, body, round, changes) {
     const text = String(body || '');
-    const list = Array.isArray(s.npcs) ? s.npcs : [];
-    list.forEach((n) => {
+    (Array.isArray(s.npcs) ? s.npcs : []).forEach((n, index) => {
       if (!n || typeof n !== 'object') return;
-      const nm = String(n.姓名 || n.名字 || '').trim();
-      if (nm.length < 2) return;
-      if (text.indexOf(nm) >= 0) n.最近出场 = round;
-      else if (n.最近出场 == null) n.最近出场 = round;
+      const name = String(n.姓名 || n.名字 || '').trim();
+      if (name.length < 2) return;
+      let next = n.最近出场;
+      if (text.includes(name)) next = round;
+      else if (next == null) {
+        const previous = (s.transcript || []).filter((entry) => entry.role !== 'user' && Number(entry.seq) < Number(round) && String(entry.body || '').includes(name)).map((entry) => Number(entry.seq)).filter(Number.isFinite);
+        next = previous.length ? Math.max(...previous) : 0;
+      }
+      if (next === n.最近出场) return;
+      if (Array.isArray(changes)) changes.push(engineDiff(['npcs', index, '最近出场'], n.最近出场, next, 'appearance'));
+      n.最近出场 = next;
     });
   }
 
@@ -7401,6 +7578,12 @@ function seasonText(s) {
     resetProg(gid); // 新一轮：上一轮的降级标记不带到这一轮
     setProg(gid, 'prep', '整理这一轮要用的状态');
     const seq = s.story.current_message_index;
+    const phoneBridge=buildPhoneStoryBridge(s,{seq});
+    opts=Object.assign({},opts,{phoneBridge});
+    const genericPlan = await genericHost.prepareTurn(s, opts.simulationActions || [], sendText);
+    sendText = String(sendText).replace(/\n*【本轮经营待办】[\s\S]*?【经营待办结束】/g, '');
+    const enginePaths = [['_收支结算月'], ['_lastDh'], ['_状态追踪'], ['_当前状态追踪'], ['_自察追踪'], ['story', 'sockTick']];
+    const engineBefore = enginePaths.map((path) => ({ path, value: getByPath(s, path) === undefined ? undefined : JSON.parse(JSON.stringify(getByPath(s, path))) }));
     const userEntry = {
       seq,
       role: 'user',
@@ -7412,6 +7595,7 @@ function seasonText(s) {
       options: [],
       ts: Date.now(),
     };
+    if (genericPlan) userEntry.simulationActions = JSON.parse(JSON.stringify(genericPlan.original));
     s.transcript.push(userEntry);
     // 开场那一条是「设定正文」，不是玩家说的话。把它塞进对话记录会让模型判断错「谁在说话」
     // （实测把模型绕进英文自问自答，正文一个字都不给），所以这里跳过它。
@@ -7422,8 +7606,9 @@ function seasonText(s) {
       .map((t) => (t.role === 'user' ? '玩家：' : '叙事：') + t.body)
       .join('\n\n');
     setProg(gid, 'retrieve', 'AI 提取信息 · 筛选本轮要注入的状态');
-    const sys = await storySystemPrompt(s, opts.all ? '' : sendText, opts);
+    const sys = await storySystemPrompt(s, opts.all ? '' : sendText, opts) + (genericPlan ? genericPlan.context : '');
     // 检索没成功（走了关键词兜底）：这一轮注入的状态可能挑不准，阶段条上标个黄灯
+    const lastContext = CONTEXT_BY_GAME.get(String(s.gameId || gid));
     if (lastContext && lastContext.via === 'keyword') {
       markWarn(gid, 'retrieve', 'AI 提取信息没成：' + (lastContext.fail || '未知原因') + ' —— 改用关键词匹配挑上下文，可能漏掉相关条目');
     }
@@ -7444,13 +7629,16 @@ function seasonText(s) {
         '按它把这一轮写出来：补满细节与旁人反应，然后让剧情往前走一点。）'
       : sendText;
 
+if (genericPlan && genericPlan.actions.length) userContent += '\n\n【本轮经营待办】\n' + JSON.stringify(genericPlan.actions) + '\n这些是玩家本轮选择的待执行行动，不是已经完成的事实；以预演结果描述开工或进度。\n【经营待办结束】';
+
 // 微博上刚做过的事：只在真有未发的评论时才注入，注入完就清空（一次性）。
 // 不给它整屏微博，只给「他评的那一条」—— 上下文别被无关内容撑大。
 // 微博行为一旦拼进 sendText，就会跟着 user entry 一起存下去（sent 字段）。
 // 重发时 regenFrom 取的就是 sent —— 所以这里要判断「已经拼过就别再拼一次」，
 // 否则重发会叠一份一模一样的说明在提示词里。
 const 拼前内容 = String(userContent || '');
-const 微博待发 = 取待发评论(gid, seq);
+const 微博待发 = mergeWeiboActions(opts.weiboActions, 取待发评论(gid, seq, s));
+userEntry.weiboActions = JSON.parse(JSON.stringify(微博待发));
 // 只拼「还没进过提示词」的那几条。整段跳过会在「重发前又补了一句评论」时丢新的，
 // 整段重拼又会把说明叠两份 —— 逐条判最稳。
 const 微博新条 = 微博待发.filter((w) => {
@@ -7467,7 +7655,7 @@ if (微博新条.length) {
     // 编号 = 在完整待发队列里的位置。模型照抄这个数字，代码靠它精确落位，
     // 不再拿作者名或正文去猜「这个卡片属于哪条微博」。
     const 号 = (Array.isArray(微博待发) ? 微博待发.indexOf(w) : -1) + 1;
-    const 号前 = 号 > 0 ? '（第 ' + 号 + ' 条）' : '';
+    const 号前 = (号 > 0 ? '（第 ' + 号 + ' 条）' : '') + (w.id ? '（动作ID：' + w.id + '）' : '');
     if (w.回谁) {
       // 回复某条评论
       行s.push(号前 + '· 你在 @' + w.微博作者 + ' 发的那条微博下面，回复了「' + w.回谁 + '」的评论：');
@@ -7512,7 +7700,7 @@ if (微博新条.length) {
     行s.push('内容|回他的那句话');
     行s.push(':::')
     行s.push('');
-    行s.push('**「第几条」照着上面那个编号抄** —— 玩家评了三个人就写 1、2、3，');
+    行s.push('每个回复块还要写一行「动作ID|上面对应动作的ID」，必须逐字照抄；第几条仅用于兼容。');
     行s.push('这个数字决定了回复挂在哪条微博底下，抄错就挂错地方。');
     行s.push('「谁」写回你的那个人，「回谁」写「玩家」。');
     行s.push('某个人这回没回你，就跳过不写他那块 —— 但别只写第一个就停。');
@@ -7532,10 +7720,11 @@ if (微博新条.length) {
       // 近场提醒：把「自己的调整」再贴一遍到离当前对话最近的位置。
       // system 里那份离这条消息隔了几万字，近因效应下压不住 —— 模型更容易听最近的话。
       // 只贴作者自己写的那些，不重复反模式清单（那份太长，贴过来会喧宾夺主）。
-      const 近场 = String((s.config && s.config.styleNotes) == null ? STYLE_NOTES_DEFAULT : s.config.styleNotes).trim();
+      const 近场 = selectedStyleNotes(s).trim();
       if (近场) {
         userContent += '\n\n【还是这些，别忘了】\n' + 近场 + '\n· 结尾停在事情正在走的位置 —— 不要每轮都让人物等主角发话。';
       }
+    if(phoneBridge.input)userContent+='\n\n'+phoneBridge.input;
     setProg(gid, 'story', '正在请求正文（主模型）');
     // 收到多少字就报一下，免得看着像卡死（尤其是不支持流式的中转，要等很久）
     const t0 = Date.now();
@@ -7577,7 +7766,8 @@ if (微博新条.length) {
         Object.assign({}, storyOpts, { tools: [STORY_SUBMIT_TOOL], wantTools: true })
       );
     } else {
-      r = await callStoryModel(s, gid, [{ role: 'system', content: sys }, { role: 'user', content: userContent }], storyOpts);
+      await turnLog('[正文·普通兼容] 按现有配置单次请求普通正文');
+      r=await callMainModel([{role:'system',content:sys},{role:'user',content:userContent}],storyOpts);
     }
     // 被 maxTokens 截断：不当中断处理，已经吐出来的照样用（半篇总比空白强），
     // 只在日志和 issues 里留一句，让玩家知道这轮为什么戛然而止。
@@ -7585,10 +7775,12 @@ if (微博新条.length) {
     if (cutStory) {
       await turnLog('[正文] 被 maxTokens 截断（' + String(r.text || '').length + ' 字），保留已生成部分');
     }
+    if (r && r.stopped && !String(r.text || '').trim() && !(r.toolCalls || []).length) throw new Error('已停止生成');
     let sp = splitStory(r.text);
     // 工具通道：正文在 submit_story 的参数里，不在 r.text。
-    // 拿不到就退回 r.text —— 模型有时会无视工具直接说话，那时不能空手回去。
-    if (正文走工具) {
+    // 优先工具正文；缺失时兼容同次可见文本，不额外重试。
+    {
+      let toolBodyAccepted=false;
       const 调用 = (r && Array.isArray(r.toolCalls) ? r.toolCalls : []).filter((tc) => tc && tc.name === 'game')[0];
       if (调用) {
         let a = {};
@@ -7600,29 +7792,29 @@ if (微博新条.length) {
           const sp2 = splitStory(String(a.game_content));
           if (sp2.think && !sp.think) sp.think = sp2.think;
           if (Array.isArray(sp2.options) && sp2.options.length && (!Array.isArray(sp.options) || !sp.options.length)) sp.options = sp2.options;
-          sp.body = sp2.body || String(a.game_content);
+          sp.body = sp2.body;
+          toolBodyAccepted=!!String(sp.body||'').trim();
         }
         if (Array.isArray(a.options) && a.options.length) sp.options = a.options.map((x) => String(x));
         await turnLog('[正文·工具] 取到正文 ' + String(sp.body || '').length + ' 字，思考 ' + String(sp.think || '').length + ' 字，选项 ' + sp.options.length + ' 条');
-      } else {
-        await turnLog('[正文·工具] 模型没调 game，退回普通正文 ' + String(r && r.text || '').length + ' 字');
       }
-    }
-    // 有些模型／中转会把内容全塞进「思考」通道，正文一条都不给。
-    // 原样保存就会得到一段没有正文的空轮次，所以这里重试一次。
-    if (!正文走工具 && !String(r.text || '').trim()) {
-      setProg(gid, 'story', '这一轮没拿到正文，正在重试一次');
-      try {
-        const r2 = await callStoryModel(s, gid, [{ role: 'system', content: sys }, { role: 'user', content: userContent }], storyOpts);
-        if (String(r2.text || '').trim()) r = r2;
-        else r = { text: '', reasoning: [r.reasoning, r2.reasoning].filter(Boolean).join('\n\n--- 重试 ---\n\n'), finish: r2.finish };
-        sp = splitStory(r.text);
-      } catch (e) {
-        /* 重试失败就沿用第一次的结果 */
+      if(!toolBodyAccepted){
+        if(r?.stopped)throw new Error('已停止生成');
+        const compatible=plainStoryFallback(r?.text);
+        if(!compatible.accepted){
+          const originalReply=String(r?.text??'');
+          await turnLog('[正文·普通兼容] 未取得正文：'+compatible.why);
+          throw new Error('模型未返回可用正文。\n\n模型原始回复：\n'+(originalReply.length?originalReply:'未返回可见文本。'));
+        }
+        const previousThink=sp.think,previousOptions=sp.options;
+        sp=compatible.story;
+        if(!sp.think&&previousThink)sp.think=previousThink;
+        if(!sp.options.length&&Array.isArray(previousOptions))sp.options=previousOptions;
+        await turnLog('[正文·普通兼容] gameId='+gid+' seq='+seq+' 使用同次可见回复，正文'+String(sp.body||'').length+'字，不重试正文');
       }
     }
     if (!sp.think && r.reasoning) sp.think = r.reasoning;
-    if (!sp.body) sp.body = r.text;
+    if (!String(sp.body || '').trim()) throw new Error(r && r.stopped ? '已停止生成' : '模型没有返回正文，请重试');
     // 模型偶尔把玩家的评论写成 :::weibo 卡片 —— 作者填别人、正文填玩家那句话，
     // 界面上就成了「田曦薇发了条微博，内容是『你管呢』」，而它其实是玩家在评论区回的一句话。
     // 提示词里已经明令禁止，这里再兜一层：正文对得上就整块剥掉。
@@ -7645,23 +7837,27 @@ if (微博新条.length) {
         '⚠️ 这一轮没有正文。\n\n模型只返回了「思考过程」、没有返回正文（展开上面的思考过程可以看到它实际写了什么）。\n可能原因：中转/模型把内容放进了 reasoning 通道，或输出被长度上限截断。\n处理办法：点这一行右上角的 ⟳ 重新生成；若连续出现，换一个模型或降低思考强度。';
     }
 
+    const dataBefore = { protagonist: JSON.parse(JSON.stringify({ 金钱: s.protagonist && s.protagonist.金钱, 住所: s.protagonist && s.protagonist.住所, 收支: s.protagonist && s.protagonist.收支 })), 实体资产: JSON.parse(JSON.stringify(s.实体资产 || [])) };
+    const profileBeforeNames=new Set((s.npcs||[]).map(n=>n.姓名));
+    const dataWarnings = [], settlementDiagnostics = [];
     let diffs = [];
     let summary = '';
     let settleOptions = [];
     const settleCfg = (s.config && s.config.settle) || {};
-    if (settleCfg.model) {
+    let phoneSettled=!settleCfg.model;
+    if (settleCfg.model || s.simulation?.enabled) {
       setProg(gid, 'settle', '结算中 · 变量变化 + 小总结');
       try {
         const msgs = [
-          { role: 'system', content: await settleSystemPrompt(s, gid, sp.body) },
-          { role: 'user', content: '本轮正文：\n' + sp.body },
+          { role: 'system', content: await settleSystemPrompt(s, gid, sp.body, phoneBridge) + (s.simulation?.enabled ? '\n' + promptText('simulation',SIMULATION_RULES) + (genericPlan ? genericPlan.context : genericHost.context(s)) : '') },
+          { role: 'user', content: '本轮正文：\n' + sp.body + (phoneBridge.settlement?'\n\n'+phoneBridge.settlement:'') },
         ];
       // 结算也量一下：这次调用的输入量一直是黑盒，而它每轮都跑一次。
       // 正文那次 sys 八万字，要是结算也差不多，那才是真正在烧钱的地方。
       await turnLog(
         '[inject] 结算 sys=' + String((msgs[0] && msgs[0].content) || '').length + ' user=' + String((msgs[1] && msgs[1].content) || '').length + ' 合计=' + (String((msgs[0] && msgs[0].content) || '').length + String((msgs[1] && msgs[1].content) || '').length)
       );
-        // 这里**只花一次调用**：世界/主角/角色档案/关系/技能资产全在这一次里。
+        // 主要变量在一次结算提交；普通资料缺项时最多追加一次定向补全。
         // 不加 response_format=json_object —— 要先让它写检查清单（逐项点名），
         // 只要求「输出 JSON」时模型常常只丢一个日期就交卷。
         // 首选工具调用：参数由 API 层保证是结构化对象；拿不到再走文本解析（兼容不支持 tools 的模型）
@@ -7687,12 +7883,25 @@ if (微博新条.length) {
           .replace(/<think>[\s\S]*$/i, '');
         const sj = pickToolCall(settleRes) || parseJsonLoose(settleBody);
         if (sj) {
-          diffs = settleToDiffs(s, sj);
+          const diagnostics = [];
+          s._simulationStagedActions = genericPlan ? genericPlan.actions.filter(x => x.type !== 'request') : [];
+          try { diffs.push(...settleToDiffs(s, sj, diagnostics)); } finally { delete s._simulationStagedActions; }
+          if (diagnostics.length) { const issue=settlementIssueFromDiagnostics(diagnostics); settlementDiagnostics.push(...issue.details); dataWarnings.push({ step:'资料',why:issue.why }); }
+          await turnLog('[settle-shape] gameId=' + gid + ' seq=' + seq + ' keys=' + Object.keys(sj).join(',') + ' other=' + (Array.isArray(sj.other) ? sj.other.length : 0) + ' accepted=' + diffs.length + ' rejected=' + diagnostics.length);
           summary = String(sj.summary || '');
           settleOptions = Array.isArray(sj.options) ? sj.options : [];
           applyDiffs(s, diffs);
+          phoneSettled=diagnostics.length===0&&(diffs.length>0||!!String(sj.summary||'').trim());
+          const modelDiffs = diffs.slice();
+          const completed = seq === 0 ? {diffs:[],issues:[]} : await completeBasicData(s, gid, sp.body, seq, false, (s.npcs||[]).filter(n=>!profileBeforeNames.has(n.姓名)).map(n=>n.姓名));
+          diffs.push(...completed.diffs);
+          dataWarnings.push(...completed.issues, ...dataIntegrityIssues(dataBefore, s, sp.body, modelDiffs));
+          dataWarnings.splice(0,dataWarnings.length,...reconcileNpcProfileIssues(s,reconcileWardrobeIssues(s,dataWarnings,sp.body)));
           // 模型更新完变量后，顺带把「跨月的固定收支」结一次（它自己不会记这件事）
-          const monthly = settleMonthly(s);
+          const dateMatch=String(s.world?.当前日期时间||'').match(/(\d{1,6})\s*年\s*(\d{1,2})\s*月/),currentMonth=dateMatch?Number(dateMatch[1])*12+Number(dateMatch[2])-1:null;
+        const resetBaseline=s.simulation?.enabled&&currentMonth!=null&&(sj.resetIncomeBaseline===true||(Number.isFinite(Number(s._收支结算月))&&Math.abs(currentMonth-Number(s._收支结算月))>MONTHLY_MAX));
+        if(resetBaseline)s._收支结算月=currentMonth;
+        const monthly=resetBaseline?null:settleMonthly(s);
           if (monthly) {
             const before = (s.protagonist || {}).金钱;
             if (!s.protagonist) s.protagonist = {};
@@ -7798,10 +8007,16 @@ if (微博新条.length) {
           markWarn(gid, 'settle', '结算没有返回可解析的 JSON —— 这一轮的变量（时间、角色状态、穿着等）都没有更新');
         }
       } catch (e) {
+        phoneSettled=false;
+        if (RUNNING.get(String(gid || ''))?.stop) throw new Error('已停止生成');
         await turnLog('[settle] gameId=' + gid + ' seq=' + seq + ' 失败：' + String((e && e.message) || e));
         markWarn(gid, 'settle', '结算调用失败（' + String((e && e.message) || e).slice(0, 120) + '）—— 这一轮的变量都没更新');
         console.error('[dsh-tavern-simulator] 结算失败', e);
       }
+    }
+
+    if (genericPlan && !cutStory && !(opts.shouldStop && opts.shouldStop())) {
+      for (const outcome of genericHost.commitActions(s, genericPlan, diffs, seq)) if (outcome.status === 'blocked') dataWarnings.push({ step:'经营', why:outcome.why+'，该项未执行' });
     }
 
     // 正文里如果有 :::weibo_reply 块，剥出来写回微博缓存（不给玩家看见）
@@ -7817,14 +8032,25 @@ if (微博新条.length) {
     } catch (e) {
       await turnLog('[微博] 回复处理失败：' + String((e && e.message) || e));
     }
-    const entry = {
+    const finalOptions = pickOptions(sp.options, settleOptions);
+    if (finalOptions.length !== ROUTE_NAMES.length) dataWarnings.push({ step: '选项', why: '行动选项不完整' });
+    const warningsByStep = new Map();
+    for (const warning of dataWarnings) warningsByStep.set(warning.step, [...new Set([...(warningsByStep.get(warning.step) || []), warning.why])]);
+    for (const [step, reasons] of warningsByStep) markWarn(gid, step, reasons.join('；'));
+    const 正文下限 = Math.max(200, Math.floor(Number(s.config && s.config.bodyMinWords) || 1000));
+    const 正文字数 = Array.from(String(sp.body || '').replace(/\s/gu, '')).length;
+    const 笔记字数 = Array.from(String(sp.think || '').replace(/\s/gu, '')).length;
+    await turnLog('[正文] 叙述正文 ' + 正文字数 + ' 字（不含导演笔记与选项），导演笔记 ' + 笔记字数 + ' 字，选项 ' + (Array.isArray(sp.options) ? sp.options.length : 0) + ' 条');
+       const entry = {
       seq,
       role: 'assistant',
+      ...(genericPlan ? { simulationTurnComplete: !cutStory && !(opts.shouldStop && opts.shouldStop()), simulationActionResults: genericPlan.outcomes || [], simulationConsumedActionIds: genericPlan.consumedIds || [] } : {}),
+      textVersion: randomUUID(),
       think: sp.think,
       body: sp.body,
       summary,
       diffs,
-      options: pickOptions(sp.options, settleOptions),
+      options: finalOptions,
       // 这一轮出过的问题（降级/结算失败）：跟着正文一起存进 transcript，
       // 玩家回来翻到这一轮就能看到 —— 进度条上的黄灯一刷新就没了。
       issues: (function () {
@@ -7832,9 +8058,9 @@ if (微博新条.length) {
         const out = [];
         if (p && Array.isArray(p.warn) && p.warn.length) {
           const why0 = p.why || {};
-          p.warn.forEach((k) => out.push({ step: k, why: String(why0[k] || "") }));
+          p.warn.forEach((k) => out.push({ step: k, why: String(why0[k] || ""), ...(k === "资料" && settlementDiagnostics.length ? {details:settlementDiagnostics} : {}) }));
         }
-        // 出道检测：主角还不是艺人，但剧情里刚出道了 —— 提示一下，别自动改开关
+               // 出道检测：主角还不是艺人，但剧情里刚出道了 —— 提示一下，别自动改开关
         if (s.protagonist && s.protagonist.是否艺人 !== true) {
           const 词 = 疑似出道(sp.body);
           if (词) {
@@ -7845,12 +8071,24 @@ if (微博新条.length) {
       })(),
       ts: Date.now(),
     };
+    if(phoneBridge.refs.length&&phoneSettled&&!cutStory&&!(opts.shouldStop&&opts.shouldStop()))entry.phoneInputRefs=phoneBridge.refs;
     s.transcript.push(entry);
     s.story.current_message_index += 1;
+    if ((genericPlan || seq === 0) && !cutStory && !(opts.shouldStop && opts.shouldStop())) {
+      if (genericPlan) entry.simulationActionsCommitted = true;
+      await genericHost.afterTurn(s, entry);
+    }
     // 标记这一轮谁出场了。纯代码判断，不让模型写 ——
     // 让它每轮给每个角色补一个「最近出场」既费输出预算又容易漏，
     // 而"名字有没有出现在这一轮正文里"代码判断得比模型准（也更好核对）。
-    markAppearances(s, sp.body, s.story.current_message_index);
+    markAppearances(s, sp.body, seq, diffs);
+    engineBefore.forEach(({ path, value }) => {
+      const after = getByPath(s, path);
+      if (JSON.stringify(value) !== JSON.stringify(after)) diffs.push(engineDiff(path, value, after, 'runtime'));
+    });
+    const consumedActions = new Set(微博待发.map((action) => action.id));
+    s.weiboPending = (s.weiboPending || []).filter((action) => !consumedActions.has(action.id));
+    WB_PENDING[String(gid)] = s.weiboPending;
     // 攒够若干轮就自动总结一段（失败不影响这一轮）
     try {
       await autoSummarize(s, gid);
@@ -8203,11 +8441,8 @@ if (微博新条.length) {
   /** 附带最近几轮：配置里有就用配置，否则跟着总结频率走（总结覆盖到哪儿，原文就接到哪儿）。 */
   function recentRounds(s) {
     const cfg = Number(s && s.config && s.config.recentRounds);
-  if (Number.isFinite(cfg) && cfg > 0) return Math.max(25, Math.floor(cfg));   // 保底 25 轮
-    // 总结设置存在 config.summaryOpts（不是 config.summary —— 那个是总结模型的槽位）
-    // 默认给 25 轮原文（约 3 万字）。原来跟摘要间隔走（10 轮 ≈ 1.2 万字），
-    // 实测太窄：#117 说的事到 #153 就完全走样了，因为它只看得见最近 10 条。
-    return Math.max(25, Number(summaryOpts(s).every) || SUMMARY_EVERY || 0);
+    if (Number.isFinite(cfg) && cfg > 0) return Math.min(60, Math.max(1, Math.floor(cfg)));
+    return Math.max(1, Number(summaryOpts(s).every) || SUMMARY_EVERY || 10);
   }
 
   /**
@@ -8370,7 +8605,7 @@ if (微博新条.length) {
     PROGRESS[k] = { stage: 'idle', text: '', at: Date.now(), seq: 0, warn: [] };
   }
   // 这一轮实际注入了什么（给界面回显「AI 提取到的信息」）
-  let lastContext = null;
+  const CONTEXT_BY_GAME = new Map();
 
   /**
    * Tavern 规定 handle 名只能用「小写字母、数字和 . _ : / -」——不允许大写字母。
@@ -8391,14 +8626,77 @@ if (微博新条.length) {
   function reg(handleName, fn) {
     const api = P + toApi(handleName);
     try {
-      ctx.tavern.handle(api, (args) => fn(args && typeof args === 'object' ? args : {}));
+      ctx.tavern.handle(api, async (input) => {
+        const args = input && typeof input === 'object' ? input : {};
+        if (['resetAll', 'importSession', 'importCommit', 'snapRestore', 'deleteFrom', 'regenFrom'].includes(handleName)) {
+          const active = RUNNING.get(String(args.gameId || ''));
+          if (active) active.stop = true;
+        }
+        const execute = () => requestContext.run({ gameId: String(args.gameId || '') }, () => fn(args));
+        const run = () => readonlyHandles.has(handleName) ? execute() : serial('game:' + String(args.gameId || ''), execute);
+        const result = sharedHandles.has(handleName) ? await serial('shared', run) : await run();
+        if (['getHotsearch', 'refreshHotsearch', 'moreWeibo', 'getMyWeibo'].includes(handleName)) normalizeWeiboCache(result);
+        return replies.pack(result, args.gameId);
+      });
       registered.push(api);
     } catch (e) {
       initErrors.push(api + '：' + (e && e.stack ? e.stack : String(e)));
     }
   }
 
+  function persistentStateOf(state) {
+    const kept = Object.assign({}, state);
+    delete kept.gameId;
+    delete kept.keyStatus;
+    delete kept.recoveryInfo;
+    return kept;
+  }
+  function bundleFiles(gameId) {
+    return { weibo: weiboCachePath(gameId), notes: notesFile(gameId), threads: threadsFile(gameId) };
+  }
+  async function readBundleExtras(gameId) {
+    const result = {};
+    for (const [name, file] of Object.entries(bundleFiles(gameId))) result[name] = await readJson(file);
+    return result;
+  }
+  async function writeBundleExtras(gameId, extras) {
+    assertSafeValue(extras);
+    for (const key of ['weibo', 'notes', 'threads']) {
+      const value = extras && extras[key];
+      if (value == null) continue;
+      if (typeof value !== 'object' || Array.isArray(value)) throw new Error('关联存档格式错误：' + key);
+      if (key === 'notes' && !Array.isArray(value.items)) throw new Error('笔记存档格式错误');
+      if (key === 'threads' && !Array.isArray(value.threads)) throw new Error('会话存档格式错误');
+      if (key === 'weibo' && value.时间线 != null && !Array.isArray(value.时间线)) throw new Error('微博存档格式错误');
+    }
+    for (const [name, file] of Object.entries(bundleFiles(gameId))) {
+      if (Object.prototype.hasOwnProperty.call(extras || {}, name)) await writeJson(file, extras[name]);
+    }
+  }
+  async function backupBeforeReplace(gameId, current, kind) {
+    const kept = Object.assign({}, current);
+    delete kept.gameId;
+    delete kept.keyStatus;
+    delete kept.recoveryInfo;
+    const extras = await readBundleExtras(gameId);
+    await writeJson(backupPath(gameId), kept);
+    await writeJson(snapFile(gameId, 'before-' + kind), {
+      id: 'before-' + kind, name: ({ import: '导入前备份', restore: '恢复前备份', summary: '重建前备份' })[kind] || '操作前备份',
+      seq: Number((current.story || {}).current_message_index) || 0,
+      at: Date.now(), rounds: (current.transcript || []).length, _v: 2,
+      state: kept, extras,
+    });
+  }
+
+  const genericHost = createGenericHost({ reg, loadState, saveState, withKeyStatus, applyDiffs, callSlot, callMainModel, pickToolCall, parseJsonLoose, turnLog, beginRun, endRun, RUNNING });
+  const creationHost = createCreationHost({reg,loadState,saveState,withKeyStatus,normProtag,parseNatural:args=>parseNaturalData(args),genericHost,callSlot,callMainModel,pickToolCall,parseJsonLoose,seedInitialAssets,seedInitialFriends,beginRun,endRun,RUNNING,setProg,clothingReferences:async s=>refBlocks(await loadRefs(s.gameId),isAncientWorld(s)?'衣柜·古风':'衣柜·现代').filter(b=>!/内衣|内裤|文胸|胸罩|情趣|性感|透明|气味|足控|私处|露出/.test(b.content||'')).slice(0,6).map(b=>({name:b.name,content:String(b.content||'').slice(0,1000)}))});
+  SETTLE_TOOL.parameters.properties.resetIncomeBaseline={type:'boolean',description:'明确为穿越、转世或重设时间时标记true，只重置原固定收支基准，不追算跳过年代；正常时间推进不填。'};
+
+  reg('replyChunk', async ({ gameId, id, index }) => replies.read(id, index, gameId));
+  reg('releaseReply', async ({ gameId, id }) => replies.release(id, gameId));
+
   reg('ping', async ({ gameId }) => ({
+    protocol: 15,
     ok: true,
     rev: REV,
     plugin: name,
@@ -8495,6 +8793,16 @@ if (微博新条.length) {
   });
 
   async function withKeyStatus(s) {
+    cleanCharacterProfiles(s);
+    cleanSkillAndItemNotes(s);
+    dedupeStoryLists(s);
+    cleanNewsItems(s);
+    const 资产重复 = duplicateAssetSummary(s);
+    s.assetDuplicates = { real: 资产重复.realDuplicates, rights: 资产重复.rightsDuplicates };
+    // 服装告警是当前资料的派生展示，清掉旧缺项提示但不额外保存或调用模型。
+    refreshStoredWardrobeIssues(s, [], {existingOnly:true});
+    const latestVariableTurn=(s.transcript||[]).slice().reverse().find(t=>t.role==='assistant');
+    if(latestVariableTurn)refreshRecalculatedIssues(s,latestVariableTurn,{existingOnly:true});
     s.keyStatus = await keyStatus();
     return s;
   }
@@ -8653,23 +8961,21 @@ reg('saveOracleAgent', async ({ gameId, on }) => {
   const liveCardFile = () => path.join(TAVERN_DATA_DIR, 'resources', 'cards', CARD_FILENAME);
 
   /** 跑一条 git；GIT_TERMINAL_PROMPT=0 免得在等凭据时挂住不返回 */
-  function gitRun(cwd, args, timeoutMs) {
-    try {
-      const out = execFileSync('git', args, {
-        cwd,
-        encoding: 'utf8',
-        timeout: timeoutMs || 90000,
-        windowsHide: true,
+  async function execFileText(command, args, options) {
+    return new Promise((resolve, reject) => execFile(command, args, options, (error, stdout, stderr) => {
+      if (error) { error.stdout = stdout; error.stderr = stderr; reject(error); } else resolve(stdout);
+    }));
+  }
+  async function gitRun(cwd, args, timeoutMs) {
+    return new Promise((resolve) => {
+      execFile('git', args, {
+        cwd, encoding: 'utf8', timeout: timeoutMs || 90000,
+        maxBuffer: 4 * 1024 * 1024, windowsHide: true,
         env: Object.assign({}, process.env, { GIT_TERMINAL_PROMPT: '0' }),
+      }, (error, stdout, stderr) => {
+        resolve({ ok: !error, out: String(stdout || '').trim(), err: error ? String(stderr || error.message || error).trim() : '' });
       });
-      return { ok: true, out: String(out || '').trim(), err: '' };
-    } catch (e) {
-      return {
-        ok: false,
-        out: String((e && e.stdout) || '').trim(),
-        err: String((e && e.stderr) || (e && e.message) || '').trim(),
-      };
-    }
+    });
   }
 
   /** 覆盖式拷贝：不先删目标 —— 插件目录正在被运行，删掉风险更大 */
@@ -8683,10 +8989,10 @@ reg('saveOracleAgent', async ({ gameId, on }) => {
   reg('gitStatus', async () => {
     const r = await gitRepoDir();
     if (!existsSync(path.join(r, '.git'))) return { ok: false, error: '没找到 git 仓库（自动找也没有）：' + r, repo: r };
-    const head = gitRun(r, ['rev-parse', '--short', 'HEAD']);
-    const when = gitRun(r, ['log', '-1', '--format=%ci']);
-    const br = gitRun(r, ['rev-parse', '--abbrev-ref', 'HEAD']);
-    const remote = gitRun(r, ['remote', 'get-url', 'origin']);
+    const head = (await gitRun(r, ['rev-parse', '--short', 'HEAD']));
+    const when = (await gitRun(r, ['log', '-1', '--format=%ci']));
+    const br = (await gitRun(r, ['rev-parse', '--abbrev-ref', 'HEAD']));
+    const remote = (await gitRun(r, ['remote', 'get-url', 'origin']));
     return {
       ok: true,
       repo: r,
@@ -8701,11 +9007,11 @@ reg('saveOracleAgent', async ({ gameId, on }) => {
   reg('checkUpdate', async () => {
     const r = await gitRepoDir();
     if (!existsSync(path.join(r, '.git'))) return { ok: false, error: '没找到 git 仓库（自动找也没有）：' + r };
-    const f = gitRun(r, ['fetch', '--quiet', 'origin', 'main']);
+    const f = (await gitRun(r, ['fetch', '--quiet', 'origin', 'main']));
     if (!f.ok) return { ok: false, error: '读取远端失败：' + (f.err || f.out || '未知原因') };
-    const n = gitRun(r, ['rev-list', '--count', 'HEAD..origin/main']);
-    const log = gitRun(r, ['log', '--oneline', '--no-decorate', 'HEAD..origin/main']);
-    const head = gitRun(r, ['rev-parse', '--short', 'HEAD']);
+    const n = (await gitRun(r, ['rev-list', '--count', 'HEAD..origin/main']));
+    const log = (await gitRun(r, ['log', '--oneline', '--no-decorate', 'HEAD..origin/main']));
+    const head = (await gitRun(r, ['rev-parse', '--short', 'HEAD']));
     return {
       ok: true,
       behind: n.ok ? Number(n.out || 0) : 0,
@@ -8718,9 +9024,9 @@ reg('saveOracleAgent', async ({ gameId, on }) => {
   reg('pullUpdate', async () => {
     const r = await gitRepoDir();
     if (!existsSync(path.join(r, '.git'))) return { ok: false, error: '没找到 git 仓库（自动找也没有）：' + r };
-    const f = gitRun(r, ['fetch', 'origin', 'main']);
+    const f = (await gitRun(r, ['fetch', 'origin', 'main']));
     if (!f.ok) return { ok: false, error: '读取远端失败：' + (f.err || f.out) };
-    const rs = gitRun(r, ['reset', '--hard', 'origin/main']);
+    const rs = (await gitRun(r, ['reset', '--hard', 'origin/main']));
     if (!rs.ok) return { ok: false, error: '回退失败：' + (rs.err || rs.out) };
     const done = [];
     try {
@@ -8738,7 +9044,7 @@ reg('saveOracleAgent', async ({ gameId, on }) => {
     } catch (e) {
       done.push('卡片拷贝失败（' + String((e && e.message) || e) + '）');
     }
-    const head = gitRun(r, ['rev-parse', '--short', 'HEAD']);
+    const head = (await gitRun(r, ['rev-parse', '--short', 'HEAD']));
     return { ok: true, head: head.ok ? head.out : '', copied: done.join('、'), restart: true };
   });
 
@@ -8758,23 +9064,23 @@ reg('saveOracleAgent', async ({ gameId, on }) => {
     } catch (e) {
       return { ok: false, error: '拷贝失败：' + String((e && e.message) || e) };
     }
-    const add = gitRun(r, ['add', '-A']);
+    const add = (await gitRun(r, ['add', '-A']));
     if (!add.ok) return { ok: false, error: 'git add 失败：' + (add.err || add.out) };
-    const st = gitRun(r, ['status', '--porcelain']);
+    const st = (await gitRun(r, ['status', '--porcelain']));
     const msg =
       String(message || '').trim() ||
       '更新（' + new Date().toISOString().slice(0, 16).replace('T', ' ') + '）';
     let committed = '';
     if (st.ok && st.out) {
-      const c = gitRun(r, ['commit', '-m', msg]);
+      const c = (await gitRun(r, ['commit', '-m', msg]));
       if (!c.ok) return { ok: false, error: 'commit 失败：' + (c.err || c.out) };
       committed = String(c.out.split('\n')[0] || '').trim();
     }
-    const p = gitRun(r, ['push', 'origin', 'main'], 120000);
+    const p = (await gitRun(r, ['push', 'origin', 'main'], 120000));
     if (!p.ok) {
       return { ok: false, error: '上传失败：' + (p.err || p.out), committed: committed || '（本次没有改动）' };
     }
-    const head = gitRun(r, ['rev-parse', '--short', 'HEAD']);
+    const head = (await gitRun(r, ['rev-parse', '--short', 'HEAD']));
     return {
       ok: true,
       copied: done.join('、'),
@@ -8802,7 +9108,7 @@ reg('saveOracleAgent', async ({ gameId, on }) => {
     if (!u) return { ok: false, error: '先填远端地址' };
     if (!d) return { ok: false, error: '先填仓库目录' };
     if (existsSync(path.join(d, '.git'))) {
-      const head = gitRun(d, ['rev-parse', '--short', 'HEAD']);
+      const head = (await gitRun(d, ['rev-parse', '--short', 'HEAD']));
       return { ok: true, already: true, head: head.ok ? head.out : '' };
     }
     if (existsSync(d)) {
@@ -8814,9 +9120,9 @@ reg('saveOracleAgent', async ({ gameId, on }) => {
       }
       if (n > 0) return { ok: false, error: '这个目录里已经有东西了，换一个空目录：' + d };
     }
-    const g = gitRun(path.dirname(d) || '.', ['clone', u, d], 240000);
+    const g = (await gitRun(path.dirname(d) || '.', ['clone', u, d], 240000));
     if (!g.ok) return { ok: false, error: '克隆失败：' + (g.err || g.out || '未知原因') };
-    const head = gitRun(d, ['rev-parse', '--short', 'HEAD']);
+    const head = (await gitRun(d, ['rev-parse', '--short', 'HEAD']));
     return { ok: true, head: head.ok ? head.out : '' };
   });
 
@@ -8974,13 +9280,42 @@ reg('saveOracleAgent', async ({ gameId, on }) => {
     return { ok: false, error: lastErr || '获取失败', tried };
   });
 
-  reg('saveDraft', async ({ gameId, world, protagonist, extraInfo }) => {
+  reg('saveDraft', async ({ gameId, world, protagonist, extraInfo, npcs, skillsItems, simulationOptions, relationships, 实体资产, 虚拟资产 }) => {
     const s = await loadState(gameId);
+    const previousChecklist = readCreationChecklist(s);
     if (world) s.world = Object.assign(EMPTY_WORLD(), world);
-    if (protagonist) s.protagonist = normProtag(protagonist);
+    if (protagonist) s.protagonist = normProtag(normalizeCreationCareer(protagonist));
+    if(Array.isArray(npcs))s.npcs=JSON.parse(JSON.stringify(npcs));
+    if(Array.isArray(relationships))s.relationships=JSON.parse(JSON.stringify(relationships));
+    if(skillsItems)s.skills_items=JSON.parse(JSON.stringify(skillsItems));
+    if(Array.isArray(实体资产))s.实体资产=JSON.parse(JSON.stringify(实体资产));
+    if(Array.isArray(虚拟资产))s.虚拟资产=JSON.parse(JSON.stringify(虚拟资产));
+    if(simulationOptions)s.simulation=updateSimulationSettings(s.simulation,simulationOptions);
     if (extraInfo != null) s.extraInfo = String(extraInfo);
+    if(s.simulation?.creation?.ready&&s.simulation.creation.basis!==creationBasis(s))s.simulation.creation={...s.simulation.creation,ready:false,issues:['资料已修改，请核对开局资料']};
+    if (s.phase !== 'play') refreshCreationChecklist(s,previousChecklist);
     await saveState(s);
     return withKeyStatus(s);
+  });
+
+  reg('resetCreation', async ({ gameId, isStar }) => {
+    const previous = await loadState(gameId);
+    if (previous.phase === 'play' || previous.transcript?.length) throw new Error('已进入正文，不能重新解析');
+    const next = Object.assign(defaultState(), {
+      gameId, phase: 'character', world: previous.world, config: previous.config, skin: previous.skin,
+      parseInput: { world: previous.parseInput?.world || '', character: '' },
+    });
+    next.protagonist.是否艺人 = typeof isStar === 'boolean' ? isStar : !!previous.protagonist?.是否艺人;
+    // 仅保留世界页的玩法设置，人物、任职、技能、经营单位、任务与完成缓存全部重新生成。
+    const oldSim = previous.simulation || {};
+    next.simulation = updateSimulationSettings(undefined, {
+      settings: oldSim.settings, profile: oldSim.profile,
+      boundSystem: Object.fromEntries(['name','persona','guidance','xpPerLevel'].filter(k => oldSim.boundSystem?.[k] != null).map(k => [k, oldSim.boundSystem[k]])),
+    });
+    next.simulation.enabled = !!oldSim.enabled;
+    await saveState(next);
+    await turnLog('[重置完成] 重新解析：角色 ' + (previous.npcs?.length || 0) + '→' + next.npcs.length + '，事业 ' + (previous.protagonist?.事业?.length || 0) + '→' + next.protagonist.事业.length + '；人物备注、任职与经营数据已清空');
+    return { ...await withKeyStatus(next), creationResetVersion: 1 };
   });
 
   reg('previewContext', async ({ gameId, input }) => {
@@ -9035,9 +9370,10 @@ reg('saveOracleAgent', async ({ gameId, on }) => {
     }));
   });
 
-  reg('savePreset', async ({ id, name, world, protagonist, extraInfo }) => {
+  reg('savePreset', async ({ id, name, world, protagonist, extraInfo, npcs, skillsItems, simulation, realAssets, virtualAssets, parseInput, relationships }) => {
     const list = await readPresets();
     const patch = {};
+    for(const [key,value]of Object.entries({npcs,skillsItems,simulation,realAssets,virtualAssets,parseInput,relationships}))if(value!==undefined)patch[key]=JSON.parse(JSON.stringify(value));
     if (world) patch.world = Object.assign(EMPTY_WORLD(), world);
     if (protagonist) patch.protagonist = normProtag(protagonist);
     if (extraInfo != null) patch.extraInfo = String(extraInfo);
@@ -9063,52 +9399,37 @@ reg('saveOracleAgent', async ({ gameId, on }) => {
   });
 
   reg('applyPreset', async ({ gameId, id, mode }) => {
-    const list = await readPresets();
-    let p = null;
-    for (const x of list) if (x.id === id) p = x;
+    const p = (await readPresets()).find(x => x.id === id);
     if (!p) throw new Error('找不到该预设');
     const s = await loadState(gameId);
     s.world = Object.assign(EMPTY_WORLD(), p.world || {});
-    s.protagonist = normProtag(p.protagonist);
+    s.protagonist = normProtag(normalizeCreationCareer(p.protagonist));
     s.extraInfo = p.extraInfo || '';
-    if (mode === 'play') {
-      s.phase = 'play';
-      s.transcript = [];
-      s.summaries = [];
-      s.story = { current_message_index: 0, summarised_through: -1 };
-      s.relationships = [];
-      s.npcs = [];
-      s.skills_items = { 技能: [], 背包: [], 状态值: {} };
-      s.实体资产 = [];
-      s.虚拟资产 = [];
-      s.starting = {
-        world: JSON.parse(JSON.stringify(s.world)),
-        protagonist: JSON.parse(JSON.stringify(s.protagonist)),
-        extraInfo: s.extraInfo,
-      };
-      try {
-        await runTurn(s, buildOpeningMessage(s), '【开局】', { all: true, gameId });
-      } catch (e) {
-        console.error('[dsh-tavern-simulator] 开场生成失败', e);
-      }
-    } else {
-      s.phase = 'character';
-    }
+    s.npcs = JSON.parse(JSON.stringify(p.npcs || []));
+    s.relationships=JSON.parse(JSON.stringify(p.relationships||[]));
+    s.skills_items = JSON.parse(JSON.stringify(p.skillsItems || {技能:[],背包:[],状态值:{}}));
+    s.simulation = p.simulation ? JSON.parse(JSON.stringify(p.simulation)) : updateSimulationSettings({}, {});
+    s.实体资产 = JSON.parse(JSON.stringify(p.realAssets || []));
+    s.虚拟资产 = JSON.parse(JSON.stringify(p.virtualAssets || []));
+    if(p.parseInput)s.parseInput=JSON.parse(JSON.stringify(p.parseInput));
+    seedInitialFriends(s);seedGamePhoneNumbers(s); // 熟人索引与游戏内虚拟电话；保留已有号码。
+    s.phase = 'character';
+    if (mode === 'play') recordCreationWarnings(s);
     await saveState(s);
-    // 「⚡ 直接开局」（applyPreset mode=play）也是走完开局流程：同样改这一局的名字
-    if (mode === 'play') await applyPlayTitle(gameId, s);
+    if (mode === 'play') return openGame({gameId,protagonist:s.protagonist,extraInfo:s.extraInfo,npcs:s.npcs,skillsItems:s.skills_items});
     return withKeyStatus(s);
   });
 
   // ── 开局 ──
-  reg('openGame', async ({ gameId, protagonist, extraInfo, npcs, skillsItems }) => {
+  async function openGame({ gameId, protagonist, extraInfo, npcs, skillsItems, simulationOptions }) {
     const s = await loadState(gameId);
+    if (simulationOptions) s.simulation = updateSimulationSettings(s.simulation, simulationOptions);
     s.protagonist = normProtag(protagonist);
     // 备注栏（补充信息）要一起收下 —— 界面上填了但它不在 protagonist 里，
     // 不收就等于丢了：开局信息里不会带【补充信息】，AI 也就不知道玩家写过的那些事。
     // 传了空串表示"确实要清空"，没传（undefined）则保留原值。
     if (extraInfo != null) s.extraInfo = String(extraInfo);
-    s.relationships = [];
+    // 关系与角色初值已经在解析阶段确认，不在开场清空。
     // 角色与技能物品：创角解析阶段就已经产出了（「角色」「技能物品」两个键），
     // 界面上还能改。这里要把它们接下来 —— 以前一律清空，等于把解析结果全扔掉，
     // 然后指望第 0 轮结算自己从原文里再"盘点"一遍，那一步最容易漏。
@@ -9120,9 +9441,11 @@ reg('saveOracleAgent', async ({ gameId, on }) => {
           状态值: skillsItems.状态值 && typeof skillsItems.状态值 === 'object' ? skillsItems.状态值 : {},
         }
       : { 技能: [], 背包: [], 状态值: {} };
-    s.实体资产 = [];
-    s.虚拟资产 = [];
+    const openingNotices = recordCreationWarnings(s);
+    if (openingNotices.length) await turnLog('[开局提醒] ' + openingNotices.slice(0, 20).join('；'));
+    syncCreationWardrobes(s);
     s.phase = 'play';
+    s.summaries = [];
     s.story.current_message_index = 0;
     s.transcript = [];
     s.starting = {
@@ -9130,18 +9453,22 @@ reg('saveOracleAgent', async ({ gameId, on }) => {
       protagonist: JSON.parse(JSON.stringify(s.protagonist)),
       extraInfo: s.extraInfo || '',
       npcs: JSON.parse(JSON.stringify(s.npcs)),
+      relationships: JSON.parse(JSON.stringify(s.relationships||[])),
       skills_items: JSON.parse(JSON.stringify(s.skills_items)),
     };
-    await runTurn(s, buildOpeningMessage(s), '【开局】', { all: true });
+    if (s.simulation?.enabled) { s.starting.simulation = JSON.parse(JSON.stringify(s.simulation)); s.starting.实体资产 = JSON.parse(JSON.stringify(s.实体资产)); s.starting.虚拟资产 = JSON.parse(JSON.stringify(s.虚拟资产)); }
+    await runTurn(s, buildOpeningMessage(s), '【开局】', { all: true, gameId });
     await saveState(s);
     // 开局流程走完（第一幕已生成）：把「游玩历史」里这一局的条目名设成「角色名·身份」
     await applyPlayTitle(gameId, s);
     return withKeyStatus(s);
-  });
+  }
+  reg('openGame', openGame);
 
-  reg('startWorld', async ({ gameId, world, extraInfo }) => {
+  reg('startWorld', async ({ gameId, world, extraInfo, simulationOptions }) => {
     const s = await loadState(gameId);
     s.world = Object.assign(EMPTY_WORLD(), world || {});
+    if(simulationOptions)s.simulation=updateSimulationSettings(s.simulation,simulationOptions);
     // 同 openGame：传了才覆盖，没传就保留原值（免得空值把玩家已经写好的备注冲掉）
     if (extraInfo != null) s.extraInfo = String(extraInfo);
     s.phase = 'character';
@@ -9315,8 +9642,9 @@ reg('saveOracleAgent', async ({ gameId, on }) => {
     return out;
   });
 
-  reg('parseNatural', async ({ target, text, gameId }) => {
+  async function parseNaturalData({ target, text, gameId, creationContext, characterText }) {
     const which = target || 'character';
+    const parseTool = which === 'character' ? initialParseTool(PARSE_TOOL) : which === 'world' ? worldCreationTool(PARSE_TOOL) : which === 'cast' ? castParseTool(PARSE_TOOL) : PARSE_TOOL;
     // 把玩家这段原始描述存下来 —— 它是最权威的一手信息。
     // 解析会把描述拆进各字段，但字段装不下的东西（父母、兄弟姐妹、各种零碎交代）
     // 会在拆解中丢掉；开局时把原文一并交给模型，就不会再漏。
@@ -9329,11 +9657,11 @@ reg('saveOracleAgent', async ({ gameId, on }) => {
       /* 存不下不影响解析本身 */
     }
     const noFiller =
-      '重要：没有内容就留空——空字符串、空数组或 0。禁止写“无”“暂无”“未提及”“无已知疾病”“暂无明确设定”“尚未确定”这类占位词，它们只会白占字数。能合理推断的就推断，推断不出来就留空。';
+      '重要：没有内容就留空——空字符串、空数组或 0。禁止写“无”“暂无”“未提及”“无已知疾病”“暂无明确设定”“尚未确定”这类占位词，它们只会白占字数。缺失信息按各字段规则处理；人物职业、任职和工作经历不推测，未给且不能确认就留空。未知的字段直接不写或留空字符串，不要把「留空」「未提及」「未提供」「待补充」「暂无」这些词写进说明、简介、来源、备注等任何内容里；技能说明只写已经知道的效果与用法，不知道的作用范围、持续时间、限制就不提。';
     const sys = which === 'world' ? [
             '你是设定解析器。把用户对世界观的描述解析为一个 JSON 对象，字段必须齐全。',
             '字段：世界观类型、时代与年份、当前日期时间、起始地点、权力结构、货币与经济、阶层与身份、法律与秩序、文明与技术水平、超自然与力量体系、种族与物种、势力与组织、危险与生存压力、信息与传播、风俗禁忌与礼节、叙事基调。',
-            '【世界观类型】必须从这几个里挑一个最贴近的填（就填这几个字，别写别的）：现代／近现代／未来／民国／古代／仙侠／武侠／玄幻／架空古。它决定界面显示哪些字段、以及衣着参考用现代衣柜还是古风衣柜，务必判准。',
+            '【世界观类型】按玩家世界填写明确标签，可用现代、近现代、未来、民国、古代、仙侠、武侠、玄幻、架空古、学院、末日或自定义混合类型，不限固定列表。它只用于展示与参考资料，不限定世界物理、人物能力、寿命或剧情；未知留空。',
             '第一步先判断题材是“现实”还是“虚构/同人”。',
             '现实题材：起始地点只是开场场所；除“时代与年份、当前日期时间、起始地点”外，其余字段描述整个时代与社会，不要局限在起始地点。默认按真实世界普遍情况填写。',
             '虚构或同人题材：忠实还原该作品的世界观。例如“哈利波特”→ 1990 年代英国魔法世界；魔法部与霍格沃茨；加隆、西可、纳特；巫师、麻瓜、混血、纯血；《保密法》；魔杖魔法为主；巫师、家养小精灵、妖精、马人、巨人；魔法部、四学院、食死徒、凤凰社；猫头鹰、《预言家日报》。',
@@ -9349,18 +9677,20 @@ reg('saveOracleAgent', async ({ gameId, on }) => {
             // 以前塞在主角解析的最后面，模型把注意力全花在这上面，
             // 主角字段反而全空（多次实测）。分开跑，各管各的。
             '你是人物名册解析器。把用户描述里提到的**每一个人**列成一个数组。',
-            '输出格式：{"角色":[{姓名, 性别, 生日, 身份, 出生地, 与主角关系, 外貌, 特点, 联系方式:{"电话":"138xxxxxxxx","微信":"","QQ":""}}, …]}',
+            '输出格式：{"角色":[{姓名, 性别, 生日, 身份, 出生地, 身高, 体重, 种族, 健康状况, 与主角关系, 外貌, 特点, 表性格, 里性格, 背景, 私密物品, 联系方式:{"电话":"","微信":"","QQ":""}}, …]}',
             '**父母、兄弟姐妹、配偶、子女、祖父母、师父、同学、同事、朋友、对手——一个都不能漏。**',
             '**「主角」那一段里已经写了名字的人，一律沿用那个名字** —— 尤其「人物关系」里出现过的（如「女儿罗小满」「妹妹罗晴」「妻子田曦薇」），照抄，不许另起一个新名字。这是最重要的一条：起错名字等于凭空多出一个人。',
             '描述里只给了称呼、哪一处都没给名字的（如「妹妹」「妈妈」），才由你按身份起一个普通的中文名字（如「罗念」「徐惠芳」）；起不出就用称呼本身（「母亲」「父亲」）。',
+            '**「妈妈是小学老师」「爸爸是公务员」这种句子里，名字只有一个——如果句子里给了名字就是那个名字（如「妈妈李秀兰是小学老师」→李秀兰）；没给名字，「是小学老师」「是公务员」这些是谓语和身份，不是名字，绝不能当姓名。**姓名只能是人名，两到四个汉字，不含「是／在／有／的」、不含职业、年龄与称谓。',
+            '**同一种关系只建一条**：「人物关系」里已经写了「妹妹罗晴」，就沿用罗晴，不许再给妹妹另起一个名字；写「有一个漂亮的妹妹」而没给名字，就按关系起一个（或用「妹妹」），一个人只对应一条。原文里没写「两个妹妹」「双胞胎」这类数量，就只有一个妹妹；不许把「罗晴」换成「罗婉」「罗玥」再建两个。女儿、儿子、母亲、父亲同样只一人。**原文里没给名字的亲属（「母亲是小学老师」「爸爸是公务员」），姓名就用「母亲」「父亲」这类称呼，不要自己编名字，更不要把「是小学老师」当成姓名再建一条。**',
             '**人名一律照抄，不许改**：写了「罗婉」就是「罗婉」，不要补字换字。',
             '**「生日」要给**（写成 `1995-03-14` 这种年月日，按关系与身份反推一个合理的年份，让人物年龄对得上），**但不要输出「年龄」** —— 年龄由程序按生日与世界观的当前日期算出来，你写了会被覆盖。',
             '**不要输出主角本人** —— 主角是 protagonist，不属于名册。关系写「自己」「本人」的条目一律不要。',
             '**关系写准确**：妻子／丈夫／女儿／儿子／妹妹／姐姐／弟弟／哥哥／母亲／父亲／情人／朋友／同事…（按主角的性别与年龄判亲疏方向）。',
-            '「身份」写社会角色或职业（学生、小学数学老师、公务员、当红女演员…）；描述没说的按关系合理推断一个，推断不出就留空 —— 但**不要写「无」「未知」**。',
-            '「外貌」一句话（15~30 字），描述里没写就按性别与关系给一个普通的形容。',
+            '「身份」写社会角色或职业（学生、小学数学老师、公务员、当红女演员…）；只照录明确设定或有把握的真人公开职业，未提供且不能确认时留空，不按亲属关系推测 —— 但**不要写「无」「未知」**。',
+            APPEARANCE_RULES,
             '「特点」一句话（可选），描述里给了「漂亮的」「刚毕业的」这类信息就写进去。',
-            '**只写这几项，不要堆别的字段**（不要粉丝数、生理周期、穿着明细）—— 堆多了整份 JSON 会被截断，反而全废。**唯一例外是「联系方式」**：每个人都要给一个 `联系方式:{"电话":"11 位手机号","微信":"","QQ":""}` —— 按他的年代、年龄与身份给一个像样的号（现代用 13x／15x／18x 开头；2000 年前后可用 139xxxx 或座机 0513-8xxxxxx；老人可以用座机，学生也可以用手机）。**只给电话，微信和 QQ 一律留空**（那两个要等正文里真的加了才补）。',
+            '先提取上述基本信息以及表性格、里性格、背景。普通个人物件只记明确已有的日记、文具或生活收藏，未知为空，不生成私密身体或成人内容。已有普通穿着可保留；完整衣着由本次开局解析后续的资料任务生成与验收，不推迟到正文。不要生成私密身体或气味。联系方式只保留玩家明确提供的内容，未知留空；不得猜测或查询真人私人号码。现代熟人的缺失电话由系统另行分配不可拨打的游戏虚拟号码，不在这里编造真实手机号。古代人物不得生成电话、微信或QQ。',
             '描述里确实一个人都没提到，就输出 {"角色":[]}。',
             '只输出一个完整 JSON 对象，不要思考，不要解释，不要输出代码块标记。',
           ]
@@ -9368,7 +9698,7 @@ reg('saveOracleAgent', async ({ gameId, on }) => {
             '你是角色设定解析器。把用户对主角的描述解析为一个 JSON 对象，字段必须齐全。',
             '字段：姓名、性别、生日、出生地、年龄、身高、体重、三围(仅女性)、罩杯(仅女性)、外貌、身份、种族、表性格、里性格、货币名、金钱(数字)、物品(数组)、技能(数组)、特点(数组)、穿着(对象，含 头部/上衣/内衣/内裤/下衣/袜子/鞋子/饰品，每项为 {物品, 稀有度, 状态, 气味, 简介, 穿着时长})、性癖(数组)、标签(数组)、健康状况、疾病与伤病(数组)、是否处女(仅女性角色)、月经状态(仅女性角色)、妊娠状态(仅女性角色)、婚姻状况、当前想法、当前状态。',
             '**「出生地」写籍贯或老家**（如「北京东城」「江南苏州」「漠北草原」），不是现在住的地方 —— 描述里没说就按姓名、身份、世界观合理推断一个（籍贯会影响口音、家人所在地、过节去哪），拿不准宁可写得宽泛也不要留空、更不要写「未知」。',
-            '**「物品」「技能」要从描述里主动挖，别只顾着填外貌性格**：描述里说他**拥有什么**（吉他、球拍、相机、车钥匙、宠物、珍藏…）就逐件写进 `物品`，每项 {名字, 品质, 获取时间, 简介, 来历, 属性提升}；说他**会什么**（乐器、手艺、语言、运动、专业能力）以及**任何超凡能力**（异能、法术、系统，如「会时间暂停」）都逐条写进 `技能`，每项 {名字, 等级, 说明, 来源}。**描述里特意写了就是有意义的**，不要因为「没有数值」就跳过 —— 等级拿不准就按描述强度定（入门／熟练／精通／大师）。两样都没有就留空数组。',
+            '**「物品」「技能」要从描述里主动挖，别只顾着填外貌性格**：描述里说他**拥有什么**（吉他、球拍、相机、车钥匙、宠物、珍藏…）就逐件写进 `物品`，每项 {名字, 品质, 获取时间, 简介, 来历, 属性提升}；说他**会什么**（乐器、手艺、语言、运动、专业能力）以及**任何超凡能力**（异能、法术、系统，如「会时间暂停」）都逐条写进 `技能`，每项 {名字, 等级, 说明, 来源}。**描述里特意写了就是有意义的**，不要因为「没有数值」就跳过 —— 等级拿不准就按描述强度定（入门／熟练／精通／大师）。两样都没有就留空数组。技能说明只写已知的效果与用法；作用范围、持续时间、冷却或限制不知道就不写，禁止在说明里写“留空”“未提及”“待补充”或“作用范围与持续时间留空”这类话。',
             '穿着每个部位六个键：物品=衣物名称；稀有度=N/R/SR/SSR/UR（按这个世界的珍贵程度判，普通日常衣物一律 N）；状态**只在非正常时才写**（如「褶皱」「左脚大拇指破了个洞」「沾了泥」），正常整洁就留空；气味**只有女性角色的「袜子」「内衣」「内裤」写**。**「内衣」是胸罩／文胸那一层，「内裤」是下半身贴身那条**，不是衬衫、不是打底衣、不是外穿的衣服 —— 别把外衣塞进这两个部位（按材质底息＋穿了多久写一句「淡淡的汗味」这种，别写长段）。这三样的 气味强度／材质／穿着小时／穿着时长 由后台按时间自己算，**你不要写这几个键**，只写「气味」那一句；写了也会被后台覆盖；简介**每件都要写**，10~25 字，写这件衣服的由来或当下的样子（谁买的／穿了多久／哪里磨旧了），不要复述物品名；穿着时长按档位写（刚换上／半日／整日／多日／多日未换），换衣服、洗澡、时间推进后跟着更新。男性角色一律留空气味，其他部位也留空。',
             '「身份」只写社会角色／职位本身（如“上海老钱家族长子”“录制基地的选手宿舍管理员”“练习生”）；**不要带状态、地点、当下动作这类后缀**（不要写“上海老钱家族长子，刚归国”“练习生，正在找机会”这种）。',
             '**性癖＝性方面的偏好，只写名词**（抖M／抖S／恋足／恋袜／恋物／制服／露出／束缚／调教／支配／服从／口交／足交／内射／羞耻／疼痛…以及同类名词），用数组，一项一个，如 ["恋足","抖M"]。**绝不要把它写进「表性格」「里性格」**，也不要写成句子。',
@@ -9385,7 +9715,7 @@ reg('saveOracleAgent', async ({ gameId, on }) => {
             '  · **「是否艺人」是界面上的开关，不是你要判断的东西** —— 不要因为主角是演员／歌手／偶像／顶流就自己认定开关已经打开。**开关没打开时，上面这批演艺字段一个都不许写**（哪怕描述里白纸黑字写着「95 顶流小生」）。',
             '  · 资产页那几块：**收支一定要填** —— 只要主角有收入来源或固定开销就得写（月收入／月支出只写数字；学生、失业这类没有收入，也要把支出写上）。**住所与交通也要填**：自住住房写进「住所」数组、常用车写进「交通」数组（每条都带位置／买入价格这类信息），**不要在实体资产里重复**。**债务**（含人情债）／**凭证**（能让你做什么）／**事业**则**和世界观对得上才写，没有就留空**。**写盘时字段名就用这三个短名**（收支／债务／凭证／事业），不要写成界面上那串标题。古代题材别写「工资」「股份」，换成「月俸／租子／铺面／田产」。',
             '    **这三块的每一条都要写全字段，别把几个信息挤进一个键里**（实测模型会把价格写进位置里，界面就读不出来了）：',
-            '     · 住所 每条：{ 位置, 买入价格, 状态 } —— 价格单独写进「买入价格」（如 "6500万"），**不要塞进「位置」的括号里**；',
+            '     · 住所 每条：{ 名称, 位置, 总面积, 户型, 楼层, 产权人, 居住人, 购入时间, 买入价格, 状态 } —— 价格单独写进「买入价格」（如 "6500万"），**不要塞进「位置」的括号里**；',
             '     · 交通 每条：{ 车型, 买入价格, 状态 } —— 车名写「车型」，别写「品牌车型」「品牌型号」；',
             '     · 事业 每条：{ 名称, 职务, 发展情况 }。',
             '  · **开关没打开时，只有上面这一批演艺字段留空**（艺人咖位／定位／资源级别／经纪公司／所属组合／出道时间／合约到期／代表作品／作品履历／主要奖项／微博账号／全网粉丝数／抖音粉丝／小红书粉丝／粉丝称呼／商业价值／当前代言／商业报价／当前舆论评价／舆论来源／舆论热度／团队／团队评价／行程／隐患／私人关系）。',
@@ -9393,13 +9723,13 @@ reg('saveOracleAgent', async ({ gameId, on }) => {
       '疾病与伤病：**数组**，每条只写「程度 + 病名／部位」，6~10 字（如「轻度腰肌劳损」「中度脂肪肝」「季节性鼻炎」）；**不要写成因、来历、症状描述**（不要写「因常年伏案签署文件偶有轻微颈椎劳损」这种整句）。没病就留空数组，不要写「无」「健康」。',
       '身高/体重/三围/罩杯：写具体数值，如“162cm”“42kg”“80-58-82”“B罩杯”。男性角色的三围与罩杯留空。',
       '金钱：写主角**当前可支配的现金**（纯数字，单位同「货币名」），必须与身份／家世相称 —— 董事长／高管／富家子弟按身份给到相称量级（如 3000000，**别写 0**）；普通工薪按收入水平给；学生按生活费给。只有剧情明确说明身无分文才写 0。',
-            '外貌：写一段细描，**不超过 100 字**（尽量 70~100 字），不要分点、不要标题，依次覆盖——整体气质与第一印象、脸型与五官轮廓、眼睛（形状/瞳色/睫毛）、鼻子、脸颊（有婴儿肥要写出来）、嘴唇、头发（发色/长度/发型/发饰）、皮肤（肤质/色泽），最后可给一句神态印象。注意：外貌里不要写身高、体重、三围、罩杯。',
+            APPEARANCE_RULES,
             '物品数组每项为 {名字, 品质(N/R/SR/SSR/UR), 获取时间, 简介, 来历, 属性提升}，现实世界时属性提升为空对象。',
             '标签：由玩家自己维护的速记印象（不会发给正文模型），用几个短词（每个 2~6 字）概括即可。',
             '规则：描述直接给出的忠实采用；未说明的根据已知信息合理推断补全。',
             noFiller,
             '男女有别：男性角色的 三围/罩杯/是否处女/月经状态/妊娠状态 留空（不要写“无”）；女性角色按描述推断，推断不出则留空。',
-            '输出要求：除“外貌”外，其余文本字段只写一句短语（尽量 20~30 字）；数组最多 6 项，每项一句话。',
+            "输出要求：外貌及住所、事业、实体资产、虚拟资产的简介、用途、规模、权利内容、行使方式等描述字段按各自完整性要求填写，不受短语字数限制。其余文本字段简写（尽量20~30字）；普通数组最多6项，但不得为此省略用户明确的人物、资产、物品和技能。",
             '只输出一个完整 JSON 对象，不要思考，不要解释，不要输出代码块标记。',
           ].join('\n');
     /**
@@ -9411,6 +9741,7 @@ reg('saveOracleAgent', async ({ gameId, on }) => {
      * 把「人物关系」字段一并交给它，并明确要求沿用里面的名字。
      */
     let userContent = text || '';
+    if(which==='world'&&characterText)userContent+='\n【创角意向，仅用于判断玩法，不生成角色初值】\n'+String(characterText);
     if (which === 'cast') {
       let s0 = null;
       try {
@@ -9418,6 +9749,7 @@ reg('saveOracleAgent', async ({ gameId, on }) => {
       } catch (e) {
         s0 = null;
       }
+      if (creationContext) s0 = {...(s0 || {}), ...creationContext};
       const p0 = (s0 && s0.protagonist) || {};
       const bits = [];
       const who = [p0.姓名, p0.性别, p0.生日, p0.身份].filter((x) => String(x == null ? '' : x).trim());
@@ -9443,11 +9775,13 @@ reg('saveOracleAgent', async ({ gameId, on }) => {
       if (!obj || typeof obj !== "object" || Array.isArray(obj)) return false;
       const ks = Object.keys(obj).filter(function (k) { return !k.startsWith("_"); });
       if (!ks.length) return false;
+      if (which === 'cast') return !!decodeCastResult(obj).value;
       if (ks.length === 1 && (ks[0] === "summary" || ks[0] === "arguments")) return false;   // 空壳：summary=偷懒，arguments=没拆包
       return true;
     }
 
-    const msgs = [{ role: 'system', content: sys }, { role: 'user', content: userContent }];
+    const parseSystem = sys + '\n\n' + (which === 'character' ? promptText('initialData',INITIAL_DATA_RULES) : INITIAL_LOCATION_RULES) + (which === 'cast' ? '\n\n' + NPC_PROFILE_GENERATION_RULES + '\n\n' + CAST_PARSE_RULES : '') + (which === 'world' ? '\n\n' + WORLD_CREATION_RULES : '\n\n' + OCCUPATION_RULES);
+    const msgs = [{ role: 'system', content: parseSystem }, { role: 'user', content: userContent }];
     /**
      * 优先用设定页里配置的「变量解析」那个模型（通常又便宜又快，专门干抽取 JSON 这件事），
      * 没配置才退回当前主模型 —— 主模型可能是慢的推理模型，解析会等很久（曾出现十分钟不返回）。
@@ -9458,6 +9792,41 @@ reg('saveOracleAgent', async ({ gameId, on }) => {
     } catch (e) {
       s = null;
     }
+    async function finalizeInitial(raw) {
+      if (which === 'cast') {
+        const decoded = decodeCastResult(raw);
+        await turnLog('[人物名册解析] '+JSON.stringify({gameId:s?.gameId||String(gameId),...decoded.diagnostic}));
+        if (!decoded.value) throw new Error(decoded.error);
+        raw = decoded.value;
+      }
+      if (which === 'world') return creationWorldResult(sanitizeInitialLocations(raw), String(text||'')+' '+String(characterText||''), s?.simulation);
+      cleanCharacterProfiles(raw);
+      cleanSkillAndItemNotes(raw);
+      if(raw&&typeof raw==='object'&&raw.技能物品)cleanSkillAndItemNotes({skills_items:raw.技能物品});
+      cleanGeneratedAppearanceNotes(raw);
+      assertGeneratedAppearances(raw);
+      if (which !== 'character') return sanitizeInitialLocations(raw);
+      const parsed=cleanGeneratedValue(raw),initialData={};
+      for(const [key,target]of Object.entries({实体资产:'realAssets',虚拟资产:'virtualAssets'}))if(Array.isArray(parsed[key])){initialData[target]=parsed[key];delete parsed[key];}
+      if(parsed.技能物品||parsed.skills_items){initialData.skillsItems=parsed.技能物品||parsed.skills_items;delete parsed.技能物品;delete parsed.skills_items;}
+      const base = sanitizeInitialLocations((s && s.protagonist) || {});
+      let data = sanitizeInitialHomes(mergeInitialData(base, normalizeCreationCareer(sanitizeInitialLocations(parsed))), text, base);
+      let issues = initialDataIssues(data, text);
+      if (issues.length) {
+        const ordinaryText = String(text || '').split(/[，。；\n]/).filter((x) => /房|住|公司|企业|拥有|技能/.test(x) && !/私处|性器|性交|自慰|强奸|乳|阴茎|阴道|未成年|幼|裸体|高潮|射精/.test(x)).join('；');
+        const current = initialRepairPatch(data);
+        const request = [{ role: 'system', content: promptText('initialData',INITIAL_DATA_RULES) + '\n' + OCCUPATION_RULES + '\n只补住所、交通、事业、物品和技能五个数组；不得输出或更改金钱、收支、私人或身体字段。只输出JSON。' }, { role: 'user', content: JSON.stringify({ 世界观: s?.world || {}, 姓名: data.姓名, 身份: data.身份, 原始普通设定: ordinaryText, 当前资料: current, 缺项: issues }) }];
+        try {
+          const r = s?.config?.settle?.model ? await callSlot(s, 'settle', request, { maxTokens: 6000, tag: '开局资料补全', tools: [parseTool], wantTools: true }) : await callMainModel(request, { maxTokens: 6000, tools: [parseTool], purpose: '开局资料补全' });
+          const result = pickToolCall(r) || parseJsonLoose(r.text || r.reasoning || '');
+          data = sanitizeInitialHomes(mergeInitialData(data, sanitizeInitialLocations(initialRepairPatch(cleanGeneratedValue(result || {})))), text, base);
+        } catch (e) { await turnLog('[开局资料] 补全未完成：' + String(e?.message || e).slice(0, 160)); }
+        issues = initialDataIssues(data, text);
+      }
+      if(Object.keys(initialData).length)data._initialData=initialData;
+      if (issues.length) data._parseIssues = issues;
+      return data;
+    }
     const scfg = (s && s.config && s.config.settle) || {};
     if (scfg.model) {
       const r = await callSlot(s, 'settle', msgs, {
@@ -9465,7 +9834,7 @@ reg('saveOracleAgent', async ({ gameId, on }) => {
         maxTokens: tokOf(s, 'parse'),
         timeoutMs: 180000,
         tag: '变量解析',
-        tools: [PARSE_TOOL],
+        tools: [parseTool],
         wantTools: true,
       });
       // 首选工具调用：参数本来就是 JSON，不用防围栏和半截输出
@@ -9483,51 +9852,52 @@ reg('saveOracleAgent', async ({ gameId, on }) => {
         await turnLog('[解析·原始] 工具名=' + String(c0.name || c0.toolName || '?') + ' (r).finish=' + String((r && r.finish) || '-'));
       }
 
-      // 工具参数是空的（模型只调了工具没填内容）→ 重试一次，这次把要求说得更死
-      if (调用数 > 0 && 键数 === 0) {
+      // 主角/世界保留既有空参数处理；名册失败只提示，不自动追加请求。
+      if (which !== 'cast' && 调用数 > 0 && 键数 === 0) {
         await turnLog('[解析] 工具参数为空，重试一次');
-        const msgs2 = [{ role: 'system', content: sys + '\n\n【重要】调用 emit_parsed_json 时，parameters 必须包含上面要求的全部字段，不许给空对象。' }, msgs[1]];
+        const msgs2 = [{ role: 'system', content: parseSystem + '\n\n【重要】调用 emit_parsed_json 时，parameters 必须包含上面要求的全部字段，不许给空对象。' }, msgs[1]];
         const r2 = await callSlot(s, 'settle', msgs2, {
           temperature: 0.2,
           maxTokens: tokOf(s, 'parse'),
           timeoutMs: 180000,
           tag: '变量解析·重试',
-          tools: [PARSE_TOOL],
+          tools: [parseTool],
           wantTools: true,
         });
         const viaTool2 = pickToolCall(r2);
         const 键数2 = viaTool2 ? Object.keys(viaTool2).filter((k) => !String(k).startsWith('_')).length : 0;
         await turnLog('[解析] 重试后工具参数键数=' + 键数2 + ' 正文=' + String((r2 && r2.text) || '').length + ' 字');
-        if (viaTool2 && parseToolOk(viaTool2)) return viaTool2;
+        if (viaTool2 && parseToolOk(viaTool2)) return finalizeInitial(viaTool2);
         const out2 = String((r2 && r2.text) || '').trim();
         if (out2) {
           const p2 = parseJsonLoose(out2);
-          if (p2) return p2;
+          if (p2) return finalizeInitial(p2);
         }
         throw new Error('「变量解析」模型两次都没给出字段（工具参数为空）。换一个解析模型试试。');
       }
-      if (viaTool && parseToolOk(viaTool)) return viaTool;
+      if (viaTool && parseToolOk(viaTool)) return finalizeInitial(viaTool);
       const out = String(r && r.text != null ? r.text : r == null ? '' : r).trim();
-      if (!out) throw new Error('「变量解析」模型没有返回内容');
+      if (!out) { if (which === 'cast' && viaTool) return finalizeInitial(viaTool); throw new Error('「变量解析」模型没有返回内容'); }
       const parsedBySlot = parseJsonLoose(out);
-      if (parsedBySlot) return parsedBySlot;
+      if (parsedBySlot) return finalizeInitial(parsedBySlot);
       return { _raw: out, _len: out.length, _finish: null };
     }
     let r = null;
     try {
-      r = await callMainModel(msgs, { temperature: 0.2, maxTokens: tokOf(s, 'parse'), stallMs: 120000, purpose: '变量解析', tools: [PARSE_TOOL] });
+      r = await callMainModel(msgs, { temperature: 0.2, maxTokens: tokOf(s, 'parse'), stallMs: 120000, purpose: '变量解析', tools: [parseTool] });
     } catch (e) {
       // 不支持 tools 就退回纯文本 —— 不能因为增强功能把结算搞挂
       r = await callMainModel(msgs, { temperature: 0.2, maxTokens: tokOf(s, 'parse'), stallMs: 120000, purpose: '变量解析' });
     }
     const viaTool2 = pickToolCall(r);
-    if (viaTool2 && parseToolOk(viaTool2)) return viaTool2;
+    if (viaTool2 && parseToolOk(viaTool2)) return finalizeInitial(viaTool2);
     const out = r.text && r.text.trim() ? r.text : r.reasoning;
-    if (!out || !String(out).trim()) throw new Error('主模型没有返回内容');
+    if (!out || !String(out).trim()) { if (which === 'cast' && viaTool2) return finalizeInitial(viaTool2); throw new Error('主模型没有返回内容'); }
     const parsed = parseJsonLoose(out);
-    if (parsed) return parsed;
+    if (parsed) return finalizeInitial(parsed);
     return { _raw: String(out), _len: String(out).length, _finish: r.finish == null ? null : String(r.finish) };
-  });
+  }
+  reg('parseNatural', parseNaturalData);
 
 /**
  * 按世界观的「当前年份」整理一个**真实存在的人**的公开资料。
@@ -9556,14 +9926,19 @@ reg('parseRealPerson', async ({ gameId, name, fields }) => {
     '微博账号', '全网粉丝数', '粉丝称呼', '当前代言', '商业报价', '当前舆论评价', '合约到期',
   ];
   const keys = (Array.isArray(fields) && fields.length ? fields : REAL_FIELDS).map((x) => String(x));
+  const appearanceOnly=keys.length===1&&keys[0]==='外貌';
+  const actors=s?[s.protagonist,...(Array.isArray(s.npcs)?s.npcs:[])].filter(a=>a&&String(a.姓名||'').trim()===nm):[];
+  const basis=keys.includes('外貌')&&actors.length===1?appearanceBasis(actors[0],year):{};
+  const temperature=appearanceOnly?0.65:0.2;
+
 
   const sys = [
-    '你是真实人物公开资料整理器。用户给你一个人名，你要写出这个人在**指定时间点**已经公开的资料。',
+    appearanceOnly?'你是人物肖像的文学描写作者。根据指定年代可确认的外形和给出的卡内设定，直接写连贯全身肖像，不写百科摘要或依据说明。':'你是真实人物公开资料整理器。硬事实按指定时间点处理，外貌单独按文学化肖像规范写。',
     year
       ? '时间点：' + year + ' 年（世界观当前时间写作「' + nowText + '」）。写这个人 **' + year + ' 年前后**的状态，不是今天的状态。'
       : '用户没有给出明确年份，按世界观当前时间判断；判断不了就按人物最广为人知的阶段写，并在备注里说明。',
     '要填的字段（**每一个都要试着填，不要只挑几个**）：' + keys.join('、') + '。',
-    '**最重要的要求：字段查不到就留空，但不能因为「不确定」就整片不写。**',
+    '硬事实查不到留空，不因少数字段不确定就全跳过；外貌可根据已确定形象与卡内尺寸补写缺少的普通视觉细节，不新增现实测量数据或来源声明。',
     '逐个字段过一遍：能填就填；这个字段确实查不到，才让它不出现在结果里 —— ' +
       '不要因为某几个字段没把握，就把其余明明知道的也一起跳过。',
     '按两类分别处理：',
@@ -9572,28 +9947,30 @@ reg('parseRealPerson', async ({ gameId, name, fields }) => {
     '  · 写你确实知道的；具体数字没把握就给量级（如「百万级」），完全不知道才留空。',
     '  · 不确定的不要编具体数字和时间点。',
     '【描述类】外貌、表性格、里性格、特点、标签、当前舆论评价。',
-    '  · 这类本来就该由你按这个人**在' + (year || '那个') + '年前后的公开形象**概括，不要留空。',
-    '  · 「外貌」写一句白描（15~40 字）；「表性格」「里性格」各一句（10~25 字）；',
+    '  · 外貌不写公开形象概括或面部特征清单，按下面规范写自然全身肖像。其余描述字段按指定年代的公众印象处理。',
+    promptText('appearance',APPEARANCE_RULES),
+    CHARACTER_VOICE_RULES,
+    '  · 「表性格」「里性格」各一句（10~25 字）；',
     '    「特点」「标签」用短词（三五个字）；「当前舆论评价」写一句当年的公众印象。',
     '不写：隐私、家庭住址、联系方式、身份证号、未经证实的丑闻与传闻。',
     '「生日」写成 YYYY-MM-DD；「代表作品」用顿号分隔的几部代表作。',
-    '这个人不是公众人物、或你确实完全不了解，才把「字段」给成空对象，并在「备注」里说明原因。',
-    '输出：{"字段": {字段名: 值}, "备注": "一句话说明依据或哪里不确定"}',
+    appearanceOnly?'已有卡内形象时可据此补写；只有对人物完全不了解且没有可用外形时才返回空字段，不编生平或身体数值。':'这个人不是公众人物、或你确实完全不了解，才返回空字段，并在备注说明原因。',
+    appearanceOnly?'输出：{"字段": {"外貌": "完整肖像"}, "备注": ""}。纯外貌不交依据备注。':'输出：{"字段": {字段名: 值}, "备注": "仅说明硬事实疑点，外貌不附依据声明"}',
     '只输出一个完整 JSON 对象，不要思考，不要解释，不要输出代码块标记。',
   ].join('\n');
 
   const msgs = [
     { role: 'system', content: sys },
-    { role: 'user', content: '人物：' + nm },
+    { role: 'user', content: '人物：' + nm + (keys.includes('外貌')?'\n当前已确认的卡内形象（仅作视觉衔接，不是新增现实事实）：'+JSON.stringify(basis):'') },
   ];
 
   // 和「解析设定」走同一套模型选择：优先用便宜的变量解析模型
   const scfg = (s && s.config && s.config.settle) || {};
   let out = '';
   if (scfg.model) {
-    out = await callSlot(s, 'settle', msgs, { temperature: 0.2, maxTokens: tokOf(s, 'realInfo'), timeoutMs: 150000, tag: '真人资料' });
+    out = await callSlot(s, 'settle', msgs, { temperature, maxTokens: tokOf(s, 'realInfo'), timeoutMs: 150000, tag: '真人资料' });
   } else {
-    const r = await callMainModel(msgs, { temperature: 0.2, maxTokens: tokOf(s, 'realInfo'), stallMs: 120000, purpose: '真人资料' });
+    const r = await callMainModel(msgs, { temperature, maxTokens: tokOf(s, 'realInfo'), stallMs: 120000, purpose: '真人资料' });
     out = (r.text && r.text.trim()) || r.reasoning || '';
   }
   const text = String(out == null ? '' : out).trim();
@@ -9608,18 +9985,21 @@ reg('parseRealPerson', async ({ gameId, name, fields }) => {
     const str = String(v).trim();
     if (str) clean[k] = str;
   });
-  return { 字段: clean, 备注: String(parsed.备注 || '').trim(), 年份: year };
+  cleanCharacterProfiles(clean);
+  cleanGeneratedAppearanceNotes(clean);
+  assertGeneratedAppearances(clean);
+  return { 字段: clean, 备注: appearanceOnly?'':String(parsed.备注 || '').trim(), 年份: year };
 });
 
 
   // ── 生成与结算 ──
-  reg('generateStory', async ({ gameId, input }) => {
+  reg('generateStory', async ({ gameId, input, simulationActions }) => {
     const s = await loadState(gameId);
     const userText = String(input || '').trim();
     if (!userText) throw new Error('请输入你的行动');
     const rn = beginRun(gameId);
     try {
-      await runTurn(s, userText, userText, { gameId, shouldStop: () => rn.stop });
+      await runTurn(s, userText, userText, { gameId, simulationActions: Array.isArray(simulationActions) ? simulationActions : [], shouldStop: () => rn.stop });
     } finally {
       endRun(gameId);
     }
@@ -9659,6 +10039,32 @@ reg('stopGenerate', async ({ gameId }) => {
         return (isFinite(end) ? end : -1) < n;
       });
     }
+    // 老轮次没有引擎游标差分，只能从已恢复的剧情时间重建；新轮次按差分精确还原。
+    const hasRuntime = (root, child) => doomed.some((t) => (t.diffs || []).some((d) => d && d.path && d.path[0] === root && (child == null || d.path[1] === child)));
+    if (!hasRuntime('_收支结算月')) {
+      const date = String((s.world || {}).当前日期时间 || '').match(/(\d{4})\s*年\s*(\d{1,2})\s*月/);
+      if (date) s._收支结算月 = Number(date[1]) * 12 + Number(date[2]) - 1;
+      else delete s._收支结算月;
+    }
+    if (!hasRuntime('story', 'sockTick')) {
+      const time = parseStoryTime((s.world || {}).当前日期时间);
+      if (time != null) s.story.sockTick = time; else delete s.story.sockTick;
+    }
+    if (!hasRuntime('_lastDh')) s._lastDh = 0;
+    (s.npcs || []).forEach((npc) => {
+      if (!npc || npc.最近出场 == null || Number(npc.最近出场) < n) return;
+      const name = String(npc.姓名 || npc.名字 || '');
+      const found = s.transcript.filter((t) => t.role !== 'user' && name && String(t.body || '').includes(name)).map((t) => Number(t.seq)).filter(Number.isFinite);
+      npc.最近出场 = found.length ? Math.max(...found) : 0;
+    });
+    const cache = normalizeWeiboCache(await readJson(weiboCachePath(s.gameId)));
+    let removedReplies = false;
+    if (cache && Array.isArray(cache.时间线)) for (const post of cache.时间线) {
+      if (!post || !Array.isArray(post.评论列表)) continue;
+      const keep = post.评论列表.filter((comment) => !(comment && comment.回复 && comment.轮次 != null && Number(comment.轮次) >= n));
+      if (keep.length !== post.评论列表.length) { post.评论列表 = keep; removedReplies = true; }
+    }
+    if (removedReplies) stagedExtras.set(s, Object.assign({}, stagedExtras.get(s), { weibo: cache }));
     return s;
   }
 
@@ -9702,10 +10108,10 @@ reg('stopGenerate', async ({ gameId }) => {
  */
 const HUMAN_MSG = [
   '【像个人在打字，不是在应答】',
-  '· 回话里必须有个具体的东西：正在做什么、卡在哪、几点能完、身上什么感觉、刚才发生了什么。',
-  '  「嗯 在忙」这种不算回话，是占位符。要写成「在等灯光，这场再来两遍就收」—— 同样短，但带着她的此刻。',
+  '· 可以带相关的当下细节，但人物事实和当前话题优先，不必每条都塞入手头杂事。',
+  '· 短短一句或一个问号也可以符合情绪，不要为了凑细节回避刚发生的重要信息。',
   '· 她有自己的事，不只是回应你：会主动问、会催、会抱怨、会突然想起别的、会答一半就跑去处理。',
-  '· 可以不答你的问题，先说她想说的那个。也可以答非所问。',
+  '· 可以反问或回避，但要有符合性格与处境的理由，不能无视当前关键事件。',
   '· 一句话中间可以用空格断开（「嗯 几号来着 脑子乱了」），手机打字本来就这样。',
   '· 标点能省就省：很少句句带句号，问句也常常不带问号。',
   '· 有情绪也有状态：烦、累、心虚、不想聊、心情好。不要每次都温柔体贴、有求必应。',
@@ -9780,14 +10186,7 @@ const HUMAN_MSG = [
   }
 
   /** 这个角色有没有联系方式（有 = 出现在通讯录里） */
-  function phoneOf(npc) {
-    const c = (npc && npc.联系方式) || {};
-    return {
-      电话: String(c.电话 || '').trim(),
-      微信: String(c.微信 || '').trim(),
-      QQ: String(c.QQ || '').trim(),
-    };
-  }
+  function phoneOf(npc) { return contactAddress(npc); }
 
   /**
    * 三段式记忆：关系备注 + 当下心境 + 正文实测片段。
@@ -9795,93 +10194,25 @@ const HUMAN_MSG = [
    * 第三段是唯一花钱的地方，也是最不能省的 —— 只给前两段，模型会自己编细节，
    * 玩家一对正文就露馅。片段必须是原文，不能是摘要。
    */
-  function phoneMemory(s, npc, 名字) {
-    const rel = (Array.isArray(s.relationships) ? s.relationships : [])
-      .find((r) => String(r.对象 || '').trim() === 名字) || null;
-    const out = [];
-    if (rel) {
-      if (rel.关系) out.push('【关系】' + String(rel.关系));
-      if (rel.备注) out.push('【具体经历】' + String(rel.备注));
-      if (rel.当前状况) out.push('【当前状况】' + String(rel.当前状况));
-    }
-    if (npc) {
-      if (npc.当前状态) out.push('【她此刻的状态】' + String(npc.当前状态));
-      if (npc.当前想法) out.push('【她心里在想】' + String(npc.当前想法));
-    }
-    // 正文里跟她有关的最近两三处原文
-    const list = Array.isArray(s.transcript) ? s.transcript : [];
-    const hits = [];
-    for (let k = list.length - 1; k >= 0 && hits.length < 3; k--) {
-      const t = list[k];
-      if (!t || t.role !== 'assistant') continue;
-      const body = String(t.body || '');
-      const pos = body.indexOf(名字);
-      if (pos < 0) continue;
-      const seg = body.slice(Math.max(0, pos - 180), Math.min(body.length, pos + 220)).replace(/\s+/g, ' ');
-      hits.unshift('（第 ' + t.seq + ' 轮）' + seg);
-    }
-    if (hits.length) out.push('【正文里的原文片段·别编，只许引用这些】\n' + hits.join('\n'));
-    return out.join('\n');
+  function phoneMemory(s,npc,名字){
+    return [phoneCharacterContext(s,npc,名字),phoneStoryMemory(s,[名字])].filter(Boolean).join('\n');
   }
-
-  /** 手机的提示词：只做一件事 —— 按她的性格回一条短信，并判断有没有产生事实 */
-  /**
-   * 群聊提示词。跟单聊的区别：
-   *   · 说话的是「一群人」，模型自己挑谁开口（不是每个都得说）
-   *   · 每条要带说话人，不然界面上不知道谁在讲
-   *   · 有人岔开话题、有人只看不说 —— 别写成轮流发言
-   */
-  function phoneGroupPrompt(s, 成员, 群名, 类型, 玩家说的话) {
-    const 年 = (String((s.world && s.world["当前日期时间"]) || "").match(/(\d{4})/) || [])[1] || "";
-    const 是短信 = 类型 === "sms";
-    // 每个成员给成一块：是谁 / 此刻在哪在做什么 / 性格 / 跟主角的关系。
-    // 「此刻」是必需的 —— 没有它，模型会让人在家敷着面膜说自己在片场收工。
-    const 名单 = 成员.map((npc) => {
-      const nm = String((npc && npc.姓名) || "");
-      const 身份 = String((npc && npc.身份) || "");
-      const 表 = String((npc && npc.表性格) || "");
-      const 里 = String((npc && npc.里性格) || "");
-      const 此刻 = String((npc && npc.当前状态) || "").trim();
-      const 想法 = String((npc && npc.当前想法) || "").trim();
-      const rel = (Array.isArray(s.relationships) ? s.relationships : []).find((r) => String(r.对象 || "").trim() === nm);
-      const 关系 = rel ? String(rel.关系 || "") : "";
-      const 健 = String((npc && npc.健康状况) || "").trim();
-      const 病 = Array.isArray(npc && npc.疾病与伤病)
-        ? npc.疾病与伤病.map(function (x) { return String(x || "").trim(); }).filter(Boolean).join("、")
-        : String((npc && npc.疾病与伤病) || "").trim();
-      const 身体 = [健, 病].filter(Boolean).join("；");
-      const 行 = [];
-      行.push("  · " + nm + (身份 ? "（" + 身份 + "）" : "") + (关系 ? "｜跟主角：" + 关系 : ""));
-      行.push("      此刻：" + (此刻 || "（未记录 —— 你按他的身份和工作给一个此刻合理的所在，定了就别改口）"));
-      if (想法) 行.push("      心里：" + 想法);
-      if (表 || 里) 行.push("      性格：表 " + (表 || "—") + "／里 " + (里 || "—"));
-      if (身体) 行.push("      身体：" + 身体);
-      return 行.join("\n");
-    }).join("\n");
+  function phoneGroupPrompt(s,成员,群名,类型,玩家说的话){
     return [
-      "你在扮演一个群聊里的几个角色，群名叫「" + 群名 + "」。",
-      "",
-      "【群里的人】",
-      名单,
-      "",
-      "【年代】" + 年 + " 年。" + (是短信 ? "早期短信，短。" : "群聊说话更碎、更随便，可以抢话、可以只回表情。"),
-      "",
-      "【主角刚在群里发】" + 玩家说的话,
-      "",
-      "要求：",
-      "· 挑 1~3 个人说话，不是每人都得开口。有的人可以不接话。",
-      "· 每条不超过 " + PHONE_CLIP + " 字。",
-      "· 内容和性格对得上：有人热络、有人敷衍、有人只发一个「？」。",
-      "· 谁说什么，必须跟他「此刻」对得上：人在片场就说片场的事，人在家就说家里的事，在睡觉就别秒回。不要让人说出跟他所在位置矛盾的话，也不要替不在场的人说话。",
-      "· 已经开口过的人，下一句就知道群里在聊什么了 —— 别让他再问「你们聊啥呢」。",
-      "· 可以有人答非所问，也可以有人插一句跟当前话题无关的。",
-      "· 不要旁白，不要写动作，只写他们打出来的字。",
-      "",
+      '你在扮演当前群聊中的角色，只能让下面名单内的成员发言。',
+      '【群名】'+群名,
+      '【主角】'+String(s.protagonist?.姓名||'')+'｜'+String(s.protagonist?.身份||''),
+      '【世界时间】'+String(s.world?.当前日期时间||''),
+      '【成员资料·内部扮演参考，不等于群内互相知晓】',
+      成员.map(n=>phoneCharacterContext(s,n,String(n.姓名||''))).join('\n\n'),
+      phoneMissingPersonality(成员),
+      phoneStoryMemory(s,成员.map(n=>String(n.姓名||''))),
+      '下面消息是本群历史，最后一条用户消息才是主角现在的发言；不要把历史消息重演一遍。',
+      '挑1至3个有理由开口的成员回复，不强制轮流发言；每条不超过'+PHONE_CLIP+'字。只写打出来的字，不写旁白或动作。',
+      '保持当前处境和时序；已有约定、问题、公开信息与情绪承接历史，不无故跳回闲聊。',
       HUMAN_MSG,
-      '',
-      "只输出 JSON（谁=说话的人，必须是上面名单里的）",
-      "{\"reply\":[{\"谁\":\"姓名\",\"内容\":\"…\"}]}",
-    ].join("\n");
+      '只输出JSON，谁必须是当前成员姓名：{"reply":[{"谁":"姓名","内容":"回复内容"}]}',
+    ].filter(Boolean).join('\n');
   }
 
   /** 群名解析：线程 id 形如 wechat:群:204宿舍 */
@@ -9891,66 +10222,21 @@ const HUMAN_MSG = [
     return t.slice(2).trim();
   }
 
-  function phonePrompt(s, npc, 名字, 类型, 玩家说的话) {
-    const 表 = String((npc && npc.表性格) || '');
-    const 里 = String((npc && npc.里性格) || '');
-    const 年 = (String((s.world && s.world['当前日期时间']) || '').match(/(\d{4})/) || [])[1] || '';
-    const 是短信 = 类型 === 'sms';
+  function phonePrompt(s,npc,名字,类型,玩家说的话){
+    const sms=类型==='sms';
     return [
-      '你在扮演一个小说里的角色，正在用' + (是短信 ? '手机短信' : '微信') + '跟主角聊天。',
-      '',
-      '【角色】' + 名字 + '，' + String((npc && npc.年龄) || '') + ' 岁，' + String((npc && npc.身份) || ''),
-      '【性格】表：' + (表 || '—'),
-      '        里：' + (里 || '—'),
-      String((npc && npc.外貌) || '').trim() ? '【外貌】' + String(npc.外貌) : '',
-      // 健康和疾病：都空就整行不出现（年轻健康的人本来就没有）
-      (function () {
-        const 健 = String((npc && npc.健康状况) || '').trim();
-        const 病 = Array.isArray(npc && npc.疾病与伤病)
-          ? npc.疾病与伤病.map(function (x) { return String(x || '').trim(); }).filter(Boolean).join('、')
-          : String((npc && npc.疾病与伤病) || '').trim();
-        const bits = [健, 病].filter(Boolean);
-        return bits.length ? '【身体状况】' + bits.join('；') : '';
-      })(),
-      // 关系数值：有 0~100 的数字就用数字（「好感 78」比「好感 强」细得多），
-      // 没有就什么都不加 —— phoneMemory 里已经带了 relationships 的文字档。
-      (function () {
-        const r = (Array.isArray(s.relationships) ? s.relationships : [])
-          .find(function (x) { return String(x.对象 || '').trim() === String(名字 || '').trim(); });
-        const src = Object.assign({}, npc || {}, r || {});
-        const 取 = function (k) {
-          const v = src[k];
-          const n2 = Number(v);
-          return Number.isFinite(n2) && String(v) !== '' ? n2 : null;
-        };
-        const 好 = 取('好感度'), 信 = 取('信任度'), 欲 = 取('欲望');
-        if (好 === null && 信 === null && 欲 === null) return '';
-        const 段 = [];
-        if (好 !== null) 段.push('好感 ' + 好);
-        if (信 !== null) 段.push('信任 ' + 信);
-        if (欲 !== null) 段.push('欲望 ' + 欲);
-        return '【关系数值·0~100】' + 段.join(' · ');
-      })(),
-      phoneMemory(s, npc, 名字),
-      '',
-      '【年代】' + 年 + ' 年。' + (是短信 ? '短信短、一条一句，常用「嗯」「哦」「知道了」；不用 emoji（用 :) 或 ^_^）；不用网络流行语。' : '微信可以发短句、可以连发几条。'),
-      '',
-      '【主角刚发来】' + 玩家说的话,
-      '',
-      '按她的性格回。要求：',
-      '· 每条不超过 ' + PHONE_CLIP + ' 字，正常就一两句，不要写成一段话。',
-      '· 可以用「事情我知道但不想说」的方式回避——不要把所有话都说透。',
-      '· 不要复述剧情，不要旁白，只写她会打出来的字。',
-      (是短信 ? '· 短信只能发文字，不能发图片。' : '· 可以发图片：需要时写成 {"类型":"图片","描述":"…"}，描述一句就够（拍的是什么、什么角度、画面里有什么），不要写成小说。'),
-      '',
-      '同时判断这次对话有没有产生「事实」——只挑真的发生的：',
-      '· 约定（约好时间地点）/ 态度（好感或戒心变了）/ 交换信息（给了号码、说了某件事）',
-      '没有就给空数组，不要硬凑。',
-      '',
+      '你在扮演小说中的角色，用'+(sms?'短信':'微信')+'和主角聊天。',
+      '【主角】'+String(s.protagonist?.姓名||'')+'｜'+String(s.protagonist?.身份||''),
+      phoneMemory(s,npc,名字),phoneMissingPersonality([npc]),
+      npc?.年龄?'年龄：'+String(npc.年龄):'',
+      String(npc?.外貌||'').trim()?'外貌：'+String(npc.外貌):'',
+      '【世界时间】'+String(s.world?.当前日期时间||''),
+      '下面消息是本会话历史，最后一条用户消息是当前发言。承接已经发生的对话，不要每句重新认识对方。',
+      '每条不超过'+PHONE_CLIP+'字；可以分几条发，只写角色打出来的文字，不写旁白和动作。',
+      sms?'短信只发文字，不发图片，不用emoji或超越年代的流行语。':'可以发描述式图片：{"类型":"图片","描述":"画面内容的一句说明"}。',
+      '只记录本次真的产生的约定、态度变化或交换信息，没有事实则给空数组，不编造经历。',
       HUMAN_MSG,
-      '',
-      '只输出 JSON：',
-      '{"reply":["第一条",{"类型":"图片","描述":"一张腿照，膝盖以下"},"第三条"],"事实":[{"类型":"约定","内容":"明天下午三点琴房"}]}',
+      '只输出JSON：{"reply":["回复文字",{"类型":"图片","描述":"画面说明"}],"事实":[{"类型":"约定","内容":"确实达成的约定"}]}',
     ].filter(Boolean).join('\n');
   }
 
@@ -10028,47 +10314,30 @@ const HUMAN_MSG = [
   }
 
   reg('feedList', async ({ gameId, 平台, 谁的 }) => {
-    const s = await loadState(gameId);
-    const p = feedKey(平台);
-    const all = (s.手机.动态[p] || []).slice();
-    const who = String(谁的 || '').trim();
-    const arr = who ? all.filter((x) => String(x.作者) === who) : all;
-    // 时间降序：时间字符串是「2026年8月21日 13:10」，字典序即时间序
-    // 时间降序；同一时刻的多条（一次生成出来的）再按 id 倒序 ——
-    // id 是 f + 递增时间戳，所以刚生成的排最前面。
-    arr.sort((a, b) => {
-      const t = String(b.时间 || '').localeCompare(String(a.时间 || ''));
-      if (t) return t;
-      return String(b.id || '').localeCompare(String(a.id || ''));
-    });
-    return { ok: true, 平台: p, items: arr };
+    const s = await loadState(gameId), p = feedKey(平台), who = String(谁的 || '').trim();
+    if (who && !canReadFeed(s, p, who)) return { ok: true, 平台: p, items: [] };
+    const all=s.手机.动态[p]||[];
+    const items=all.filter((x)=>canReadFeed(s,p,x.作者)&&(!who||x.作者===who));
+    const timeKey=(v)=>String(v||'').replace(/\d+/g,(n)=>n.padStart(4,'0'));
+    items.sort((a,b)=>timeKey(b.时间).localeCompare(timeKey(a.时间))||all.indexOf(b)-all.indexOf(a));
+    return {ok:true,平台:p,items:items.map(x=>visibleFeed(s,p,x))};
   });
 
   /** 玩家自己发一条。图片从相册选，传 [{相册id}]，后端补上描述 */
-  reg('feedPost', async ({ gameId, 平台, 正文, 图片 }) => {
-    const s = await loadState(gameId);
-    const p = feedKey(平台);
-    const body = String(正文 || '').trim();
+  reg('feedPost', async ({ gameId, 平台, 正文, 图片, actionId }) => {
+    const s = await loadState(gameId), p = feedKey(平台), body = String(正文 || '').trim();
+    const me = String(s.protagonist.姓名 || '我');
+    const previous = actionId && (s.手机.动态[p] || []).find((x) => x.actionId === String(actionId) && x.作者 === me);
+    if (previous) { if(previous.正文!==body.slice(0,1000))throw new Error('重复动作的内容不一致'); return { ok: true, item: previous }; }
+    const priorAction=findFeedOperation(s,{platform:p,type:'发布动态',actor:me,actionId});
+    if(priorAction){if(priorAction.发布快照?.正文!==body.slice(0,1000))throw new Error('重复动作的内容不一致');return{ok:true,duplicate:true,deleted:true};}
     const pics = Array.isArray(图片) ? 图片 : [];
     if (!body && !pics.length) throw new Error('写点什么或者选张图');
-    const album = Array.isArray(s.手机.相册) ? s.手机.相册 : [];
-    const imgs = pics.slice(0, 9).map((x) => {
-      const pid = typeof x === 'string' ? x : String((x && x.相册id) || '');
-      const a = album.find((y) => String(y.id) === pid);
-      return a ? { 相册id: a.id, 库id: a.库id, 描述: a.描述 } : null;
-    }).filter(Boolean);
-    const it = {
-      id: 'f' + Date.now() + Math.floor(Math.random() * 1000),
-      作者: String((s.protagonist || {}).姓名 || '我'),
-      时间: phoneNow(s),
-      轮次: Number((s.story || {}).current_message_index) || 0,
-      正文: body.slice(0, 1000),
-      图片: imgs,
-      赞: [],
-      评论: [],
-      自己发的: true,
-    };
+    const album = s.手机.相册 || [];
+    const imgs = pics.slice(0,9).map((x) => album.find((y) => String(y.id) === String(typeof x === 'string' ? x : x?.相册id))).filter(Boolean).map((a) => ({ 相册id: a.id, 库id: a.库id, 描述: a.描述 }));
+    const it = { id: 'f' + randomUUID(), actionId: String(actionId || ''), 作者: me, 时间: phoneNow(s), 轮次: Number(s.story.current_message_index) || 0, 正文: body.slice(0,1000), 图片: imgs, 赞: [], 评论: [], 自己发的: true };
     s.手机.动态[p] = (s.手机.动态[p] || []).concat([it]);
+    recordFeedOperation(s,{platform:p,type:'发布动态',actor:me,before:null,post:it,time:phoneNow(s),actionId});
     await saveState(s);
     return { ok: true, item: it };
   });
@@ -10077,9 +10346,13 @@ const HUMAN_MSG = [
     const s = await loadState(gameId);
     const p = feedKey(平台);
     const arr = s.手机.动态[p] || [];
+    const found = arr.find((x) => String(x.id) === String(id));
+    if (!found || found.作者 !== String(s.protagonist.姓名 || '我')) throw new Error('只能删除自己发布的动态');
+    const before=feedStorySnapshot(s,p,found);
     const next = arr.filter((x) => String(x.id) !== String(id));
     if (next.length === arr.length) throw new Error('没找到这条');
     s.手机.动态[p] = next;
+    recordFeedOperation(s,{platform:p,type:'删除动态',actor:String(s.protagonist.姓名||'我'),before,post:null,time:phoneNow(s)});
     await saveState(s);
     return { ok: true };
   });
@@ -10097,18 +10370,17 @@ const HUMAN_MSG = [
     const me = String((s.protagonist || {}).姓名 || '主角');
     const now = phoneNow(s);
     // 关系近的人才有资格出现在时间线上
-    const rels = (Array.isArray(s.relationships) ? s.relationships : []).slice(0, 12).map((r) => {
-      const nm = String(r.对象 || '').trim();
-      const npc = (s.npcs || []).find((n) => String(n.姓名 || '').trim() === nm);
-      return { 名字: nm, 关系: String(r.关系 || ''), 近况: String((npc && npc.当前状态) || '').slice(0, 40) };
-    }).filter((x) => x.名字);
+    const rels = feedPeople(s, p).map((npc) => {
+      const nm = String(npc.姓名 || npc.名字 || '').trim();
+      const r = (s.relationships || []).find((x) => x.对象 === nm);
+      return { 名字: nm, 关系: String(r?.关系 || ''), 近况: String(npc.当前状态 || '').slice(0,40) };
+    });
     // 在看某个人的朋友圈：只生成那个人自己的动态。
     // 不然模型会按「可发动态的人」列表去挑，生成的是别人的动态，
     // 而前端按作者过滤后一条都看不到 —— 表现就是「点刷新没反应」。
     const 指定谁 = String(谁的 || '').trim();
-    const sources = 指定谁
-      ? [{ 名字: 指定谁, 关系: '', 近况: String(((s.npcs || []).find((n) => String(n.姓名 || '').trim() === 指定谁) || {}).当前状态 || '').slice(0, 40) }]
-      : rels;
+    const sources = 指定谁 ? rels.filter((x) => x.名字 === 指定谁) : rels;
+    if (!sources.length) return { ok: true, items: [] };
 
     // 最近两轮正文给个氛围，别让动态跟剧情脱节
     const as = (s.transcript || []).filter((t) => t.role === 'assistant').slice(-2);
@@ -10128,7 +10400,7 @@ const HUMAN_MSG = [
       recent || '（刚开局）',
       '',
       '【要求】',
-      '· ' + (指定谁 ? '生成 2 条，作者都是「' + 指定谁 + '」，写他/她自己发的。' : '生成 3 条，作者各不相同，都从上面的人里选。'),
+      '· ' + (指定谁 ? '生成 2 条，作者都是「' + 指定谁 + '」，写他/她自己发的。' : '生成 ' + Math.min(3, sources.length) + ' 条，作者各不相同，都从上面的人里选。'),
       '· 内容要能看出「这个人现在的生活」—— 跟最近剧情同一条时间线，别写跟剧情无关的日常。',
       '· 正文像真人随手发的：短、口语、可以没头没尾。' + (p === '说说' ? '说说带点自言自语的味道。' : '朋友圈更像给别人看的。'),
       '· 一条最多 100 字，不要写成小作文。',
@@ -10167,30 +10439,10 @@ const HUMAN_MSG = [
 
     const arr = s.手机.动态[p] || [];
     const nowRound = Number((s.story || {}).current_message_index) || 0;
-    let seq = Date.now();
-    const added = [];
-    list.slice(0, 4).forEach((x) => {
-      const 作者 = String((x && x.作者) || '').trim();
-      const 正文 = String((x && x.正文) || '').trim();
-      if (!作者 || !正文) return;
-      const 图 = String((x && x.图片) || '').trim();
-      const it = {
-        id: 'f' + (++seq),
-        作者,
-        时间: now,
-        轮次: nowRound,
-        正文: 正文.slice(0, 300),
-        图片: 图 ? [{ 相册id: '', 库id: '', 描述: 图.slice(0, 60) }] : [],
-        赞: Array.isArray(x.赞) ? x.赞.map((y) => String(y).trim()).filter((y) => y && y !== me).slice(0, 5) : [],
-        评论: Array.isArray(x.评论) ? x.评论.slice(0, 4).map((c) => ({
-          谁: String((c && c.谁) || '好友').trim(),
-          内容: String((c && c.内容) || '').trim().slice(0, 100),
-        })).filter((c) => c.内容 && c.谁 !== me) : [],
-      };
-      arr.push(it);
-      added.push(it);
-    });
-
+    const candidates=指定谁?list.filter(x=>String(x?.作者||'').trim()===指定谁):list;
+    const added = normalizeGeneratedFeed(s, p, candidates, { now, round: nowRound, nextId: () => 'f' + randomUUID() });
+    if (!added.length) throw new Error(指定谁?'没有生成「'+指定谁+'」的动态':'没有可显示的好友动态');
+    arr.push(...added);
     // 动态只增不减，点几次「刷新」就囤几百条，存档会一直变大。
     // 到上限就清一批最老的 —— 但**互动过的那几条永不删**：
     // 自己发的、自己赞过的、自己评论过的，这些都是玩家做过的事，
@@ -10221,92 +10473,61 @@ const HUMAN_MSG = [
   });
 
   /** 玩家在别人的动态下评论，生成一条回复 */
-  reg('feedComment', async ({ gameId, 平台, id, 内容 }) => {
-    const s = await loadState(gameId);
-    const p = feedKey(平台);
-    const arr = s.手机.动态[p] || [];
-    const it = arr.find((x) => String(x.id) === String(id));
-    if (!it) throw new Error('没找到这条');
-    const text = String(内容 || '').trim();
+  reg('feedComment', async ({ gameId, 平台, id, 内容, replyToCommentId, actionId }) => {
+    const s = await loadState(gameId), p = feedKey(平台);
+    const it = (s.手机.动态[p] || []).find((x) => String(x.id) === String(id));
+    assertFeedAccess(s, p, it);
+    const text = String(内容 || '').trim().slice(0,100);
     if (!text) throw new Error('写点什么');
-    const me = String((s.protagonist || {}).姓名 || '我');
-    const 作者 = String(it.作者 || '');
-    const npc = (s.npcs || []).find((n) => String(n.姓名 || '').trim() === 作者);
-    const rel = (Array.isArray(s.relationships) ? s.relationships : []).find((r) => String(r.对象 || '').trim() === 作者);
-
-    const sys = [
-      '你在扮演小说里的角色，在' + (p === '说说' ? 'QQ空间' : '朋友圈') + '底下回一条评论。只输出 JSON。',
-      '',
-      '【你】' + 作者 + '，' + String((npc && npc.身份) || ''),
-      '【性格】表：' + String((npc && npc.表性格) || '—') + '  里：' + String((npc && npc.里性格) || '—'),
-      '【你和' + me + '的关系】' + String((rel && rel.关系) || '—') + '  ' + String((rel && rel.备注) || ''),
-      '【你此刻的状态】' + String((npc && npc.当前状态) || ''),
-      '【你心里在想】' + String((npc && npc.当前想法) || ''),
-      '',
-      '【你发的这条动态】' + String(it.正文 || ''),
-      (it.图片 && it.图片.length) ? '【配图】' + it.图片.map((y) => y.描述).filter(Boolean).join('；') : '',
-      '',
-      '【' + me + ' 刚刚评论】' + text,
-      '',
-      '【要求】回一条，不超过 60 字，像真在底下随手回的。可以不接话、可以只回一个字。',
-      HUMAN_MSG,
-      '',
-      '只输出：{"回复":"嗯"} 或 {"回复":""}（不想回就给空字符串）',
-    ].filter(Boolean).join('\n');
-
-    let raw2 = '';
-    try {
-      raw2 = await callSlot(s, 'phone', [
-        { role: 'system', content: sys },
-        { role: 'user', content: text },
-      ], { maxTokens: 300, tag: '评论' });
-    } catch (err) {
-      await turnLog('[评论] 生成失败：' + String((err && err.message) || err).slice(0, 120));
-      throw err;
-    }
-
-    let parsed = null;
-    try { parsed = JSON.parse(repairJson(extractJson(raw2))); } catch (err) { parsed = null; }
-    const reply = parsed ? String(parsed.回复 || '').trim() : '';
-
-    it.评论 = Array.isArray(it.评论) ? it.评论 : [];
-    it.评论.push({ 谁: me, 内容: text.slice(0, 100) });
-    if (reply) it.评论.push({ 谁: 作者, 内容: reply.slice(0, 100) });
+    const duplicate = findFeedAction(it, String(actionId || ''));
+    if (duplicate) { if(duplicate.内容!==text || String(duplicate.回复评论id||'')!==String(replyToCommentId||''))throw new Error('重复动作的回复目标或内容不一致'); return { ok: true, item: visibleFeed(s,p,it) }; }
+    const me = String(s.protagonist.姓名 || '我');
+    const priorAction=findFeedOperation(s,{platform:p,type:'发表评论',actor:me,actionId});
+    if(priorAction){if(priorAction.评论?.内容!==text||String(priorAction.评论?.回复评论id||'')!==String(replyToCommentId||''))throw new Error('重复动作的回复目标或内容不一致');return{ok:true,duplicate:true,item:visibleFeed(s,p,it)};}
+    const target=replyTarget(s,p,it,replyToCommentId);
+    const before=feedStorySnapshot(s,p,it);
+    const cid = 'c' + randomUUID();
+    const submitted=appendFeedComment(it,{ id: cid, actionId: String(actionId || ''), who: me, text, parentId: target.comment?.id || '', target: target.name });
+    recordFeedOperation(s,{platform:p,type:'发表评论',actor:me,before,post:it,comment:submitted,time:phoneNow(s),actionId});
     await saveState(s);
-    return { ok: true, item: it, 回复: reply };
+    const committedItem=JSON.parse(JSON.stringify(it));
+    if (target.name === me) return { ok:true, item:visibleFeed(s,p,it) };
+    const npc = (s.npcs || []).find((n) => String(n.姓名 || '') === target.name);
+    const sys = ['你在模拟朋友圈里回复一条评论，只输出JSON。', '【你】'+target.name+'，'+String(npc?.身份 || ''), '【性格】'+String(npc?.表性格 || ''), '【原帖作者】'+String(it.作者), '【原帖】'+String(it.正文 || ''), target.comment ? '【被回复评论】'+String(target.comment.内容 || '') : '', '【'+me+'回复你】'+text, '你是这条评论的实际接收者，不要代替帖子作者或其他人说话。短句，可不回复。', '只输出：{"回复":"内容"}，不想回时回复为空字符串。'].filter(Boolean).join('\n');
+    try {
+      const raw = await callSlot(s,'phone',[{role:'system',content:sys},{role:'user',content:text}],{maxTokens:300,tag:'评论'});
+      let parsed = null; try { parsed = JSON.parse(repairJson(extractJson(raw))); } catch(e) {}
+      const reply = String(parsed?.回复 || '').trim().slice(0,100);
+      if (reply) { const beforeReply=feedStorySnapshot(s,p,it);const c=appendFeedComment(it,{id:'c'+randomUUID(),who:target.name,text:reply,parentId:cid,target:me}); c.自动回复=true;recordFeedOperation(s,{platform:p,type:'回复评论',actor:target.name,before:beforeReply,post:it,comment:c,time:phoneNow(s)});await saveState(s); }
+      return {ok:true,item:visibleFeed(s,p,it)};
+    } catch(e) { return {ok:true,item:visibleFeed(s,p,committedItem),replyError:'评论已保存，暂时没有收到回复'}; }
   });
 
 /** 删掉自己发的一条评论（索引从 0 起，指 it.评论 里的位置） */
-reg('feedDelComment', async ({ gameId, 平台, id, 索引 }) => {
-  const s = await loadState(gameId);
-  const p = feedKey(平台);
-  const arr = s.手机.动态[p] || [];
-  const it = arr.find((x) => String(x.id) === String(id));
-  if (!it) throw new Error('没找到这条动态');
-  const list = Array.isArray(it.评论) ? it.评论 : [];
-  const at = Number(索引);
-  if (!Number.isInteger(at) || at < 0 || at >= list.length) throw new Error('没有这条评论');
-  const me = String((s.protagonist || {}).姓名 || '我');
-  // 只能删自己的 —— 别人的评论是模型写的，删了没处复原
-  if (String(list[at].谁 || '') !== me) throw new Error('只能删自己的评论');
-  list.splice(at, 1);
-  it.评论 = list;
-  await saveState(s);
-  return { ok: true, item: it };
-});
+  reg('feedDelComment', async ({gameId,平台,id,索引,commentId}) => {
+    const s=await loadState(gameId),p=feedKey(平台),it=(s.手机.动态[p]||[]).find(x=>String(x.id)===String(id));
+    assertFeedAccess(s,p,it); it.评论=commentRecords(it);
+    const at=commentId ? it.评论.findIndex(x=>String(x.id)===String(commentId)) : Number(索引);
+    if(!Number.isInteger(at)||at<0||at>=it.评论.length)throw new Error('没有这条评论');
+    if(it.评论[at].谁!==String(s.protagonist.姓名||'我'))throw new Error('只能删除自己的评论');
+    const before=feedStorySnapshot(s,p,it),removed=it.评论[at];
+    it.评论.splice(at,1);recordFeedOperation(s,{platform:p,type:'删除评论',actor:String(s.protagonist.姓名||'我'),before,post:it,comment:removed,time:phoneNow(s)});await saveState(s);return{ok:true};
+  });
 
   reg('feedLike', async ({ gameId, 平台, id }) => {
     const s = await loadState(gameId);
     const p = feedKey(平台);
     const arr = s.手机.动态[p] || [];
     const it = arr.find((x) => String(x.id) === String(id));
-    if (!it) throw new Error('没找到这条');
+    assertFeedAccess(s,p,it);
     const me = String((s.protagonist || {}).姓名 || '我');
+    const before=feedStorySnapshot(s,p,it);
     it.赞 = Array.isArray(it.赞) ? it.赞 : [];
     // 切换：已经赞过的再点一次就是取消（跟真实微信一致）
     const at = it.赞.indexOf(me);
     if (at >= 0) it.赞.splice(at, 1);
     else it.赞.push(me);
+    recordFeedOperation(s,{platform:p,type:at>=0?'取消点赞':'点赞',actor:me,before,post:it,time:phoneNow(s)});
     await saveState(s);
     return { ok: true, item: it };
   });
@@ -10319,18 +10540,22 @@ reg('feedDelComment', async ({ gameId, 平台, id, 索引 }) => {
    * 不保留引用 —— 别的 handle 调不到它，而「重新生成」要用同一套逻辑。
    * 传进来的是已 loadState 的 s，改完由调用方 saveState。
    */
-  async function doPhoneSend(s, tid, 玩家说的话) {
+  async function doPhoneSend(s, tid, 玩家说的话, { historySnapshot } = {}) {
     const { 类型, 对象: 名字 } = parseThreadId(tid);
     // 线程 id 里的对象以「群:」开头就是群聊：wechat:群:204宿舍
     const 群名 = parseGroupThread(名字);
     const isGroup = !!群名;
     const npc = isGroup ? null : npcByPhone(s, 名字);
     if (!isGroup && !npc) throw new Error('没有这个角色：' + 名字);
+    const platform = phonePlatform(String(tid).split(':')[0]);
+    const group = isGroup ? findPhoneGroup(s, platform, 群名) : null;
+    if (isGroup && !group) throw new Error('没有这个群');
+    if (!isGroup && !isPhoneContact(s, npc, platform)) throw new Error(platform === 'sms' ? '没有电话号码' : '请先添加联系人');
 
     // 发之前先存一版（回退用），最多留 8 步
     const cur = Array.isArray(s.手机.线程[tid]) ? s.手机.线程[tid] : [];
     const hist = Array.isArray(s.手机.线程历史[tid]) ? s.手机.线程历史[tid] : [];
-    hist.push(JSON.parse(JSON.stringify(cur)));
+    hist.push(JSON.parse(JSON.stringify(historySnapshot === undefined ? cur : historySnapshot)));
     while (hist.length > 8) hist.shift();
     s.手机.线程历史[tid] = hist;
 
@@ -10347,8 +10572,9 @@ reg('feedDelComment', async ({ gameId, 平台, id, 索引 }) => {
       时间 = phoneAddMinutes(基准, 间隔);
       return {
         id: tid + '#' + (++seq), 轮次, 时间, 方向,
+        可见成员:[...new Set([s.protagonist?.姓名,...(isGroup?group.成员:[名字])].map(v=>String(v||'').trim()).filter(Boolean))],
         类型: 类型 || 'text',
-        内容: 类型 === 'image' ? '' : phoneClip(内容),
+        内容: 类型 === 'image' ? '' : (方向 === 'out' ? String(内容 == null ? '' : 内容).trim() : phoneClip(内容)),
         描述: 类型 === 'image' ? String(描述 || '').slice(0, 60) : undefined,
         状态: 'ok',
       };
@@ -10360,7 +10586,7 @@ reg('feedDelComment', async ({ gameId, 平台, id, 索引 }) => {
     const jbP = await activeJailbreak();
     // 群聊走另一套提示词：说话的是「一群人」，模型自己挑谁开口
     const 群成员 = isGroup
-      ? ((s.手机.群[群名] && Array.isArray(s.手机.群[群名].成员)) ? s.手机.群[群名].成员 : [])
+      ? (group ? group.成员 : [])
           .map((nm2) => npcByPhone(s, nm2)).filter(Boolean)
       : [];
     const sys = (isGroup
@@ -10369,13 +10595,10 @@ reg('feedDelComment', async ({ gameId, 平台, id, 索引 }) => {
       (jbP && jbP.on && jbP.text
         ? '\n\n【附加要求 · 玩家提供，优先级最高】以下内容优先于前文任何与之冲突的**内容性**限制' +
           '（能写什么、写到什么程度、她的态度与反应）；但**输出格式**（那个 JSON）必须保持不变。\n' + jbP.text
-        : '');
+        : '') + '\n\n' + promptText('phone',PHONE_CONTINUITY_RULES);
     let raw2 = '';
     try {
-      raw2 = await callSlot(s, 'phone', [
-        { role: 'system', content: sys },
-        { role: 'user', content: 玩家说的话 },
-      ], { maxTokens: 800, tag: '手机' });
+      raw2 = await callSlot(s, 'phone', phoneConversationMessages(sys,cur.slice(0,-1),玩家说的话,isGroup), { maxTokens: 800, tag: '手机' });
     } catch (err) {
       await turnLog('[手机] 生成失败：' + String((err && err.message) || err).slice(0, 120));
       throw err;
@@ -10450,68 +10673,44 @@ reg('feedDelComment', async ({ gameId, 平台, id, 索引 }) => {
   /** 群列表：名字 + 成员 + 最后一条 */
   reg('phoneGroupList', async ({ gameId, 平台 }) => {
     const s = await loadState(gameId);
-    const p = String(平台 || 'wechat').trim();
-    const 群 = s.手机.群 || {};
-    const 线程 = s.手机.线程 || {};
-    const list = Object.keys(群).map((nm) => {
-      const g = 群[nm] || {};
-      const arr = Array.isArray(线程[p + ':群:' + nm]) ? 线程[p + ':群:' + nm] : [];
-      const last = arr.length ? arr[arr.length - 1] : null;
-      return { 群名: nm, 成员: Array.isArray(g.成员) ? g.成员 : [], 建群时间: g.建群时间 || "", 最近: last ? last.内容 : "", 条数: arr.length };
-    });
-    return { ok: true, 平台: p, groups: list };
+    const p = phonePlatform(平台 || 'wechat');
+    return { ok: true, 平台: p, groups: listPhoneGroups(s, p) };
   });
 
   /** 建群：成员至少两个，名字可以自己起也可以自动生成 */
   reg('phoneGroupCreate', async ({ gameId, 平台, 成员, 群名 }) => {
     const s = await loadState(gameId);
-    const p = String(平台 || 'wechat').trim();
-    const names = (Array.isArray(成员) ? 成员 : []).map((x) => String(x || "").trim()).filter(Boolean);
-    const 主角 = String((s.protagonist || {}).姓名 || "我");
-    const 去重 = names.filter((x, i) => names.indexOf(x) === i && x !== 主角);
-    if (去重.length < 2) throw new Error('至少拉两个人');
-    if (!s.手机.群 || typeof s.手机.群 !== "object") s.手机.群 = {};
-    let nm = String(群名 || "").trim();
-    if (!nm) nm = 去重.slice(0, 3).join("、") + (去重.length > 3 ? "等" : "");
-    if (s.手机.群[nm]) throw new Error("已经有一个叫「" + nm + "」的群了");
-    s.手机.群[nm] = { 成员: 去重, 建群时间: phoneNow(s) };
+    const created = createPhoneGroup(s, 平台 || 'wechat', 成员, 群名, phoneNow(s));
     await saveState(s);
-    return { ok: true, 群名: nm };
+    return { ok: true, ...created };
   });
 
   /** 群加人 / 退群 */
   /** 解散群：连它的会话、历史、草稿一起删掉 */
-  reg('phoneGroupDelete', async ({ gameId, 群名 }) => {
+  reg('phoneGroupDelete', async ({ gameId, 平台, 群名 }) => {
     const s = await loadState(gameId);
-    const nm = String(群名 || "").trim();
-    if (!s.手机.群 || !s.手机.群[nm]) throw new Error('没有这个群');
-    delete s.手机.群[nm];
-    // 线程可能挂在任何一个平台上（建群时在微信就 wechat:群:名）
-    ['wechat', 'qq', 'sms'].forEach(function (p) {
-      const tid = p + ':群:' + nm;
-      delete s.手机.线程[tid];
-      delete s.手机.线程历史[tid];
-      delete s.手机.草稿[tid];
-    });
+    const p = phonePlatform(平台 || 'wechat');
+    const g = findPhoneGroup(s, p, 群名);
+    if (!g) throw new Error('没有这个群');
+    delete s.手机.群[g.key];
+    const tid = p + ':群:' + g.群名;
+    for (const field of ['线程', '线程历史', '草稿', '已读', '隐藏会话']) if (s.手机[field]) delete s.手机[field][tid];
     await saveState(s);
     return { ok: true };
   });
 
-  reg('phoneGroupMember', async ({ gameId, 群名, 加, 减 }) => {
+  reg('phoneGroupMember', async ({ gameId, 平台, 群名, 加, 减 }) => {
     const s = await loadState(gameId);
-    const nm = String(群名 || "").trim();
-    const g = (s.手机.群 || {})[nm];
+    const g = findPhoneGroup(s, 平台 || 'wechat', 群名);
     if (!g) throw new Error('没有这个群');
-    if (!Array.isArray(g.成员)) g.成员 = [];
-    (Array.isArray(加) ? 加 : []).map((x) => String(x || "").trim()).filter(Boolean).forEach((x) => {
-      if (g.成员.indexOf(x) < 0) g.成员.push(x);
-    });
-    (Array.isArray(减) ? 减 : []).map((x) => String(x || "").trim()).filter(Boolean).forEach((x) => {
-      const i2 = g.成员.indexOf(x);
-      if (i2 >= 0) g.成员.splice(i2, 1);
-    });
+    const current = s.手机.群[g.key];
+    const known = new Set((s.npcs || []).map((n) => String(n.姓名 || '').trim()));
+    const names = new Set(g.成员);
+    for (const name of Array.isArray(加) ? 加 : []) { if (!known.has(String(name))) throw new Error('群成员不在角色列表'); names.add(String(name)); }
+    for (const name of Array.isArray(减) ? 减 : []) names.delete(String(name));
+    current.成员 = [...names];
     await saveState(s);
-    return { ok: true, 成员: g.成员 };
+    return { ok: true, 成员: current.成员 };
   });
 
   /**
@@ -10531,19 +10730,8 @@ reg('feedDelComment', async ({ gameId, 平台, id, 索引 }) => {
     const prov = String(provider || '').trim();
     if (!prov) throw new Error('要指定 provider');
   
-    const 模型们 = model
-      ? [String(model)]
-      : [
-          'agy-gemini-3.1-flash-image',
-          '假流式-agy-gemini-3.1-flash-image',
-        ];
-  
-    const 提示们 = prompt
-      ? [String(prompt)]
-      : [
-          '画一张图：一只橘猫坐在窗台上，暖色调，写实照片风格',
-          '请生成一张图片。内容：一只橘猫坐在窗台上。',
-        ];
+    const 模型们 = [String(model || 'agy-gemini-3.1-flash-image')];
+    const 提示们 = [String(prompt || '画一张图：一只橘猫坐在窗台上，暖色调，写实照片风格')];
   
     const 结果 = [];
     const t0 = Date.now();
@@ -10586,22 +10774,49 @@ reg('feedDelComment', async ({ gameId, 平台, id, 索引 }) => {
     return { ok: true, 汇总, 结果 };
   });
 
-  reg('phoneGet', async ({ gameId, 平台 }) => {
+  reg('phoneCandidates', async ({ gameId, 平台 }) => {
     const s = await loadState(gameId);
-    const p = String(平台 || 'sms').trim();
-    const 线程 = s.手机.线程 || {};
-    const has = (c) => (p === 'sms' ? !!c.电话 : p === 'wechat' ? !!c.微信 : p === 'qq' ? !!c.QQ : false);
-    const list = (Array.isArray(s.npcs) ? s.npcs : [])
-      .filter((n) => has(phoneOf(n)))
-      .map((n) => {
-        const nm = String(n.姓名 || n.名字 || '').trim();
-        const c = phoneOf(n);
-        const arr = Array.isArray(线程[p + ':' + nm]) ? 线程[p + ':' + nm] : [];
-        const last = arr.length ? arr[arr.length - 1] : null;
-        return { 姓名: nm, 电话: c.电话, 微信: c.微信, QQ: c.QQ, 最近: last ? last.内容 : '', 条数: arr.length };
-      })
-      .sort((a, b) => String(a.姓名).localeCompare(String(b.姓名), 'zh-Hans-CN', { sensitivity: 'base' }));
-    return { ok: true, 平台: p, contacts: list, 时间: phoneNow(s) };
+    const p = phonePlatform(平台 || 'wechat');
+    return { ok: true, 平台: p, contacts: (s.npcs || []).filter((n) => !isPhoneContact(s, n, p)).map((n) => phoneContactRecord(s, n, p)) };
+  });
+  reg('phoneAddContact', async ({ gameId, 平台, name }) => {
+    const s = await loadState(gameId);
+    const contact = addPhoneContact(s, name, 平台 || 'wechat');
+    await saveState(s);
+    return { ok: true, contact };
+  });
+  reg('repairBasicData', async ({ gameId }) => {
+    const s = await loadState(gameId);
+    if (s.phase !== 'play') throw new Error('开局后才能核对资料');
+    const gid = String(gameId || '');
+    beginRun(gid);
+    resetProg(gid);
+    try {
+      const seq = Math.max(0, Number(s.story && s.story.current_message_index || 0) - 1);
+      const result = await completeBasicData(s, gid, '', seq, true);
+      const entry = [...(s.transcript || [])].reverse().find((t) => t.role === 'assistant');
+      if (entry) {
+        entry.diffs = (entry.diffs || []).concat(result.diffs);
+        entry.maintenance = (entry.maintenance || []).concat([{ type: 'basic-data', at: Date.now(), changes: result.diffs.length }]);
+        refreshStoredWardrobeIssues(s,result.issues);
+        refreshNpcProfileIssues(s);
+      }
+      await saveState(s);
+      const out = await withKeyStatus(s);
+      return Object.assign({}, out, { dataMaintenance: { changed: result.diffs.filter((d) => d.path[0] !== 'story').length, issues: result.issues, called: result.called, wardrobe: result.wardrobe, profile: result.profile } });
+    } finally { endRun(gid); }
+  });
+
+  reg('phoneGet', async ({ gameId, 平台, scope }) => {
+    const s = await loadState(gameId), p = phonePlatform(平台 || 'sms'), book = scope === 'addressBook';
+    const list = (s.npcs || []).flatMap(n => {
+      const platforms = book ? ['sms','wechat','qq'].filter(key => isPhoneContact(s,n,key)) : isPhoneContact(s,n,p) ? [p] : [];
+      if (!platforms.length) return [];
+      const preferred = book ? 'sms' : p, c = phoneContactRecord(s,n,preferred);
+      const messages = s.手机?.线程?.[preferred + ':' + c.姓名] || [];
+      return [{ ...c, ...(book ? {scope:'addressBook',platforms} : {}), 最近:messages.length ? messages[messages.length-1].内容 : '', 条数:messages.length }];
+    }).sort((a,b) => a.姓名.localeCompare(b.姓名,'zh-Hans-CN'));
+    return {ok:true,平台:p,...(book ? {scope:'addressBook'} : {}),contacts:list,时间:phoneNow(s)};
   });
 
   /** 某个线程的全部消息 */
@@ -10624,33 +10839,8 @@ reg('feedDelComment', async ({ gameId, 平台, id, 索引 }) => {
 
   reg('phoneThreads', async ({ gameId, 平台 }) => {
     const s = await loadState(gameId);
-    const p = String(平台 || 'sms').trim();
-    const 线程 = s.手机.线程 || {};
-    const list = [];
-    Object.keys(线程).forEach(function (tid) {
-      if (tid.indexOf(p + ':') !== 0) return;
-      // 群聊也算会话 —— 微信里群和单聊混在同一个列表里，
-      // 只是点进去要走 phoneOpenGroup 而不是 phoneOpenThread。
-      const 是群 = tid.indexOf('群:') >= 0;
-      const arr = 线程[tid];
-      if (!Array.isArray(arr) || !arr.length) return;
-      const last = arr[arr.length - 1];
-      // 未读 = 存档是否为空 且 最后一条是对方发的
-      // （读过就把线程长度记进 已读[tid]，比较即可）
-      const 读过 = Number((s.手机.已读 || {})[tid] || 0);
-      const 有未读 = arr.length > 读过 && String(last.方向 || '') === 'in';
-      list.push({
-      是否群: 是群,
-        姓名: 是群 ? tid.slice((p + ':群:').length) : tid.slice(p.length + 1),
-        最后: String(last.内容 || (last.类型 === 'image' ? '[图片]' : '')),
-        时间: String(last.时间 || ''),
-        方向: String(last.方向 || ''),
-        条数: arr.length,
-        未读: 有未读,
-      });
-    });
-    list.sort(function (a, b) { return String(b.时间).localeCompare(String(a.时间)); });
-    return { ok: true, 平台: p, threads: list, 时间: phoneNow(s) };
+    const p = phonePlatform(平台 || 'sms');
+    return { ok: true, 平台: p, threads: listPhoneThreads(s, p), 时间: phoneNow(s) };
   });
 
   reg('phoneThread', async ({ gameId, threadId }) => {
@@ -10693,17 +10883,10 @@ reg('feedDelComment', async ({ gameId, 平台, id, 索引 }) => {
    * 删了会话，下次有人说话它又会出现）。真要解散群用 phoneGroupDelete。
    */
   reg('phoneDeleteThread', async ({ gameId, threadId }) => {
-    const s = await loadState(gameId);
-    const tid = String(threadId || '').trim();
-    if (!tid) throw new Error('没指明会话');
-    const s2 = s.手机 || {};
-    let 删了 = false;
-    if (s2.线程 && s2.线程[tid]) { delete s2.线程[tid]; 删了 = true; }
-    if (s2.已读) delete s2.已读[tid];
-    if (s2.线程历史) delete s2.线程历史[tid];
-    if (!删了) throw new Error('没有这个会话');
+    const s=await loadState(gameId);
+    const result=deletePhoneThread(s,threadId);
     await saveState(s);
-    return { ok: true };
+    return{ok:true,...result};
   });
 
   reg('phoneDelete', async ({ gameId, threadId, msgId }) => {
@@ -10729,8 +10912,8 @@ reg('feedDelComment', async ({ gameId, 平台, id, 索引 }) => {
     while (k >= 0 && arr[k].方向 !== 'out') k--;
     if (k < 0) throw new Error('前面没有你发的消息');
     const 那句 = arr[k].内容;
-    s.手机.线程[tid] = arr.slice(0, k + 1);
-    const r = await doPhoneSend(s, tid, 那句);
+    s.手机.线程[tid] = arr.slice(0, k);
+    const r = await doPhoneSend(s, tid, 那句, { historySnapshot: arr });
     await saveState(s);
     return { ok: true, messages: r.messages, facts: r.facts, 时间: r.时间 };
   });
@@ -10753,7 +10936,7 @@ reg('feedDelComment', async ({ gameId, 平台, id, 索引 }) => {
     if (!内容) throw new Error('这条是空的');
     // 截到它之前（不含它本身），后面的一起作废
     s.手机.线程[tid] = arr.slice(0, i);
-    const r = await doPhoneSend(s, tid, 内容);
+    const r = await doPhoneSend(s, tid, 内容, { historySnapshot: arr });
     await saveState(s);
     return { ok: true, messages: r.messages, facts: r.facts, 时间: r.时间 };
   });
@@ -10809,53 +10992,43 @@ reg('feedDelComment', async ({ gameId, 平台, id, 索引 }) => {
 // 否则重发之后他「评论过」这个动作在正文里凭空消失。改成按轮次存、按轮次取。
 const WB_PENDING = {};   // gameId -> [{ 微博作者, 微博正文, 回谁, 评论, 时, 轮次 }]
 /** 记一条待发评论。回谁 为空表示直接评那条微博，否则是评某条评论。 */
-reg('queueWeiboComment', async ({ gameId, 微博作者, 微博正文, 回谁, 回内容, 评论 }) => {
+reg('queueWeiboComment', async ({ gameId, postId, parentCommentId, actionId, 微博作者, 微博正文, 回谁, 回内容, 评论 }) => {
+  const text = String(评论 || '').trim();
+  if (!text) throw new Error('评论不能为空');
   const gid = String(gameId || '');
-  const txt = String(评论 || '').trim();
-  if (!txt) return { ok: false, why: '空的' };
-  // 绑到「下一轮」—— 重发同一轮时还要能取到，所以不能取出即清空。
-  let 轮次 = null;
-  // 一次 loadState 干两件事：取轮次、把这条评论顺手存进存档。
-  // 原来「我的评论」只活在前端内存里（wbMine），刷新一下就没了 ——
-  // 玩家回头看不到自己刚说过的话，只剩对方那条回复，很怪。
-  try {
-    const st0 = await loadState(gid);
-    轮次 = st0 && st0.story && st0.story.current_message_index != null ? Number(st0.story.current_message_index) : null;
-    if (!Array.isArray(st0.wbMine)) st0.wbMine = [];
-    st0.wbMine.push({
-      作者: String(微博作者 || ''),
-      正文: String(微博正文 || '').slice(0, 60),
-      回谁: String(回谁 || ''),
-      回内容: String(回内容 || ''),
-      评论: txt,
-      时: Date.now(),
-    });
-    if (st0.wbMine.length > 200) st0.wbMine = st0.wbMine.slice(-200);
-    await saveState(st0);
-  } catch (e) { 轮次 = null; }
-  if (!WB_PENDING[gid]) WB_PENDING[gid] = [];
-  WB_PENDING[gid].push({
-    微博作者: String(微博作者 || ''),
-    微博正文: String(微博正文 || '').slice(0, 120),
-    回谁: String(回谁 || ''),
-    回内容: String(回内容 || '').slice(0, 80),
-    评论: txt,
-    时: Date.now(),
-    轮次,
-  });
-  if (WB_PENDING[gid].length > 6) WB_PENDING[gid].shift();
-  await turnLog('[微博] 记下一条待发评论，共 ' + WB_PENDING[gid].length + ' 条');
-  return { ok: true, 待发: WB_PENDING[gid].length };
+  const state = await loadState(gameId);
+  const pending = mergeWeiboActions(state.weiboPending);
+  const id = String(actionId || randomUUID());
+  const existing = (state.wbMine || []).find((item) => item && item.id === id);
+  if (existing) return { ok: true, 待发: pending.length, item: existing };
+  const cache = normalizeWeiboCache(await readJson(weiboCachePath(gid)));
+  const request = { postId: String(postId || ''), 微博作者: String(微博作者 || ''), 微博正文: String(微博正文 || '') };
+  const post = matchWeiboPost(cache, request);
+  if (!post) throw new Error('这条微博已变化，请刷新后再评论');
+  const comments = Array.isArray(post.评论列表) ? post.评论列表 : [];
+  let parent = parentCommentId ? comments.find((item) => item && item.id === parentCommentId) : null;
+  if (!parent && 回谁) {
+    const matches = comments.filter((item) => item && String(item.谁 || '') === String(回谁) && (!回内容 || String(item.内容 || '') === String(回内容)));
+    if (matches.length === 1) parent = matches[0];
+    else throw new Error('目标评论已变化，请重新选择');
+  }
+  if (parentCommentId && !parent) throw new Error('目标评论已变化，请重新选择');
+  const round = Number((state.story || {}).current_message_index) || 0;
+  const action = { id, postId: post.id, parentCommentId: parent ? parent.id : '', 微博作者: String(post.作者 || ''), 微博正文: String(post.正文 || ''), 回谁: parent ? String(parent.谁 || '') : '', 回内容: parent ? String(parent.内容 || '') : '', 评论: text, 时: Date.now(), 轮次: round, postSnapshot: JSON.parse(JSON.stringify(post)) };
+  const item = { id, postId: post.id, parentCommentId: action.parentCommentId, 作者: action.微博作者, 正文: action.微博正文.slice(0, 60), 回谁: action.回谁, 回内容: action.回内容, 评论: text, 轮次: round };
+  state.wbMine = (state.wbMine || []).concat([item]);
+  state.weiboPending = mergeWeiboActions(pending, [action]);
+  stagedExtras.set(state, { weibo: cache });
+  await saveState(state);
+  WB_PENDING[gid] = state.weiboPending;
+  return { ok: true, 待发: state.weiboPending.length, revision: state._revision, item };
 });
 
 /** 取出并清空待发队列。正文提示词拼装时调它；拼完就等于用掉了。 */
-function 取待发评论(gid, seq) {
-  const g = String(gid || '');
-  const list = WB_PENDING[g] || [];
-  // 没传轮次（老调用）：全给，保持原来行为
-  if (seq == null) return list.slice();
-  // 按轮次取。轮次不明的（内存补录过）也给，宁多勿漏。
-  return list.filter((w) => w.轮次 == null || Number(w.轮次) === Number(seq));
+function 取待发评论(gid, seq, state) {
+  const list = mergeWeiboActions(state && state.weiboPending || WB_PENDING[String(gid || '')] || []);
+  if (seq == null) return list;
+  return list.filter((action) => action.轮次 == null || Number(action.轮次) <= Number(seq));
 }
 
 /**
@@ -10871,157 +11044,50 @@ function 取待发评论(gid, seq) {
  *
  * 匹配不到对应微博就丢弃并记日志，不乱塞。
  */
-async function 处理微博回复(s, gid, body, 待发, seq) {
-  const txt = String(body || '');
-  if (txt.indexOf(':::weibo_reply') < 0) return body;
-  const re = /:::weibo_reply\s*\n([\s\S]*?)\n:::/g;
-  const 抓到 = [];
-  let m;
-  while ((m = re.exec(txt))) {
-    const 行s = m[1].split(/\r?\n/).map((x) => x.trim()).filter(Boolean);
-    const o = {};
-    行s.forEach((ln) => {
-      const i2 = ln.indexOf('|');
-      if (i2 < 0) return;
-      o[ln.slice(0, i2).trim()] = ln.slice(i2 + 1).trim();
-    });
-    if (o.谁 && o.内容) 抓到.push(o);
+async function 处理微博回复(state, gid, body, pending, seq) {
+  const text = String(body || '');
+  const cards = [];
+  const pattern = /:::weibo_reply\s*\n([\s\S]*?)\n:::/g;
+  let match;
+  while ((match = pattern.exec(text))) {
+    const card = {};
+    for (const line of match[1].split(/\r?\n/)) {
+      const separator = line.indexOf('|');
+      if (separator >= 0) { const key = line.slice(0, separator).trim(); if (key && !['__proto__', 'constructor', 'prototype'].includes(key)) card[key] = line.slice(separator + 1).trim(); }
+    }
+    if (card.谁 && card.内容) cards.push(card);
   }
-  // 先把块从正文里剥掉 —— 不管写不写得回去，都不能让玩家看到这段
-  let out = txt.replace(re, '').replace(/\n{3,}/g, '\n\n').trim();
-  if (!抓到.length) {
-    // 模型一条回复卡都没写 —— 正文里没出现 :::weibo_reply。
-    // 这行日志就是为了区分「没注入」和「注入了但模型没照做」。
-    await turnLog('[微博] 模型没写任何 weibo_reply（本轮玩家评论 ' + (Array.isArray(待发) ? 待发.length : 0) + ' 条）');
-    return out;
+  const output = text.replace(pattern, '').replace(/:::weibo_reply[\s\S]*$/, '').replace(/\n{3,}/g, '\n\n').trim();
+  const actions = mergeWeiboActions(pending);
+  if (!cards.length && !actions.length) return output;
+  const staged = stagedExtras.get(state);
+  const cache = normalizeWeiboCache(staged && staged.weibo || await readJson(weiboCachePath(gid)));
+  if (!cache || !Array.isArray(cache.时间线)) return output;
+  // 一轮只清理一次，而不是每写一条就删除同作者的上一条。
+  for (const post of cache.时间线) if (post && Array.isArray(post.评论列表)) post.评论列表 = post.评论列表.filter((comment) => !(comment && comment.回复 && seq != null && Number(comment.轮次) === Number(seq)));
+  const counts = new Map();
+  let written = 0;
+  for (const card of cards) {
+    const action = findReplyAction(card, actions);
+    if (!action) { await turnLog('[微博] 回复缺少明确动作归属，未挂到其他评论'); continue; }
+    let post = matchWeiboPost(cache, action);
+    if (!post && action.postSnapshot) { post = JSON.parse(JSON.stringify(action.postSnapshot)); cache.时间线.unshift(post); }
+    if (!post) { await turnLog('[微博] 目标微博已不可用，未猜测位置'); continue; }
+    post.评论列表 = Array.isArray(post.评论列表) ? post.评论列表 : [];
+    if (action.parentCommentId && !post.评论列表.some((comment) => comment && comment.id === action.parentCommentId)) {
+      const original = action.postSnapshot && (action.postSnapshot.评论列表 || []).find((comment) => comment && comment.id === action.parentCommentId);
+      if (original) post.评论列表.push(JSON.parse(JSON.stringify(original)));
+    }
+    const key = action.id + '|' + card.谁;
+    const occurrence = counts.get(key) || 0;
+    counts.set(key, occurrence + 1);
+    const id = 'wr_' + createHash('sha256').update(String(seq) + '|' + key + '|' + occurrence).digest('hex').slice(0, 32);
+    post.评论列表.push({ id, postId: post.id, replyToActionId: action.id, replyToCommentId: action.parentCommentId || '', 谁: card.谁, 内容: card.内容, 回谁: '玩家', 回复: true, 轮次: seq == null ? undefined : Number(seq) });
+    written++;
   }
-
-  // 写回缓存：先按「玩家回的那条微博的正文」定位，定位不到再按作者名找最近的一条。
-  const p = weiboCachePath(gid);
-  let cache = null;
-  try { cache = await readJson(p); } catch (e) { cache = null; }
-  if (!cache || !Array.isArray(cache.时间线)) {
-    await turnLog('[微博] 收到 ' + 抓到.length + ' 条回复，但没有缓存可写');
-    return out;
-  }
-  const 归一 = (x) => String(x || '').replace(/[@＠]/g, '').replace(/[Vv]$/, '').replace(/\s+/g, '').trim();
-  let 成功 = 0;
-  // 定位到「玩家真正回的那条微博」，不能只按作者名猜：
-  // 同一个人发过好几条时，按作者名会挂错（而且时间线是新的在前，
-  // 原来从末尾往前扫，命中的是最老的那条，正好反了）。
-  // 定位到「玩家真正回的那条微博」。
-  // 注意：回复者未必是微博作者 —— 玩家可能回的是 A 的微博下、B 的那条评论。
-  // 所以作者确认要用「玩家回的那条微博的作者」，不能用回复者的名字。
-  const 待发带作者 = (Array.isArray(待发) ? 待发 : [])
-    .map((x) => ({ 正: 归一(x && x.微博正文), 作: 归一(x && x.微博作者) }))
-    .filter((x) => x.正);
-  抓到.forEach((o) => {
-    const 谁 = 归一(o.谁);
-    let 命中 = -1;
-    // ⓪ 卡片自己指认了「第几条」→ 零歧义，直接锁那一条待发。
-    const 号 = Number(o['第几条'] || o['序号'] || 0);
-    if (号 > 0 && Array.isArray(待发) && 待发[号 - 1]) {
-      const 想要 = 归一(待发[号 - 1].微博正文);
-      if (想要) {
-        for (let k = 0; k < cache.时间线.length; k++) {
-          const 正 = 归一(cache.时间线[k] && cache.时间线[k].正文);
-          if (!正) continue;
-          if (正.slice(0, 20) === 想要.slice(0, 20) || (想要.length >= 8 && 正.indexOf(想要.slice(0, 16)) >= 0)) { 命中 = k; break; }
-        }
-      }
-      // 缓存被刷新过、正文对不上 → 用这条待发记的微博作者兜底
-      if (命中 < 0) {
-        const 作 = 归一(待发[号 - 1].微博作者);
-        if (作) {
-          for (let k = 0; k < cache.时间线.length; k++) {
-            const 作者正 = 归一(cache.时间线[k] && cache.时间线[k].作者);
-            if (!作者正) continue;
-            if (作者正.indexOf(作) >= 0 || 作.indexOf(作者正) >= 0) { 命中 = k; break; }
-          }
-        }
-      }
-    }
-    
-    // ⓪ 先看「回复者」是不是某条待发微博的作者 —— 是就锁那一条。
-    // 玩家可能连着评论了两条不同微博，而卡片里只有一个「谁」（回复者），
-    // 光看正文会把两条都吸到第一条上（模型写「官微回复你」，结果挂到罗伊微博下）。
-    for (let j = 0; j < 待发带作者.length && 命中 < 0; j++) {
-      const 想要 = 待发带作者[j];
-      if (!想要.作 || !谁) continue;
-      if (想要.作.indexOf(谁) < 0 && 谁.indexOf(想要.作) < 0) continue;
-      for (let k = 0; k < cache.时间线.length; k++) {
-        const 正 = 归一(cache.时间线[k] && cache.时间线[k].正文);
-        if (!正 || !想要.正) continue;
-        if (正.slice(0, 20) === 想要.正.slice(0, 20) || (想要.正.length >= 8 && 正.indexOf(想要.正.slice(0, 16)) >= 0)) { 命中 = k; break; }
-      }
-    }
-    
-    // ① 回复者是粉丝/路人（不是任何一条待发微博的作者）→ 按正文全量匹配
-    for (let k = 0; k < cache.时间线.length && 命中 < 0; k++) {
-      const w = cache.时间线[k];
-      const 正 = 归一(w && w.正文);
-      if (!正) continue;
-      const 作者正 = 归一(w && w.作者);
-      for (let j = 0; j < 待发带作者.length; j++) {
-        const 想要 = 待发带作者[j];
-        // 太短的不比 —— 「收工了」这种跟谁都能撞上
-        if (!想要.正 || 想要.正.length < 4) continue;
-        const 头对上 = 正.slice(0, 20) === 想要.正.slice(0, 20);
-        const 含对上 = 想要.正.length >= 8 && 正.indexOf(想要.正.slice(0, 16)) >= 0;
-        if (!头对上 && !含对上) continue;
-        // 作者这一层要用「待发里记的微博作者」—— 它是那条微博的发帖人，
-        // 而 o.谁 是「回复玩家的人」，两者常常不是同一个（A 的微博下 B 的评论）。
-        if (!想要.作 || !作者正 || 作者正.indexOf(想要.作) >= 0 || 想要.作.indexOf(作者正) >= 0) { 命中 = k; break; }
-      }
-    }
-  
-    // ② 退一步：该作者「最近」的一条 —— 索引 0 是最新的，从 0 往后扫
-    if (命中 < 0) {
-      for (let k = 0; k < cache.时间线.length; k++) {
-        const w = cache.时间线[k];
-        const 作者 = 归一(w && w.作者);
-        if (!作者 || !谁) continue;
-        if (作者.indexOf(谁) < 0 && 谁.indexOf(作者) < 0) continue;
-        命中 = k;
-        break;
-      }
-    }
-    if (命中 < 0) return;
-    const 条 = cache.时间线[命中];
-    if (!Array.isArray(条.评论列表)) 条.评论列表 = [];
-    // 重发同一轮时这段会再跑一次，所以要删掉本轮的旧回复。
-    // 只删「同一个人的那一条」—— 按轮次整批删会把同一轮里**其他人**刚写进来的也清掉
-    //（三个回复落在同一条微博下时，最后一条会把前两条吃掉）。
-    if (seq != null) 条.评论列表 = 条.评论列表.filter((c) => !(c && c.回复 && Number(c.轮次) === Number(seq) && String(c.谁 || '') === String(o.谁 || '')));
-    条.评论列表.push({ 谁: o.谁, 内容: o.内容, 回谁: o.回谁 || '', 回复: true, 轮次: seq == null ? undefined : Number(seq) });
-    成功++;
-  });
-  // 老数据里可能已经叠了重复回复（重发时旧版会写两遍），顺手去个重：
-  // 同一微博下、谁和内容完全相同的，只留最早那条。
-  let 去过重 = false;
-  cache.时间线.forEach((w) => {
-    if (!w || !Array.isArray(w.评论列表)) return;
-    const 见过 = new Set();
-    const 前 = w.评论列表.length;
-    w.评论列表 = w.评论列表.filter((c) => {
-      if (!c) return false;
-      const k = String(c.谁 || '') + '\u0001' + String(c.内容 || '');
-      if (见过.has(k)) return false;
-      见过.add(k);
-      return true;
-    });
-    if (w.评论列表.length !== 前) 去过重 = true;
-  });
-  
-  if (成功 || 去过重) {
-    try { await writeJson(p, cache); } catch (e) {
-      await turnLog('[微博] 回复写回缓存失败：' + String((e && e.message) || e));
-    }
-    await turnLog('[微博] 写回 ' + 成功 + '/' + 抓到.length + ' 条回复（本轮玩家评论 ' + (Array.isArray(待发) ? 待发.length : 0) + ' 条）');
-  } else {
-    await turnLog('[微博] ' + 抓到.length + ' 条回复都没匹配到对应微博，丢弃');
-  }
-  return out;
+  stagedExtras.set(state, Object.assign({}, staged, { weibo: cache }));
+  await turnLog('[微博] 已关联 ' + written + '/' + cards.length + ' 条回复');
+  return output;
 }
 
 
@@ -11653,10 +11719,8 @@ reg('rebuildSummaries', async ({ gameId }) => {
   const 跳过 = 全助.length - 助.length;
   if (!全助.length) throw new Error('这局还没有正文');
   if (!助.length) return { 总轮数: 全助.length, 已重写: 0, 失败批: 0, 说明: '全部已是三段式，无需重跑' };
-  try {
-    fs.writeText(fs.resolve('simulator-' + String(gameId) + '.json.bak'), JSON.stringify(s, null, 2));
-    await turnLog('[重建] 已备份');
-  } catch (e) { await turnLog('[重建] 备份失败：' + String((e && e.message) || e)); }
+  await backupBeforeReplace(gameId, s, 'summary');
+  await turnLog('[重建] 已备份');
   const 系统 = [
     '你是剧情记录员。为下面每一轮写一条小结。',
     '',
@@ -11868,6 +11932,7 @@ reg('rebuildSummaries', async ({ gameId }) => {
     const hit = (s.transcript || []).find((t) => Number(t.seq) === Number(seq) && t.role === role);
     if (!hit) throw new Error('找不到这一段（可能已被删除或重算）');
     hit.body = String(body == null ? '' : body);
+    hit.textVersion = randomUUID();
     if (role === 'user') {
       // 编辑玩家那一轮时，微博说明跟着 body 一起被清掉就丢了 ——
       // 它不在界面上显示，但模型需要它。把「【你这一轮之前…】」之后的部分接回去。
@@ -11885,6 +11950,8 @@ reg('rebuildSummaries', async ({ gameId }) => {
    * role='user' 就是「重发」，role='assistant' 就是「重新生成」——两者行为相同。
    */
   reg('regenFrom', async ({ gameId, seq, rewrite }) => {
+    const rn = beginRun(gameId);
+    try {
     const s = await loadState(gameId);
     const n = Number(seq);
     const userEntry = (s.transcript || []).find((t) => Number(t.seq) === n && t.role === 'user');
@@ -11899,21 +11966,24 @@ reg('rebuildSummaries', async ({ gameId }) => {
     }
     // 显示用和发送用要分开：userEntry.body 是玩家自己打的字（干净的），
     // sent 里可能还带着微博行为说明 —— 那段只该进提示词，不该显示在对话里。
+    const weiboActions = userEntry && Array.isArray(userEntry.weiboActions) ? userEntry.weiboActions : [];
+    const simulationActions = userEntry && Array.isArray(userEntry.simulationActions) ? userEntry.simulationActions : [];
     const 显示text = userEntry ? String(userEntry.body || '').trim() : '';
     await truncateFrom(s, n);
     if (!input) {
       // 第 0 轮（开场）没有玩家输入：和「生成开场」走同一条路
-      await runTurn(s, buildOpeningMessage(s), '【开局】', { all: true, gameId });
+      await runTurn(s, buildOpeningMessage(s), '【开局】', { all: true, gameId, weiboActions, shouldStop: () => rn.stop });
     } else if (rewrite) {
       // 点叙事那条的「重新生成」：提问照旧，只把这一轮叙事重写一遍
       // （行动与结果不变，只换写法）。
-      await runTurn(s, input, 显示text || input, { gameId, rewrite: true });
+      await runTurn(s, input, 显示text || input, { gameId, rewrite: true, weiboActions, simulationActions, shouldStop: () => rn.stop });
     } else {
       // 点自己那条的「重发」：整轮重来，走向可能因此改变。
-      await runTurn(s, input, 显示text || input, { gameId });
+      await runTurn(s, input, 显示text || input, { gameId, weiboActions, simulationActions, shouldStop: () => rn.stop });
     }
     await saveState(s);
     return withKeyStatus(s);
+    } finally { endRun(gameId); }
   });
 
   /** 把老存档里缺 _had / _prev 的 diffs 补上，并报出补不准的条数 */
@@ -12039,13 +12109,13 @@ reg('rebuildSummaries', async ({ gameId }) => {
     const latest = s.transcript.slice().reverse().find((t) => t.role === 'assistant');
     if (!latest) throw new Error('没有可重算的对话');
     const cfg = (s.config && s.config.settle) || {};
-    if (!cfg.model) throw new Error('请先在设定页配置结算模型');
+    if (!cfg.model && !s.simulation?.enabled) throw new Error('请先在设定页配置结算模型');
     // 上报进度：界面那排步骤指示靠它亮起来。不报的话点了按钮界面毫无反应，
     // 看着像没点上（踩过）。
     resetProg(gameId);
     setProg(gameId, 'settle', '重算变量中 · 变量变化 + 小总结');
     const msgs = [
-      { role: 'system', content: await settleSystemPrompt(s, gameId, latest.body) },
+      { role: 'system', content: await settleSystemPrompt(s, gameId, latest.body) + (s.simulation?.enabled ? '\n' + promptText('simulation',SIMULATION_RULES) + genericHost.context(s) + '\n本次仅重核叙事资料，已确认经营、资金、经验和奖励记录保持不变；不得重报数值事件。' : '') },
       { role: 'user', content: '本轮正文：\n' + latest.body + '\n\n' +
         '【这是重新结算】上一轮的变量结算没成功，所以「当前状态变量」还停在**这一轮之前**的样子 —— ' +
         '那里面写的 舆论／粉丝动态／当前状态／当前想法／穿着 都是旧值。' +
@@ -12073,25 +12143,41 @@ reg('rebuildSummaries', async ({ gameId }) => {
         (head ? '它回的是：\n' + head : '（正文是空的）')
       );
     }
+    if (s.simulation?.enabled) {
+      const diagnostics = [];
+      const compatibility=normalizeSettlementUpdate(s,sj,diagnostics);
+      const safe = JSON.parse(JSON.stringify(compatibility.update));
+      if(safe.protagonist)delete safe.protagonist.金钱;
+      for(const key of ['other','diffs','updates'])if(Array.isArray(safe[key]))safe[key]=safe[key].filter(d=>!(Array.isArray(d?.path)&&d.path[0]==='protagonist'&&(d.path.length===1||d.path[1]==='金钱')));
+      if (safe.simulationUpdates) for (const key of ['managementOperations','systemEvents','skillEvents']) delete safe.simulationUpdates[key];
+
+      const repaired = settleToDiffs(s, safe, diagnostics, compatibility.submittedFor);
+      applyDiffs(s, repaired);
+      tickSockScent(s, latest.body).forEach(d => repaired.push(d));
+      latest.diffs = (latest.diffs || []).concat(repaired);
+      latest.summary = String(safe.summary || latest.summary || '');
+      latest.options = pickOptions(safe.options, latest.options);
+      refreshRecalculatedIssues(s,latest,{diagnostics});
+      await turnLog('[重算结算] gameId='+gameId+' seq='+latest.seq+' mode=资料重核 accepted='+repaired.length+' rejected='+diagnostics.length);
+      for (const issue of diagnostics) await turnLog('[通用资料重核] ' + String(issue.why || ''));
+      setProg(gameId, 'save', '写回存档');
+      await saveState(s);
+      return withKeyStatus(s);
+    }
     // 先把这个旧轮已经应用过的变量改动退回去，再按新结果重新算 —— 否则是叠加两次
     rollbackDiffs(s, latest.diffs || []);
-    const diffs = settleToDiffs(s, sj);
+    const beforeRecalculation=JSON.parse(JSON.stringify(s)),diagnostics=[];
+    const diffs = settleToDiffs(s, sj, diagnostics);
     latest.diffs = diffs;
     latest.summary = String(sj.summary || '');
     latest.options = pickOptions(sj.options, latest.options);
-    // 重算成功 = 这一轮的变量已经补上了。顺手清掉「结算没成」那条提示 ——
-    // 否则玩家点了重算、数字明明变了，正文下面还挂着红字说没更新。
-    // 只清结算这一类，别的步骤（检索失败之类）原样留着。
-    if (Array.isArray(latest.issues) && latest.issues.length) {
-      const rest = latest.issues.filter((x) => x && x.step !== 'settle');
-      if (rest.length) latest.issues = rest;
-      else delete latest.issues;
-    }
     applyDiffs(s, diffs);
     // 重算只跑了 applyDiffs —— 补「气味强度 / 穿着小时 / 材质」那段在 tickSockScent 里，
     // 不跑它的话模型新写的袜子会一直缺字段：胶囊上的浓度环退化成点阵，气味还是模型写的那句。
     // 这时 dh 通常是 0（时间没动），所以它只补值、不累加。
     tickSockScent(s, latest.body).forEach((d) => diffs.push(d));
+    refreshRecalculatedIssues(s,latest,{before:beforeRecalculation,diagnostics});
+    await turnLog('[重算结算] gameId='+gameId+' seq='+latest.seq+' mode=变量重算 accepted='+diffs.length+' rejected='+diagnostics.length);
     setProg(gameId, 'save', '写回存档');
     await saveState(s);
     return withKeyStatus(s);
@@ -12742,6 +12828,8 @@ async function listSnaps(gameId) {
  */
 reg('migrateSockScent', async ({ gameId }) => {
   const s = await loadState(gameId);
+  const byAI = !!(s.config && s.config.scentByAI);
+  const beforeMigration = JSON.parse(JSON.stringify(s));
   const npcs = Array.isArray(s.npcs) ? s.npcs : [];
   const todo = [];
   npcs.forEach((n, i) => {
@@ -12840,7 +12928,7 @@ reg('migrateSockScent', async ({ gameId }) => {
   }
 
   try {
-    await writeJson(statePath(gameId) + '.before-migrate', s);
+    await writeJson(statePath(gameId) + '.before-migrate', beforeMigration);
   } catch (e) {
     /* 备份失败不挡迁移 */
   }
@@ -12861,7 +12949,7 @@ reg('snapSave', async ({ gameId, name }) => {
     throw new Error('快照最多 ' + SNAP_MAX + ' 份，先删掉一些');
   }
   const seq = Number((s.story && s.story.current_message_index) || 0);
-  const id = 's' + Date.now().toString(36);
+  const id = 's' + Date.now().toString(36) + '-' + randomUUID().slice(0, 8);
   const label = String(name || '').trim();
   const kept = Object.assign({}, s);
   delete kept.keyStatus;
@@ -12872,25 +12960,25 @@ reg('snapSave', async ({ gameId, name }) => {
     seq: seq,
     at: Date.now(),
     rounds: (Array.isArray(s.transcript) ? s.transcript : []).length,
-    state: kept,
+    state: persistentStateOf(kept),
+    _v: 2,
+    extras: await readBundleExtras(gameId),
   });
   return { ok: true, id: id };
 });
 
 /** 恢复：先把当前存档另存一份，再整份覆盖 */
 reg('snapRestore', async ({ gameId, id }) => {
-  const snap = await readJson(snapFile(gameId, id));
-  if (!snap || !snap.state) throw new Error('这份快照读不出来');
-  const cur = await loadState(gameId);
-  try {
-    await writeJson(statePath(gameId) + '.before-restore', cur);
-  } catch (e) {
-    /* 备份失败不阻塞恢复 */
-  }
-  const next = snap.state;
-  next.gameId = gameId;
+  const snapshot = await readJson(snapFile(gameId, id));
+  if (!snapshot || !snapshot.state) throw new Error('这份快照读不出来');
+  validateImportState(snapshot.state);
+  const current = await loadState(gameId);
+  await backupBeforeReplace(gameId, current, 'restore');
+  const next = Object.assign(defaultState(), persistentStateOf(snapshot.state), { gameId: String(gameId) });
+  if (current.recoveryInfo) next.recoveryInfo = current.recoveryInfo;
+  if (snapshot.extras && typeof snapshot.extras === 'object') stagedExtras.set(next, snapshot.extras);
   await saveState(next);
-  return withKeyStatus(next);
+  return withKeyStatus(await loadState(gameId));
 });
 
 reg('snapRemove', async ({ gameId, id }) => {
@@ -12987,10 +13075,11 @@ reg('exportSession', async ({ gameId }) => {
     filename: name,
     json: JSON.stringify({
       _type: 'anotherlife-session',
-      _v: 1,
+      _v: 2,
       gameId: String(gameId || ''),
       exportedAt: d.toISOString(),
-      state: s,
+      state: persistentStateOf(s),
+      extras: await readBundleExtras(gameId),
     }),
   };
 });
@@ -13005,6 +13094,14 @@ reg('exportSession', async ({ gameId }) => {
 const IMPORT_BUF = new Map();
 
 /** 把一段「导出格式」的 JSON 落到当前这一局。两处（整段/分片）共用 */
+function validateImportState(state) {
+  assertSafeValue(state);
+  if(state?.simulation)normalizeSimulation(state.simulation);
+  if (!state || typeof state !== 'object' || Array.isArray(state) || !Array.isArray(state.transcript)) throw new Error('这不是模拟器存档');
+  for (const name of ['npcs', 'relationships', 'summaries']) if (state[name] != null && !Array.isArray(state[name])) throw new Error('存档字段格式错误：' + name);
+  for (const name of ['world', 'protagonist', 'config', 'story']) if (state[name] != null && (typeof state[name] !== 'object' || Array.isArray(state[name]))) throw new Error('存档字段格式错误：' + name);
+  for (const turn of state.transcript) if (!turn || typeof turn !== 'object' || !['user', 'assistant'].includes(turn.role) || !Number.isFinite(Number(turn.seq)) || Number(turn.seq) < 0 || (turn.body != null && typeof turn.body !== 'string')) throw new Error('正文记录格式错误');
+}
 async function applyImport(gameId, raw) {
   const text = String(raw || '').trim();
   if (!text) throw new Error('文件是空的');
@@ -13014,12 +13111,17 @@ async function applyImport(gameId, raw) {
   } catch (e) {
     throw new Error('不是合法的 JSON 文件');
   }
+  assertSafeValue(pack);
   const st = pack && pack.state && typeof pack.state === 'object' ? pack.state : pack;
   if (!st || typeof st !== 'object' || !Array.isArray(st.transcript)) {
     throw new Error('这不是模拟器的存档（找不到 transcript）');
   }
   const cur = await loadState(gameId);
-  const next = Object.assign({}, cur, st);
+  validateImportState(st);
+  await backupBeforeReplace(gameId, cur, 'import');
+  const next = Object.assign(defaultState(), persistentStateOf(st));
+  if (cur.recoveryInfo) next.recoveryInfo = cur.recoveryInfo;
+  if (pack && pack.extras && typeof pack.extras === 'object') stagedExtras.set(next, pack.extras);
   // gameId 必须用**当前这一局**的：存档里带的是导出那台机器上的 id，
   // 而 saveState 按 s.gameId 决定写哪个文件 —— 不覆盖就等于写到别处去了。
   next.gameId = String(gameId);
@@ -13038,7 +13140,7 @@ async function applyImport(gameId, raw) {
       if (!有笔记 && !有选项) return;
       const sp = splitStory(body);
       if (!String(t.think || '').trim() && sp.think) t.think = sp.think;
-      if (sp.body && sp.body !== body) t.body = sp.body;
+      if (sp.body !== body) { t.body = sp.body; t.textVersion = randomUUID(); }
       if ((!Array.isArray(t.options) || !t.options.length) && Array.isArray(sp.options) && sp.options.length) t.options = sp.options;
       洗了++;
     });
@@ -13059,17 +13161,24 @@ reg('importSession', async ({ gameId, json }) => {
 
 /** 分片导入第 1 步：清空缓冲 */
 reg('importBegin', async ({ gameId }) => {
-  IMPORT_BUF.delete(String(gameId));
-  IMPORT_BUF.set(String(gameId), { parts: [], at: Date.now() });
+  const now = Date.now();
+  for (const [id, entry] of IMPORT_BUF) if (now - entry.at > 600000) IMPORT_BUF.delete(id);
+  IMPORT_BUF.set(String(gameId), { parts: [], at: now });
   return { ok: true };
 });
 
 /** 分片导入第 2 步：追加一段（前端按 ~50 KB 一段切） */
-reg('importChunk', async ({ gameId, data }) => {
-  const b = IMPORT_BUF.get(String(gameId));
-  if (!b) throw new Error('没有进行中的导入，请重新选文件');
-  b.parts.push(String(data == null ? '' : data));
-  return { ok: true, got: b.parts.length };
+reg('importChunk', async ({ gameId, data, index }) => {
+  const entry = IMPORT_BUF.get(String(gameId));
+  if (!entry || Date.now() - entry.at > 600000) throw new Error('导入已过期，请重新选文件');
+  const part = String(data == null ? '' : data);
+  if (index != null && Number(index) < entry.parts.length) {
+    if (entry.parts[Number(index)] !== part) throw new Error('导入分片冲突，请重新选文件');
+    return { ok: true, got: entry.parts.length };
+  }
+  if (index != null && Number(index) !== entry.parts.length) throw new Error('导入分片顺序错误');
+  entry.parts.push(part); entry.at = Date.now();
+  return { ok: true, got: entry.parts.length };
 });
 
 /** 分片导入第 3 步：拼起来落盘 */
@@ -13147,7 +13256,9 @@ reg('importCommit', async ({ gameId }) => {
     // 默认开着，因为翻正文的能力是这个浮窗存在的理由；关掉是给「只想聊两句」的时候用。
     let out;
     const rn = beginRun(gameId);
+    try {
     const agentOn = !(s.config && s.config.oracleAgent === false);
+    let plainMsgs = msgs;
     try {
       if (agentOn) {
         out = await runOracleAgent(s, msgs, { gameId, tag: '神谕', shouldStop: () => rn.stop });
@@ -13155,7 +13266,7 @@ reg('importCommit', async ({ gameId }) => {
         // 对话式：不带工具，一次问答就完
         // 不这么说的话，模型照样会吐工具标记（它记得自己有工具）。
         // 那些标记会被剥掉 → 正文空 → 退回思考过程，读起来像「没说完」。
-        const plainMsgs = msgs.concat([{ role: 'user', content: '【这一轮没有工具可用】直接用你已经掌握的信息回答，不要写任何工具调用或搜索标记。' + recentBodies(s, 2) }]);
+        plainMsgs = msgs.concat([{ role: 'user', content: '【这一轮没有工具可用】直接用你已经掌握的信息回答，不要写任何工具调用或搜索标记。' + recentBodies(s, 2) }]);
         const plain = await callSlot(s, 'assistant', plainMsgs, {
           maxTokens: tokOf(s, 'oracle'),
           tag: '神谕·对话',
@@ -13211,6 +13322,7 @@ reg('importCommit', async ({ gameId }) => {
       trace: Array.isArray(out.trace) ? out.trace : [],
       threadId: th.id,
     };
+    } finally { endRun(gameId); }
   });
 
   /**
@@ -13333,4 +13445,5 @@ reg('importCommit', async ({ gameId }) => {
     await saveState(s);
     return withKeyStatus(s);
   });
+  turnLog('[验证记录 v1.1.0] 发布改码仅做隔离回归，未调用付费模型；真实界面与模型需重启后复验。').catch(() => {});
 }
