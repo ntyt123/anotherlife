@@ -21,7 +21,9 @@ export function isPhoneContact(state, n, platform) {
 }
 export function phoneContactRecord(state, n, platform) {
   const p = phonePlatform(platform);
-  return { 姓名: String(n?.姓名 || n?.名字 || '').trim(), ...contactAddress(n), ...(/^000\d{8}$/.test(contactAddress(n).电话)?{电话类型:'游戏虚拟'}:{}), 平台: p, 可发送: isPhoneContact(state, n, p) };
+  const address = contactAddress(n);
+  const virtual = (n?.联系方式 && n.联系方式.电话来源 === '游戏') || /^000\d{8}$/.test(address.电话);
+  return { 姓名: String(n?.姓名 || n?.名字 || '').trim(), ...address, ...(virtual?{电话类型:'游戏虚拟'}:{}), 平台: p, 可发送: isPhoneContact(state, n, p) };
 }
 // 游戏内不可拨打的号码，不查找或冒充真人私人电话。已有号码永不覆盖。
 export function seedGamePhoneNumbers(state) {
@@ -37,8 +39,17 @@ export function seedGamePhoneNumbers(state) {
     const note=[n.备注,n.特点,n.当前状态,relation,...[state.parseInput?.character,state.extraInfo].filter(Boolean).flatMap(t=>String(t).split(/[，,。；;\n]/).filter(x=>x.includes(name)))].filter(Boolean).join('；');
     if(/没有手机|不用手机|不使用手机|无手机|拒绝提供电话|未交换号码|未交换电话|不知道电话|没有联系方式|尚未认识|陌生人/.test(note))continue;
     if(!isPhoneContact(state,n,'wechat')&&!isPhoneContact(state,n,'qq')&&!familiar.test(relation))continue;
-    let number;do{number='000'+String(serial++).padStart(8,'0');}while(used.has(number));used.add(number);
-    n.联系方式={...(n.联系方式||{}),...address,电话:number};changes.push({name,number});
+    // 11 位、1 开头、第二位 3~9，看起来就是普通手机号；仍是游戏内占位号，不指向真实号码。
+    const heads=['138','139','136','137','150','151','152','157','158','159','182','183','184','185','186','187','188','133','149','153','155','156','173','175','176','177','178','180','181','189','199'];
+    let number;
+    do {
+      const head=heads[(serial-1)%heads.length];
+      const tail=String(10000000+((serial*7919)%90000000)).padStart(8,'0');
+      serial++;
+      number=head+tail;
+    } while(used.has(number)||number==='13800138000');
+    used.add(number);
+    n.联系方式={...(n.联系方式||{}),...address,电话:number,电话来源:'游戏'};changes.push({name,number});
   }
   return changes;
 }
