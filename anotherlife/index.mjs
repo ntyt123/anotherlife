@@ -9741,6 +9741,31 @@ reg('saveOracleAgent', async ({ gameId, on }) => {
      * 把「人物关系」字段一并交给它，并明确要求沿用里面的名字。
      */
     let userContent = text || '';
+    /**
+     * 主角与名册解析都发生在世界解析之后，必须把已经定下来的世界一并交给它。
+     * 否则模型会按自己的常识另立朝代、年号（实测：唐代世界解析出「大靖朝」）。
+     */
+    const worldBrief = (w) => {
+      if (!w || typeof w !== 'object') return '';
+      return [
+        '世界观类型', '时代与年份', '当前日期时间', '起始地点', '权力结构', '货币与经济',
+        '阶层与身份', '法律与秩序', '文明与技术水平', '超自然与力量体系', '种族与物种',
+        '势力与组织', '危险与生存压力', '信息与传播', '风俗禁忌与礼节', '叙事基调',
+      ].map((k) => { const v = String(w[k] == null ? '' : w[k]).trim(); return v ? k + '：' + v : ''; }).filter(Boolean).join('\n');
+    };
+    const worldBlock = (w) => { const t = worldBrief(w); return t ? '【已选定的世界——本次解析必须与它一致：身份、朝代、年号、纪年、地点、称谓都落在其中，不得另立朝代或年号】\n' + t : ''; };
+    const stateWorld = (st) => (st && st.world && typeof st.world === 'object' ? st.world : null);
+    if (which === 'character') {
+      let w0 = null;
+      try {
+        w0 = gameId ? await loadState(gameId) : null;
+      } catch (e) {
+        w0 = null;
+      }
+      const chosenWorld = stateWorld(creationContext) || stateWorld(w0);
+      const wb = worldBlock(chosenWorld);
+      if (wb) userContent = wb + '\n\n' + userContent;
+    }
     if(which==='world'&&characterText)userContent+='\n【创角意向，仅用于判断玩法，不生成角色初值】\n'+String(characterText);
     if (which === 'cast') {
       let s0 = null;
@@ -9752,6 +9777,9 @@ reg('saveOracleAgent', async ({ gameId, on }) => {
       if (creationContext) s0 = {...(s0 || {}), ...creationContext};
       const p0 = (s0 && s0.protagonist) || {};
       const bits = [];
+      const castWorld = stateWorld(creationContext) || stateWorld(s0);
+      const castBlock = worldBlock(castWorld);
+      if (castBlock) bits.push(castBlock);
       const who = [p0.姓名, p0.性别, p0.生日, p0.身份].filter((x) => String(x == null ? '' : x).trim());
       if (who.length) bits.push('【主角】' + who.map((x) => String(x)).join(' · '));
       if (String(p0.人物关系 || '').trim()) {

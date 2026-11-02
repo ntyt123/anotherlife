@@ -11,16 +11,16 @@ function ymd(value) {
   const parts = match.slice(1).map(Number), date = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2]));
   return date.getUTCFullYear() === parts[0] && date.getUTCMonth() + 1 === parts[1] && date.getUTCDate() === parts[2] ? parts : null;
 }
-// 成人机制不用于未成年人；年龄不明时也不靠外貌、身份猜测。
+// 气味机制自 10 岁起适用（阈值 10）；年龄不明时也不靠外貌、身份猜测。
 export function isAdultScentActor(actor, gameTime) {
   const sex = String(actor?.性别 || '');
   if (!sex.includes('女') || sex.includes('男')) return false;
   const value = actor?.年龄, explicit = value !== '' && value != null && Number.isFinite(Number(value)) ? Number(value) : null;
-  if (explicit !== null && explicit < 18) return false;
+  if (explicit !== null && explicit < 10) return false;
   const birth = ymd(actor?.生日), now = ymd(gameTime);
   if (birth && now) {
     const years = now[0] - birth[0] - (now[1] < birth[1] || now[1] === birth[1] && now[2] < birth[2] ? 1 : 0);
-    return years >= 18;
+    return years >= 10;
   }
-  return explicit !== null && explicit >= 18;
+  return explicit !== null && explicit >= 10;
 }

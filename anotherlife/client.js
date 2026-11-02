@@ -9281,11 +9281,6 @@ onDoubleClick: () => {
           }
           function creationNotices(info) { return creationProcessNotices(info); }
           function creationStatus(info) { const notes=creationNotices(info);return notes.length?'开局资料提醒：'+notes.join('；'):info?.ready?'开局资料已准备':'开局资料尚未核对'; }
-          function openingReminder() {
-            const notes=[...readCreationChecklist(state).filter(x=>x.status==='missing').map(x=>x.label+'待补充'),...creationNotices(state.simulation?.creation)];
-            if(phase!=='play'||Number(state.story?.current_message_index||0)>1||!notes.length)return null;
-            return h('details',{className:'sim-hint','aria-label':'开局资料提醒',role:'status'},h('summary',null,'开局资料提醒（'+notes.length+'）'),h('div',null,notes.join('；')));
-          }
           function creationChecklistView() {
             if(!hasCreationChecklist(draft))return null;
             const checks=readCreationChecklist(draft),pending=checks.filter(x=>x.status==='missing').length,done=checks.filter(x=>x.status==='done').length;
@@ -14306,7 +14301,6 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
               ? h(
                   'div',
                   { className: 'sim-input-wrap' },
-                  openingReminder(),
                   busy || stage ? stageBar() : null,
                   optsPanel,
                   genericPending.length ? h(GenericPending, { key: String(gameId) + ':pending', actions: genericPending, busy, onChange: actions => setGenericPendingGroup({gameId,actions}) }) : null,
