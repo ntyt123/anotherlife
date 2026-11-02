@@ -4997,13 +4997,35 @@ const STORY_SUBMIT_TOOL = {
 };
 
 /** 正文是否走工具调用。默认关 —— 这是给「正文被上游拦」时试的备用通道。 */
-function fillPersona(text, s) {
+/**
+ * 玩家在这一轮输入里点名要的字数（「20000字」「两万字」「写到 12000 字」）。
+ * 认不到返回 0，就按设置里的下限走；范围限制在 200~50000，避免误写一个大数把一轮烧爆。
+ */
+function wordTargetOf(text) {
+  const t = String(text == null ? '' : text);
+  const wan = t.match(/(\d{1,2}(?:\.\d+)?)\s*万\s*字/);
+  const afterWord = t.match(/(?:字数|篇幅)[^0-9]{0,8}(\d{3,6})/);
+  const digits = t.match(/(\d{3,6})\s*字/);
+  let n = 0;
+  if (wan) n = Math.round(Number(wan[1]) * 10000);
+  else if (afterWord) n = Number(afterWord[1]);
+  else if (digits) n = Number(digits[1]);
+  else {
+    const cn = t.match(/([一二两三四五六七八九十]{1,3})\s*万\s*字/);
+    const map = { 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10 };
+    if (cn && map[cn[1]]) n = map[cn[1]] * 10000;
+  }
+  if (!Number.isFinite(n) || n < 200) return 0;
+  return Math.min(Math.floor(n), 50000);
+}
+
+function fillPersona(text, s, wordTarget) {
   const person = String((s && s.config && s.config.person) || '3');
   const name = String((s && s.protagonist && s.protagonist.姓名) || '').trim();
   const 性别 = String((s && s.protagonist && s.protagonist.性别) || '');
   const 人称 = person === '1' ? '第一人称' : person === '2' ? '第二人称' : '第三人称';
   const 人物 = person === '1' ? '我' : person === '2' ? '你' : (name || (/女/.test(性别) ? '她' : '他'));
-  const 字数 = Math.max(200, Math.floor(Number(s && s.config && s.config.bodyMinWords) || 1000));
+  const 字数 = wordTarget || Math.max(200, Math.floor(Number(s && s.config && s.config.bodyMinWords) || 1000));
   return String(text == null ? '' : text).replaceAll('{{人称}}', 人称).replaceAll('{{视角人物}}', 人物).replaceAll('{{字数}}', String(字数));
 }
 
@@ -6382,6 +6404,7 @@ let aiPickFail = '';
 
   async function storySystemPrompt(s, input, opts) {
     opts = opts || {};
+    const wordTarget = wordTargetOf(input);
     const phoneBridge=opts.phoneBridge||buildPhoneStoryBridge(s);
     const ctxText = await buildStoryContext(s, input, { all: !!opts.all });
     // 记录「这一轮到底注入了什么」，供界面回显
@@ -6595,18 +6618,26 @@ let aiPickFail = '';
     head.push(
       '【正文长度】' +
         (function () {
-          const lo = Math.max(200, Math.floor(Number(s.config && s.config.bodyMinWords) || 1000));
+          const lo = wordTarget || Math.max(200, Math.floor(Number(s.config && s.config.bodyMinWords) || 1000));
           const hi = Math.max(0, Math.floor(Number(s.config && s.config.bodyMaxWords) || 0));
           const para = (n) => Math.max(2, Math.round(n / 160)) + '~' + Math.max(3, Math.round(n / 100)) + ' 个自然段';
           const loTxt = '每轮正文**不少于 ' + lo + ' 字**（中文字符，' + para(lo) + '）';
           const hiTxt = hi > lo ? '，**最多 ' + hi + ' 字**（到量就收，别硬凑）' : '';
           return loTxt + hiTxt;
         })() +
-        '：写足场景、对话、动作、心理与环境细节。但**「写足」不等于「走完」** —— 这两件事经常被混在一起：',
+        (wordTarget ? '：写足场景、对话、动作、心理与环境细节。**这一轮玩家点名要长篇**，所以「写足」这一次也要「写完整」：把指定的这一段从起点写到收束，允许跨月、跨年，按时间推进分段。' : '：写足场景、对话、动作、心理与环境细节。但**「写足」不等于「走完」** —— 这两件事经常被混在一起：'),
+        ...(wordTarget
+          ? [
+              '  · 不要停在半路等玩家催：写到这一阶段的终点再收，不要只写一个瞬间。',
+              '  · 时间推进要给出坐标：哪一年、几岁、哪个学期；不要用「几年后」一句带过。',
+              '  · 篇幅还差得远就继续写下一个阶段，不要用总结句、抒情句或排比凑数。',
+            ]
+          : [
         '  · 写足 = 把**这一段里**发生的事情写出颗粒度：光线、温度、声音、身体感受、对话的停顿、没说出口的那半句；',
         '  · 走完 = 替玩家把这条路的终点也走到。**不要做这个。**',
         '  · **这一轮停在哪里，看玩家说到哪儿**：他说「在车上」，就停在车上；他说「准备回家」，就停在准备的那一刻。他要下车、要进门、要开口，下一轮会自己说 —— 你替他说了，他就没得玩了。',
         '  · 时间跨度同理：玩家给的是一个瞬间或一段很短的时间，就不要在一轮里跨过几个小时。真需要跳时间，让玩家自己说「几个小时后」。',
+          ]),
         '禁止用「……」「（略）」「几天后」这类方式跳过大段内容，禁止把**这一段里**的事压缩成一句概述，不要为了收尾而草草结束 —— 写不够就算不合格。',
         '  · **交稿前自己数一遍字数**：不够上面那个下限就继续写，补的是这一场里还没写透的东西 —— 谁先动、谁没接话、手放在哪儿、光落在什么位置、哪句话说到一半停了。不许用评价句、排比形容词、重复动作或“时间仿佛静止”这类空转凑数。',
         '  · 正文写短不会自动重发，也没有隐藏的省略截断；宁可多写一段，也不要把一轮写成梗概。',
@@ -6623,7 +6654,7 @@ let aiPickFail = '';
       head.push('');
       head.push(jb.text);
     }
-    return fillPersona(applyBlockOverrides(head.join('\n')), s);
+    return fillPersona(applyBlockOverrides(head.join('\n')), s, wordTarget);
   }
 
   /**
@@ -7750,7 +7781,13 @@ if (微博新条.length) {
       '[inject] 分块 ' + 块量.join(' ')
     );
     await turnLog('[inject] 正文 sys=' + String(sys || '').length + ' user=' + String(userContent || '').length + ' 其中历史=' + String(recent || '').length + ' 合计=' + (String(sys || '').length + String(userContent || '').length));
-    const storyOpts = { temperature: storyTempOf(s), maxTokens: tokOf(s, 'story'), onChunk, firstChunkMs: 420000, idleMs: 600000, purpose: opts.all ? '开场' : '正文', shouldStop: opts.shouldStop };
+    const wordTarget = opts.all ? 0 : wordTargetOf(sendText);
+    const baseMaxTokens = tokOf(s, 'story');
+    const storyMaxTokens = wordTarget ? Math.max(baseMaxTokens, Math.min(65536, Math.ceil(wordTarget * 1.8))) : baseMaxTokens;
+    if (wordTarget) {
+      await turnLog('[正文] 本轮字数按玩家输入调整：' + Math.max(200, Math.floor(Number(s.config && s.config.bodyMinWords) || 1000)) + ' → ' + wordTarget + '；tokens ' + baseMaxTokens + ' → ' + storyMaxTokens);
+    }
+    const storyOpts = { temperature: storyTempOf(s), maxTokens: storyMaxTokens, onChunk, firstChunkMs: 420000, idleMs: 600000, purpose: opts.all ? '开场' : '正文', shouldStop: opts.shouldStop };
 
         const bodyEffort = await reasoningOf(s, 'body');
 
@@ -8043,7 +8080,7 @@ if (微博新条.length) {
     const warningsByStep = new Map();
     for (const warning of dataWarnings) warningsByStep.set(warning.step, [...new Set([...(warningsByStep.get(warning.step) || []), warning.why])]);
     for (const [step, reasons] of warningsByStep) markWarn(gid, step, reasons.join('；'));
-    const 正文下限 = Math.max(200, Math.floor(Number(s.config && s.config.bodyMinWords) || 1000));
+    const 正文下限 = wordTarget || Math.max(200, Math.floor(Number(s.config && s.config.bodyMinWords) || 1000));
     const 正文字数 = Array.from(String(sp.body || '').replace(/\s/gu, '')).length;
     const 笔记字数 = Array.from(String(sp.think || '').replace(/\s/gu, '')).length;
     await turnLog('[正文] 叙述正文 ' + 正文字数 + ' 字（不含导演笔记与选项），导演笔记 ' + 笔记字数 + ' 字，选项 ' + (Array.isArray(sp.options) ? sp.options.length : 0) + ' 条');
