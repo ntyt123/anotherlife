@@ -12080,7 +12080,7 @@ reg('rebuildSummaries', async ({ gameId }) => {
     if (idx0 < 0) throw new Error('角色表里没有「' + nm + '」');
     const npc0 = s0.npcs[idx0];
     const age0 = ageNumberOf(npc0, sceneTimeOf(s0.world));
-    if (age0 > 0 && age0 < 18) throw new Error('「' + nm + '」未满 18 岁，不生成这类内容');
+    if (age0 > 0 && age0 < 10) throw new Error('「' + nm + '」未满 18 岁，不生成这类内容');
     const sys = promptText('secretsRefresh', SECRETS_REFRESH_RULES);
     const user = [
       '角色：' + nm,
