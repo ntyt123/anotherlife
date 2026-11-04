@@ -4311,7 +4311,8 @@ function tickCurrentState(s, dh, body) {
 /**
  * 「自察」过期：她自己私下留意到的身体变化，留不了太久。
  *
- * 数据：自察 = [{ 时刻: "昨晚睡前", 部位: "小腹", 感觉: "摸到一小块硬的" }]
+ * 数据：自察 = [{ 时刻: "昨晚睡前", 由头: "刚洗完澡", 念头: "手指滑下去的时候想起白天他扶过这里" }]
+ * 旧存档里可能是 { 部位, 感觉 } 的形态，展示与过期都兼容两种。
  *
  * 为什么要过期：这类记录一挂就是一整周，剧情早过去了弹窗里还写着「昨晚」，
  * 跟「当前状态」挂太久是同一类扫兴。
@@ -4319,8 +4320,8 @@ function tickCurrentState(s, dh, body) {
  * 「时刻」是自由文本（昨晚睡前／今天早上），没法直接算时间 ——
  * 所以用外部追踪表按「内容签名」记累计小时，跟 _当前状态追踪 一个思路。
  */
-const SELFCHECK_MAX = 4;      // 最多留 4 条，新的进来挤掉最老的
-const SELFCHECK_TTL = 24;     // 24 小时没人提就清掉
+const SELFCHECK_MAX = 8;      // 最多留 8 条，新的进来挤掉最老的
+const SELFCHECK_TTL = 168;    // 7 天没人提就清掉
 
 function tickSelfCheck(s, dh) {
   const out = [];
@@ -4335,7 +4336,7 @@ function tickSelfCheck(s, dh) {
     let changed = false;
     arr.forEach((it) => {
       if (!it || typeof it !== 'object' || Array.isArray(it)) return;
-      const sig = [String(it.时刻 || ''), String(it.部位 || ''), String(it.感觉 || '').slice(0, 12)].join('|');
+      const sig = [String(it.时刻 || ''), String(it.由头 || it.部位 || ''), String(it.念头 || it.感觉 || '').slice(0, 12)].join('|');
       const mk = nm + '#' + sig;
       const rec = meta[mk];
       if (!rec) { meta[mk] = { 时: 0 }; keep.push(it); return; }
@@ -4348,7 +4349,7 @@ function tickSelfCheck(s, dh) {
     while (keep.length > SELFCHECK_MAX) {
       const drop = keep.shift();
       changed = true;
-      const sig = [String(drop.时刻 || ''), String(drop.部位 || ''), String(drop.感觉 || '').slice(0, 12)].join('|');
+      const sig = [String(drop.时刻 || ''), String(drop.由头 || drop.部位 || ''), String(drop.念头 || drop.感觉 || '').slice(0, 12)].join('|');
       delete meta[nm + '#' + sig];
     }
     if (!changed) return;
@@ -6792,8 +6793,13 @@ async function settleSystemPrompt(s, gameId, body, phoneBridge) {
       '     年代不对的字段不要写：2011 年之前没有微信，2009 年之前没有微博。',
       "   普通个人物件与自察都不是每轮要填的表，开场也没有例外；只按本轮明确发生的事实维护。",
       '     私密物品：正文里出现了她翻抽屉／收拾包／东西被看见／她自己拿出来用，才增删改；平时一条都不动。',
-      '     自察：正文里出现了她私下确认自己的身体（洗澡时摸到、换衣服时注意到、早上起来觉得不对），才加一条；平时不加。',
-      '     两者都是数组，**新的排在最后**。模型不用删旧的 —— 过期的由后台清（自察 24 小时、最多 4 条），物品不会自己消失。',
+      '     自察：她一个人的时候，脑子里的念头和身体上的反应。每条 {时刻, 由头, 念头}：',
+      '       · 触发：独处、洗澡、换衣服、躺下睡不着、刚被撩到、翻到他的消息 —— 这类时候各加一条，别的轮次不加。',
+      '       · 由头：具体的那件事（白天他碰过的地方、刚换下来的衣服、手机里那句话）。',
+      '       · 念头：她想了什么、身体怎么反应 —— 发热、发软、湿了、腿夹起来、手指放上去；一到两句，40~80 字。',
+      '       · 直奔身体，写具体动作和触感（哪里、怎么碰、多久、停下来没有），不要写抒情和排比；不用器官名堆砌。',
+      '       · **未满 18 岁的角色这一条留空**。',
+      '     两者都是数组，**新的排在最后**。模型不用删旧的 —— 过期的由后台清（自察 7 天、最多 8 条），物品不会自己消失。',
       '   初始普通个人物件属于解析阶段，正文没有必须主动编造一次的例外。',
       '   **「配偶」「子女」这两个字段只写名字**（如「田曦薇」「罗小满」，多个子女用顿号隔开），不要写年龄、关系或状态说明 —— 年龄与身份在角色条目里有，摘要里不重复。',
       '④ 跳过声明：哪些字段没动、为什么（例如“本轮没有金钱往来”）。',
@@ -12074,7 +12080,7 @@ reg('rebuildSummaries', async ({ gameId }) => {
     if (idx0 < 0) throw new Error('角色表里没有「' + nm + '」');
     const npc0 = s0.npcs[idx0];
     const age0 = ageNumberOf(npc0, sceneTimeOf(s0.world));
-    // if (age0 > 0 && age0 < 18) throw new Error('「' + nm + '」未满 18 岁，不生成这类内容');
+    if (age0 > 0 && age0 < 18) throw new Error('「' + nm + '」未满 18 岁，不生成这类内容');
     const sys = promptText('secretsRefresh', SECRETS_REFRESH_RULES);
     const user = [
       '角色：' + nm,

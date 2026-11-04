@@ -10608,7 +10608,7 @@ const applyBirth = (text) => setProtagMany({ 生日: text });
                   { className: 'sim-know-list' },
                   NSFW_KEYS.filter((k) => k !== '私密物品' && k !== '自察').map((k) => knowField(k, draft.protagonist[k])),
                   privField('私密物品', draft.protagonist.私密物品, '名称', [['藏处', '藏处'], ['来历', '来历']]),
-                  privField('自察', draft.protagonist.自察, '部位', [['时刻', '时刻'], ['感觉', '感觉']])
+                  privField('自察', draft.protagonist.自察, ['由头', '部位'], [['时刻', '时刻'], ['念头', '念头'], ['感觉', '感觉']])
                 )
               ),
               // 代表作品／主要奖项 不在这里显示：它们属于演艺资料，由「星途模拟」页签整批展示
@@ -10934,8 +10934,14 @@ function renderTrace(v) {
             const rows = (Array.isArray(arr) ? arr : []).filter(
               (x) => x && typeof x === 'object' && !Array.isArray(x)
             );
+            // nameKey 可以给数组：按顺序取第一个有值的（自察新字段是「由头」，旧存档是「部位」）
+            const nameOf = (x) => {
+              const keys = Array.isArray(nameKey) ? nameKey : [nameKey];
+              for (const kk of keys) { const v = String(x[kk] || '').trim(); if (v) return v; }
+              return '';
+            };
             const items = rows
-              .map((x) => ({ raw: x, name: String(x[nameKey] || '').trim() }))
+              .map((x) => ({ raw: x, name: nameOf(x) }))
               .filter((x) => x.name);
             if (!items.length) return null;
             return h('div', { className: 'sim-know' },
@@ -12393,7 +12399,7 @@ function toggleFans(npc) {
             k === '敏感点' ? knowField(k, npc && npc[k], npc && npc.敏感度) : knowField(k, npc && npc[k])
                       ),
                       privField('私密物品', npc && npc.私密物品, '名称', [['藏处', '藏处'], ['来历', '来历']]),
-                      privField('自察', npc && npc.自察, '部位', [['时刻', '时刻'], ['感觉', '感觉']]),
+                      privField('自察', npc && npc.自察, ['由头', '部位'], [['时刻', '时刻'], ['念头', '念头'], ['感觉', '感觉']]),
                     )
                   ),
                   bodyBlock(npc),
