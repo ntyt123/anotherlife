@@ -40,6 +40,8 @@ test('没有字数要求时按设置走', async () => {
     assert.match(String(r.system), /不少于 4000 字/);
     assert.equal(r.maxTokens, 8000);
     assert.match(String(r.system), /「写足」不等于「走完」/);
+    assert.match(String(r.system), /这个下限只看当前设置/);
+    assert.match(String(r.system), /只对那一轮有效/);
     assert.equal(String(r.system).includes('点名要长篇'), false);
   } finally {
     e.cleanup();
