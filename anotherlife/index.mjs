@@ -12072,6 +12072,9 @@ reg('rebuildSummaries', async ({ gameId }) => {
    * 重发那一轮代价太大（整轮结算都会重跑、时间金钱都可能变），
    * 所以给一个「只补衣服」的入口。
    */
+  // 私密内容的最小年龄。与气味引擎的 10 岁阈值无关，别混用。
+  const MIN_SECRET_AGE = 18;
+
   reg('refreshSecrets', async ({ gameId, name }) => {
     const s0 = await loadState(gameId);
     const nm = String(name || '').trim();
@@ -12080,7 +12083,8 @@ reg('rebuildSummaries', async ({ gameId }) => {
     if (idx0 < 0) throw new Error('角色表里没有「' + nm + '」');
     const npc0 = s0.npcs[idx0];
     const age0 = ageNumberOf(npc0, sceneTimeOf(s0.world));
-    if (age0 > 0 && age0 < 10) throw new Error('「' + nm + '」未满 18 岁，不生成这类内容');
+    // 这条边界改成常量，避免被「气味适用年龄 10 岁」那种批量替换/复制误伤
+    if (age0 > 0 && age0 < MIN_SECRET_AGE) throw new Error('「' + nm + '」未满 ' + MIN_SECRET_AGE + ' 岁，不生成这类内容');
     const sys = promptText('secretsRefresh', SECRETS_REFRESH_RULES);
     const user = [
       '角色：' + nm,
@@ -12093,6 +12097,9 @@ reg('rebuildSummaries', async ({ gameId }) => {
       '里性格：' + String(npc0.里性格 || ''),
       '背景：' + String(npc0.背景 || ''),
       '当前状态：' + String(npc0.当前状态 || ''),
+      '是否处女：' + String(npc0.是否处女 || '（未记录）'),
+      '现有性癖：' + (Array.isArray(npc0.性癖) ? npc0.性癖.join('、') : '') + '（请按规则重写，不要照抄）',
+      '现有经验：' + (Array.isArray(npc0.经验) ? npc0.经验.join('、') : '') + '（处女／处男一律改成六个部位未涉足）',
     ].join('\n');
     const raw = await callSlot(s0, 'settle', [
       { role: 'system', content: sys },
@@ -12104,7 +12111,12 @@ reg('rebuildSummaries', async ({ gameId }) => {
     const pickList = (v, max) => (Array.isArray(v) ? v : (v == null || v === '' ? [] : [v]))
       .map((x) => String(x == null ? '' : x).trim()).filter(Boolean).slice(0, max);
     const out = {};
-    const fet = pickList(parsed.性癖, 4); if (fet.length) out.性癖 = fet;
+    // 模型经常把性格、习惯当性癖写（怕痒／洁癖／好胜／羞耻心重），这里按关键词过一遍：
+    // 必须沾性相关的字眼才留下，明显是性格的直接丢掉，宁可留空也不写错。
+    const SEXUAL = /恋|癖|虐|缚|绳|调教|羞耻|乳|臀|腿|足|丝袜|内衣|制服|露出|窥|偷情|多人|口交|足交|乳交|肛|内射|颜射|吞精|深喉|接吻|潮吹|失禁|哺乳|妊娠|疼痛|咬痕|压痕|主仆|支配|服从|侍奉|边缘|寸止|惩戒|命令|反差|被需要|被占有|被羞辱|汗|贴身|蒙眼|项圈|角色扮演/;
+    const NOT_KINK = /怕痒|洁癖|好胜|羞耻心|爱干净|爱面子|心软|嘴硬|胆小|黏人|攒零钱|分瓜子|逞强|被夸奖/;
+    const fet = pickList(parsed.性癖, 8).filter((w) => SEXUAL.test(w) && !NOT_KINK.test(w)).slice(0, 4);
+    if (fet.length) out.性癖 = fet;
     const sen = pickList(parsed.敏感点, 4); if (sen.length) out.敏感点 = sen;
     const deg = parsed.敏感度 && typeof parsed.敏感度 === 'object' && !Array.isArray(parsed.敏感度) ? parsed.敏感度 : null;
     if (deg) {
@@ -12115,8 +12127,13 @@ reg('rebuildSummaries', async ({ gameId }) => {
       });
       if (Object.keys(clean).length) out.敏感度 = clean;
     }
-    const bot = pickList(parsed.底线, 4); if (bot.length) out.底线 = bot;
-    const exp = pickList(parsed.经验, 6); if (exp.length) out.经验 = exp;
+    // 底线每条不超过 16 字：模型爱写长句，面板上会撑开一整行
+    const bot = pickList(parsed.底线, 4).map((t) => (t.length > 16 ? t.slice(0, 16) : t));
+    if (bot.length) out.底线 = bot;
+    // 处女／处男：六个部位一律未涉足，模型写什么都不作数
+    const isVirgin = String(npc0.是否处女 || '').trim() === '是';
+    const exp = isVirgin ? ['口：未涉足', '手：未涉足', '足：未涉足', '乳：未涉足', '穴：未涉足', '肛：未涉足'] : pickList(parsed.经验, 6);
+    if (exp.length) out.经验 = exp;
     if (!Object.keys(out).length) throw new Error('模型没给出可用的私密设定');
     const live = await loadState(gameId);
     const i2 = (live.npcs || []).findIndex((n) => String((n && n.姓名) || '').trim() === nm);
