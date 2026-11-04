@@ -72,8 +72,9 @@ test('角色详情的私密标题栏有刷新按钮', async () => {
 
 test('结算提示改为建档给初值，并保留未成年与模板化约束', async () => {
   const fs = await import('node:fs');
-  const src = fs.readFileSync(new URL('../index.mjs', import.meta.url), 'utf8');
-  assert.doesNotMatch(src, /新角色出场时这四项一律写「未知」/);
+  const src = fs.readFileSync(new URL('../lib/prompt-defaults.mjs', import.meta.url), 'utf8');
+  const index = fs.readFileSync(new URL('../index.mjs', import.meta.url), 'utf8');
+  assert.doesNotMatch(src + index, /新角色出场时这四项一律写「未知」/);
   assert.match(src, /新角色建档时就把这四项的初值给出来/);
   assert.match(src, /不许套模板/);
   assert.match(src, /未满 18 岁的角色，这四项一律留空/);

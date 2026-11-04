@@ -20,8 +20,8 @@ import { BASIC_WEAR_KEYS, cleanGeneratedValue, extraModelDiffs, rejectedUpdateDe
 import { WARDROBE_RULES, wardrobeCompletionTool, inspectWardrobeResult, currentWardrobeIssues, reconcileWardrobeIssues, refreshStoredWardrobeIssues, wardrobeDiagnosticDiff } from './lib/wardrobe-repair.mjs';
 import { INITIAL_DATA_RULES, initialParseTool, mergeInitialData, sanitizeInitialHomes, initialDataIssues, initialRepairPatch, seedInitialAssets } from './lib/initial-data.mjs';
 import {createCreationHost,worldCreationTool,creationWorldResult,normalizeCreationCareer,recordCreationWarnings,syncCreationWardrobes,creationBasis,WORLD_CREATION_RULES} from './lib/creation-flow.mjs';
-import {initPromptStore,registerPromptDefaults,applyBlockOverrides,promptText,loadPrompts,PROMPT_FILE_NAME} from './lib/prompt-overrides.mjs';
-import {BLOCK_DEFAULTS} from './lib/prompt-defaults.mjs';
+import {initPromptStore,registerPromptDefaults,applyBlockOverrides,promptText,promptBlock,loadPrompts,PROMPT_FILE_NAME} from './lib/prompt-overrides.mjs';
+import {BLOCK_DEFAULTS,SECRETS_RULES,SECRETS_REFRESH_RULES} from './lib/prompt-defaults.mjs';
 import { feedPeople, canReadFeed, assertFeedAccess, visibleFeed, commentRecords, replyTarget, appendFeedComment, findFeedAction, normalizeGeneratedFeed } from './lib/feed-core.mjs';
 import { seedInitialFriends, seedGamePhoneNumbers, phonePlatform, contactAddress, isPhoneContact, phoneContactRecord, addPhoneContact, listPhoneGroups, findPhoneGroup, createPhoneGroup, listPhoneThreads, deletePhoneThread, syncPhoneThreadVisibility } from './lib/phone-core.mjs';
 import { AsyncLocalStorage } from 'node:async_hooks';
@@ -120,7 +120,7 @@ const STORE_DIR = (() => {
   return 'C:/Users/yidan_zhou/AppData/Local/DSH-Tavern/data/workspace/';
 })();
 initPromptStore(STORE_DIR);
-registerPromptDefaults({...BLOCK_DEFAULTS,creationWardrobe:CREATION_WARDROBE_RULES,news:NEWS_RULES,appearance:APPEARANCE_RULES,npcProfile:NPC_PROFILE_RULES,wardrobe:WARDROBE_RULES,simulation:SIMULATION_RULES,phone:PHONE_CONTINUITY_RULES,initialData:INITIAL_DATA_RULES,worldCreation:WORLD_CREATION_RULES});
+registerPromptDefaults({...BLOCK_DEFAULTS,creationWardrobe:CREATION_WARDROBE_RULES,news:NEWS_RULES,appearance:APPEARANCE_RULES,npcProfile:NPC_PROFILE_RULES,wardrobe:WARDROBE_RULES,simulation:SIMULATION_RULES,phone:PHONE_CONTINUITY_RULES,initialData:INITIAL_DATA_RULES,worldCreation:WORLD_CREATION_RULES,secrets:SECRETS_RULES,secretsRefresh:SECRETS_REFRESH_RULES});
 const LEGACY_STATE = STORE_DIR + 'simulator-state.json';
 const PRESET_FILE = STORE_DIR + 'simulator-presets.json';
 /**
@@ -6846,40 +6846,7 @@ async function settleSystemPrompt(s, gameId, body, phoneBridge) {
       '- 角色也可以有「物品」（名字/品质/获取时间/简介/来历/属性提升），与剧情相关时才记。好感度／信任度／欲望／依据／关系写在角色条目里或 relationships 里都认。',
       '  · **「来历」和「简介」分工**：简介写「它是干什么用的、现在什么样」（10~25 字）；来历写「它和谁有关」——谁给的、什么时候、什么场合、为的什么（一句话，20 字以内）。',
       '  · 来历只在**这件东西跟某个人或者某件事有关**时才写；路边买的一把伞没什么来历就留空，不要硬凑。',
-      '【情事与身体 · 只在剧情真涉及时才写】',
-      '- 角色可以带这几个字段：性癖／敏感点／底线／经验／身体状态。它们**只能来自剧情**：',
-      '  · 值要**短**：每条不超过 16 字，直接写事实。不许括号解释、不许复述前因 —— 写「后颈，一碰就缩肩」，不要写「她的后颈非常敏感（因为小时候…）」；每个字段**最多 4 条**，多了挑最要紧的。',
-      '  · 四个字段各管一摊，**按下面的固定格式写**（都要短，一眼能扫完）：',
-      '    · 性癖：**只写名词**，从这张表里挑（可多选，一项一条）：',
-      '      · 取向：抖M／抖S／受虐／施虐／支配／服从／被支配／侍奉／被侍奉／主仆；',
-      '      · 恋物：恋足／恋袜／丝袜／内衣／制服／鞋／手套／恋发／恋乳／恋臀／恋腿／恋手／恋声；',
-      '      · 体味：恋香／恋汗／体味／贴身衣物；',
-      '      · 行为：口交／足交／乳交／手交／肛交／内射／中出／颜射／吞精／深喉／接吻；',
-      '      · 场景：露出／窥视／公开／偷情／多人／被看／角色扮演；',
-      '      · 玩法：束缚／绳艺／项圈／蒙眼／调教／边缘控制／寸止／惩戒／舔／命令；',
-      '      · 心理：羞耻／被羞辱／被称赞／被需要／被占有／反差；',
-      '      · 生理：潮吹／失禁／哺乳／妊娠／疼痛／咬痕／压痕。',
-      '      表里没有的，按同样的风格自己补一个名词；不要写句子、不要解释。',
-      '    · 敏感点：**只写身体部位名**，一个部位一条：左乳／右乳／乳尖／后颈／耳／唇／腰／臀／腿根／大腿内侧／小穴／后穴／足心／趾缝。**同一个部位不许拆成两条**（「双乳丰盈」和「重力揉搓会哀求」是同一处，只留部位名）。',
-      '    · **敏感度**（和敏感点配套）：一个数值表，键就是上面那些部位名，值 0~100 —— {"足心":35,"后颈":0}。含义：0~20 没碰过、一碰就躲／21~40 有点反应但能忍住／41~60 会出声、会主动凑／61~80 一碰就软／81~100 已经成了开关。',
-      '      **怎么加**：这一轮情事里某个部位被重点用到、而且她有明确反应（出声、发抖、主动凑、求），就 +8；一次最多加两处；只是碰到、没特别的反应，不加。',
-      '      **不用管减**：后台会自动随时间退（十天不做掉一档多）。你只管往上加、以及在下一次看到它时按新数值写反应。',
-      '    · 底线：一条一句能说出口的话（如「不接受被拍照」「不许提那个名字」）。',
-      '    · 经验：**按「部位：程度」写**，形如「口：熟练」「穴：熟悉」。部位只用这六个 —— 口／手／足／乳／穴／肛；程度只用这六档 —— 未涉足／生涩／熟悉／接受／熟练／炉火纯青。**正文里明确说过「没碰过／从没」的部位才写「未涉足」，完全没提到的部位一条都不写。**',
-      '  · **新角色建档时就把这四项的初值给出来**（当作人物设定的一部分，不等剧情探索）：性癖 1~3 条、敏感点 1~3 个部位、底线 1~3 条、经验按「部位：程度」给已知的。它们要跟这个人自己的年龄、身份、性格、经历对得上。',
-      '  · **不许套模板**：不同角色的敏感点、性癖必须来自各自的经历与人设，不能把同一组（比如「后颈／耳／腰」）发给所有人；同一个班里十个人，写出来要能一眼分清谁是谁。',
-      '  · **未满 18 岁的角色，这四项一律留空**，不写任何与性相关的内容。',
-      '  · 只有这一轮正文里**明确发生或显露**了（本人说出来、身体有反应、事后被看出来）才更新；敏感点、经验这类**按格式补进对应的一条**，不要重复描述同一个部位；',
-      '  · 没有新信息就**不要**写这几个字段，不要重复回传原值。',
-      '- 关系进度只写一行数值：`好感 中 · 信任 弱 · 欲望 无`。三档都用 无／弱／中／强 四级；没有变化就不写。已有的「好感度／信任度」继续用，另加「欲望」与「依据」两项。',
-      '  · **这一行后面不许加破折号补充说明**（`—— 她刚替他挡了酒` 这种）。好感升了、她笑了、他替她做了什么 —— 全归「当前状态」「当前想法」。写在这里，界面上会把同一件事重复两遍。',
-      '- 经验要与正文里**实际的表现**对得上：这一轮她的表现（生涩／熟悉／主动／被动／会什么、不会什么）就是更新依据 —— 表现推进了就升档（如「穴：生涩」→「穴：熟悉」），没碰过的部位保持原样。「是否处女」在第一次之后必须改。',
-      '- 身体状态：写当下的身体事实（酸软／腰疼／痕迹／体力／走路的姿势）。情事之后持续更新几轮，直到恢复；**恢复正常就把它清空**（写空字符串），不要一直挂着当尾巴。痕迹（吻痕、衣物、气味）也该在随后几轮被记起。',
-      '- 「体内」这一个字段：**只在情事里真的发生了内射、而且之后还没清理时**才写，形如 {"描述":"事后一直没去处理","强度":85}。',
-      '  · **强度** 0~100：刚发生 80~100／过了一会儿 50~79／已经淡了 20~49／快没了 1~19。后台按每小时 4 分自动退，25 小时清零。',
-      '  · 正文里写到她清理了（洗澡、擦拭、换内衣），就把**描述写空**（或强度写 0），不要留半截。',
-      '  · 没发生内射就不要有这一个字段 —— 默认没有。**它只用来在角色面板上显示当下状态，不参与任何后果判定。**',
-      '- 主角自己的这几个字段：**只有玩家在输入里明确要求时**才改（如「把我的底线改成不喝酒」「设定我的敏感点在耳朵」），玩家没说就一个字都不许替他改。',
+      ...promptBlock('secrets', SECRETS_RULES.split('\n')),
       '【生理周期与妊娠 · 按事实判，不主动制造】',
       '- 生理周期：女性角色写当前阶段与周期第几天（如「排卵期前后，周期第 14 天」「黄体期，周期第 22 天」）；「月经状态」只在经期时写（如「经期第 2 天」），平时留空。世界观的日期每推进一次就顺着推，不要长期停在原地。',
       '- 妊娠**只按事实判**，不许随口判：',
@@ -12108,19 +12075,7 @@ reg('rebuildSummaries', async ({ gameId }) => {
     const npc0 = s0.npcs[idx0];
     const age0 = ageNumberOf(npc0, sceneTimeOf(s0.world));
     if (age0 > 0 && age0 < 18) throw new Error('「' + nm + '」未满 18 岁，不生成这类内容');
-    const sys = [
-      '你在给一个小说模拟器补录某个角色的私密设定。只输出一个 JSON 对象，不要任何解释。',
-      '',
-      '【输出格式】',
-      '{"性癖":["名词"],"敏感点":["部位"],"敏感度":{"部位":0},"底线":["一句话"],"经验":["部位：程度"]}',
-      '',
-      '【规则】',
-      '· 依据这个人的性别、年龄、身份、性格、经历与当前处境，给出自洽的一套；不要凭空编，也不要当剧情已经发生。',
-      '· 性癖只写名词（如 抖M／恋足／束缚／羞耻），每个不超过 6 字；敏感点只写身体部位名（后颈／耳／腰／腿根／足心）；敏感度是部位到 0~100 的数字；底线一条一句能说出口的话；经验按「部位：程度」，程度只用 未涉足／生涩／熟悉／接受／熟练／炉火纯青。',
-      '· 不同角色必须不一样：不要给所有人同一组部位或同一种癖好，结合各自的经历写。',
-      '· 未满 18 岁就全部留空数组或空对象。',
-      '· 只写短词和短句，不要解释原因、不要写故事。',
-    ].join('\n');
+    const sys = promptText('secretsRefresh', SECRETS_REFRESH_RULES);
     const user = [
       '角色：' + nm,
       '性别：' + String(npc0.性别 || ''),

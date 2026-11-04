@@ -13,6 +13,8 @@ const DEFINITIONS=[
  {key:'simulation',label:'通用结算规范',note:'经营、系统、生涯与技能'},
  {key:'phone',label:'手机连续性规范',note:'对话与朋友圈带入剧情'},
  {key:'initialData',label:'开局资料规范',note:'主角字段与资产初值'},
+ {key:'secrets',label:'私密字段规范',note:'性癖、敏感点、底线、经验的生成与更新'},
+ {key:'secretsRefresh',label:'私密补录规范',note:'角色详情点刷新时的补录提示'},
 ];
 let storeDir='';
 let cache={};
