@@ -9015,7 +9015,8 @@ onDoubleClick: () => {
           }
           /** 世界观的当前日期（没填就用本机今天兜底） */
           function nowForAge() {
-            return String((draft.world && draft.world['当前日期时间']) || '') || new Date().toISOString().slice(0, 10);
+            const w = (draft.world || {});
+            return String(w['叙事时间'] || '').trim() || String(w['当前日期时间'] || '').trim() || new Date().toISOString().slice(0, 10);
           }
           /**
            * 给角色条目补一个「算出来的年龄」。
@@ -12224,7 +12225,7 @@ function toggleFans(npc) {
                 h(
                   'div',
                   { className: 'sim-modal-b' },
-                  npc?.actorId && state.simulation?.enabled ? h('section',null,genericView('records',{key:gameId+':'+npc.actorId+':records',actorId:npc.actorId}),h('h3',{className:'sim-career-heading',style:{fontSize:14,lineHeight:1.4,margin:'10px 0 6px'}},state.simulation.profile?.roleLabel||'任职'),genericView('careers',{key:gameId+':'+npc.actorId+':careers',actorId:npc.actorId})) : null,
+                  npc?.actorId && state.simulation?.enabled ? h('section',null,genericView('records',{key:gameId+':'+npc.actorId+':records',actorId:npc.actorId})) : null,
                   // 查到的真实资料：点胶囊填入（再点撤回）；正文由 renderRealBody 渲染
                   editing && realInfo
                     ? h('div', { className: 'sim-panel' },
@@ -12287,7 +12288,7 @@ function toggleFans(npc) {
                                   keep(k)
                               )
                             );
-                            return keys.map((k) =>
+                            const fields = keys.map((k) =>
                                 k === '生理周期'
                                   ? h(
                                   'div',
@@ -12302,6 +12303,16 @@ function toggleFans(npc) {
                                   onChange: (v) => setObj(Object.assign({}, src || {}, { [k]: v })),
                                     })
                             );
+                            if (npc?.actorId && state.simulation?.enabled) {
+                              const raceIndex = keys.indexOf('种族');
+                              fields.splice(raceIndex < 0 ? fields.length : raceIndex + 1, 0,
+                                h('div', { className: 'sim-field sim-basic-careers', key: 'careers' },
+                                  h('label', { className: 'sim-career-heading' }, state.simulation.profile?.roleLabel || '任职'),
+                                  genericView('careers', { key: gameId + ':' + npc.actorId + ':careers', actorId: npc.actorId })
+                                )
+                              );
+                            }
+                            return fields;
                           })()
                         )
                       ),

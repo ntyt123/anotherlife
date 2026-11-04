@@ -1393,6 +1393,19 @@ function detectSockMaterial(name) {
  * 把「2026年10月19日 星期一 09:35:00 晴」解析成绝对分钟数。
  * 只要年月日时分，星期和天气忽略。解析不出来返回 null。
  */
+/**
+ * 这一轮叙事所处的时间。
+ * 主线用 world.当前日期时间；回忆/闪回轮把它写进 world.叙事时间，
+ * 年龄、季节、衣着、作品这些都按叙事时间算，主线时间不动。
+ * 旧存档没有这个字段，直接回落到当前日期时间，行为不变。
+ */
+function sceneTimeOf(world) {
+  const w = world || {};
+  const scene = String(w.叙事时间 == null ? '' : w.叙事时间).trim();
+  if (scene) return scene;
+  return String(w.当前日期时间 == null ? '' : w.当前日期时间).trim();
+}
+
 function parseStoryTime(str) {
   const m = /(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日[^0-9]*?(\d{1,2})\s*[:：]\s*(\d{2})/.exec(String(str || ''));
   if (!m) return null;
@@ -3936,7 +3949,7 @@ function tickUnderScent(s, dh, body) {
   if (!s.story.underSeedV2) {
     s.story.underSeedV2 = 1;
     npcs0.forEach((n, i) => {
-      if (!isAdultScentActor(n, s.world && s.world.当前日期时间)) return;
+      if (!isAdultScentActor(n, sceneTimeOf(s.world))) return;
       const w = n && n.穿着;
       if (!w || typeof w !== 'object') return;
       ['内衣', '内裤'].forEach((key) => {
@@ -3963,7 +3976,7 @@ function tickUnderScent(s, dh, body) {
   list.forEach(({ owner, base }) => {
     if (!owner || typeof owner !== 'object') return;
     // 只算女性（跟袜子气味、沾染同一条设定）
-    if (!isAdultScentActor(owner, s.world && s.world.当前日期时间)) return;
+    if (!isAdultScentActor(owner, sceneTimeOf(s.world))) return;
     const w = owner.穿着;
     if (!w || typeof w !== 'object') return;
     ['内衣', '内裤'].forEach((key) => {
@@ -4100,7 +4113,7 @@ function tickUnderScent(s, dh, body) {
       const owner = row && row.owner;
       const base = (row && row.base) || [];
       if (!owner || !owner.穿着) return;
-      if (!isAdultScentActor(owner, s.world && s.world.当前日期时间)) return;
+      if (!isAdultScentActor(owner, sceneTimeOf(s.world))) return;
       ['内衣', '内裤'].forEach((key) => {
         const slot = owner.穿着[key];
         if (!slot || !String(slot.物品 || '').trim()) return;
@@ -4427,7 +4440,7 @@ function tickSockScent(s, body) {
 
     // ⓪ 老数据补初始值（不依赖时间基准，第一轮就补上）
     npcs.forEach((n, i) => {
-      if (!isAdultScentActor(n, s.world && s.world.当前日期时间)) return;
+      if (!isAdultScentActor(n, sceneTimeOf(s.world))) return;
       const w = n && n.穿着 && n.穿着.袜子;
       if (!w || !String(w.物品 || '').trim()) return;
       // 已有强度、但「气味」还是模型写的那一句（没有句号 = 不是三句格式）→ 换掉。
@@ -4492,7 +4505,7 @@ function tickSockScent(s, body) {
 
     // ① 穿着中的
     npcs.forEach((n, i) => {
-      if (!isAdultScentActor(n, s.world && s.world.当前日期时间)) return;
+      if (!isAdultScentActor(n, sceneTimeOf(s.world))) return;
       const w = n && n.穿着 && n.穿着.袜子;
       if (!w || !String(w.物品 || '').trim()) return;
       const nmNow = String(n.姓名 || '').trim();
@@ -4597,7 +4610,7 @@ function tickSockScent(s, body) {
   if (byAI) {
     const 袜子们 = Array.isArray(s.npcs) ? s.npcs : [];
     袜子们.forEach((n, i) => {
-      if (!isAdultScentActor(n, s.world && s.world.当前日期时间)) return;
+      if (!isAdultScentActor(n, sceneTimeOf(s.world))) return;
       const w = n && n.穿着 && n.穿着.袜子;
       if (!w || !String(w.物品 || '').trim()) return;
       if (String(w.气味 || '').trim()) return;   // 模型写过就不动
@@ -6744,6 +6757,7 @@ async function settleSystemPrompt(s, gameId, body, phoneBridge) {
       '【最低要求】每一轮都必须更新 world.当前日期时间 —— 哪怕故事里只过了几分钟。',
       '  · 正文里出现「第二天」「两天后」「一周后」「转眼到了」「等我再回来时」这类时间跳转，日期就必须跟着改（星期几也要对）。',
       '  · 这一条没有例外：日期不动 = 所有按时间推进的东西（袜子气味、身体痕迹、体液、生理周期）全部停摆，玩家会看到「明明过了几天，什么都没变」。',
+'  · **回忆、闪回、倒叙不推进主线时间**：正文若在回想过去（「那年」「2004年」「十三岁那年」「多年前」），`当前日期时间` 保持上一轮的值不动，把回忆所处的时间写进 `world.叙事时间`（格式同上一行）；这一轮的角色年龄、季节、衣着、当年的作品都以叙事时间为准。回到当下时把 `叙事时间` 写回空字符串。',
       '',
       '【当前状态变量】',
       settleSnapshot(s),
@@ -7444,7 +7458,7 @@ function footActive(s, body) {
  * 当前季节与温度点明，让模型自己避开不合时令的那几类。
  */
 function seasonLine(s) {
-  const raw = String((s.world && s.world.当前日期时间) || '');
+  const raw = sceneTimeOf(s.world);
   const t = parseStoryTime(raw);
   if (t == null) return '';
   const d = new Date(t * 60000);
@@ -9730,7 +9744,7 @@ reg('saveOracleAgent', async ({ gameId, on }) => {
             '**「妈妈是小学老师」「爸爸是公务员」这种句子里，名字只有一个——如果句子里给了名字就是那个名字（如「妈妈李秀兰是小学老师」→李秀兰）；没给名字，「是小学老师」「是公务员」这些是谓语和身份，不是名字，绝不能当姓名。**姓名只能是人名，两到四个汉字，不含「是／在／有／的」、不含职业、年龄与称谓。',
             '**同一种关系只建一条**：「人物关系」里已经写了「妹妹罗晴」，就沿用罗晴，不许再给妹妹另起一个名字；写「有一个漂亮的妹妹」而没给名字，就按关系起一个（或用「妹妹」），一个人只对应一条。原文里没写「两个妹妹」「双胞胎」这类数量，就只有一个妹妹；不许把「罗晴」换成「罗婉」「罗玥」再建两个。女儿、儿子、母亲、父亲同样只一人。**原文里没给名字的亲属（「母亲是小学老师」「爸爸是公务员」），姓名就用「母亲」「父亲」这类称呼，不要自己编名字，更不要把「是小学老师」当成姓名再建一条。**',
             '**人名一律照抄，不许改**：写了「罗婉」就是「罗婉」，不要补字换字。',
-            '**「生日」要给**（写成 `1995-03-14` 这种年月日，按关系与身份反推一个合理的年份，让人物年龄对得上），**但不要输出「年龄」** —— 年龄由程序按生日与世界观的当前日期算出来，你写了会被覆盖。',
+            '**「生日」只在能给准时给**：玩家明确给出、或现实公众人物有公开生日，写成 `1995-03-14` 这种年月日；虚构人物没有依据就把生日留空字符串，**禁止用「当前年份 − 年龄」反推生日**（回忆段里的年龄不等于现在，反推会算出错的出生年）。没有生日时可以给「年龄」数字；有生日时年龄由程序按叙事时间算，你写了会被覆盖。',
             '**不要输出主角本人** —— 主角是 protagonist，不属于名册。关系写「自己」「本人」的条目一律不要。',
             '**关系写准确**：妻子／丈夫／女儿／儿子／妹妹／姐姐／弟弟／哥哥／母亲／父亲／情人／朋友／同事…（按主角的性别与年龄判亲疏方向）。',
             '「身份」写社会角色或职业（学生、小学数学老师、公务员、当红女演员…）；只照录明确设定或有把握的真人公开职业，未提供且不能确认时留空，不按亲属关系推测 —— 但**不要写「无」「未知」**。',
