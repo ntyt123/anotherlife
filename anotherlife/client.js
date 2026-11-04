@@ -9029,13 +9029,12 @@ onDoubleClick: () => {
             const n = Number(String(a).replace(/[^\d]/g, ''));
             return n > 0 && n < 200 ? Object.assign({}, o, { 年龄: n }) : o;
           }
-          /** 生日那一行：日期选择框 + 手写框；选完顺手把年龄算出来 */
+          // 查看态用生日算年龄显示；编辑态直接用存着的年龄，方便手动改，不在编辑时反算。
+/** 生日那一行：日期选择框 + 手写框（只改生日，年龄单独填） */
           function birthField() {
             const birth = String(draft.protagonist.生日 || '');
-            const applyBirth = (text) => {
-              const age = ageFromBirth(text, nowForAge());
-              setProtagMany(age ? { 生日: text, 年龄: age } : { 生日: text });
-            };
+            // 只改生日，不联动年龄：年龄由玩家自己填，或由生成时一起给出。
+const applyBirth = (text) => setProtagMany({ 生日: text });
             return h(
               'div',
               { className: 'sim-field', key: '生日' },
@@ -12255,7 +12254,7 @@ function toggleFans(npc) {
                           (function () {
                             // withAge 在有生日时返回新对象、没生日时原样返回原对象；
                             // 这里再拷一份，免得下面补字段时写回 npc 本体（视图不该改数据）。
-                            const src = Object.assign({}, withAge(npc || obj) || {});
+                            const src = Object.assign({}, (editing ? (npc || obj) : withAge(npc || obj)) || {});
                             // 模型经常漏写「性别」「与主角关系」，界面上就空着：
                             //   性别 —— 有罩杯／生理周期／月经状态／三围／初潮这些女性专属字段的，补「女」
                             //   关系 —— npc 里空就从 relationships 那条取（关系图上也是这么兜的）
