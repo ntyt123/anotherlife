@@ -1399,6 +1399,19 @@ function detectSockMaterial(name) {
  * 年龄、季节、衣着、作品这些都按叙事时间算，主线时间不动。
  * 旧存档没有这个字段，直接回落到当前日期时间，行为不变。
  */
+/** 按年龄或生日算周岁；算不出来返回 0（未知）。 */
+function ageNumberOf(n, nowText) {
+  const num = Number(String((n && n.年龄) == null ? '' : n.年龄).replace(/[^\d]/g, ''));
+  if (Number.isFinite(num) && num > 0) return num;
+  const m = String((n && n.生日) || '').match(/(\d{4})\s*[-年./]\s*(\d{1,2})/);
+  const now = String(nowText || '').match(/(\d{4})/);
+  if (m && now) {
+    const age = Number(now[1]) - Number(m[1]);
+    if (age >= 0 && age <= 130) return age;
+  }
+  return 0;
+}
+
 function sceneTimeOf(world) {
   const w = world || {};
   const scene = String(w.叙事时间 == null ? '' : w.叙事时间).trim();
@@ -6853,7 +6866,9 @@ async function settleSystemPrompt(s, gameId, body, phoneBridge) {
       '      **不用管减**：后台会自动随时间退（十天不做掉一档多）。你只管往上加、以及在下一次看到它时按新数值写反应。',
       '    · 底线：一条一句能说出口的话（如「不接受被拍照」「不许提那个名字」）。',
       '    · 经验：**按「部位：程度」写**，形如「口：熟练」「穴：熟悉」。部位只用这六个 —— 口／手／足／乳／穴／肛；程度只用这六档 —— 未涉足／生涩／熟悉／接受／熟练／炉火纯青。**正文里明确说过「没碰过／从没」的部位才写「未涉足」，完全没提到的部位一条都不写。**',
-      '  · 新角色出场时这四项一律写「未知」——**禁止**凭年龄、职业、外貌、人设去推断，也不许为了填满而编；',
+      '  · **新角色建档时就把这四项的初值给出来**（当作人物设定的一部分，不等剧情探索）：性癖 1~3 条、敏感点 1~3 个部位、底线 1~3 条、经验按「部位：程度」给已知的。它们要跟这个人自己的年龄、身份、性格、经历对得上。',
+      '  · **不许套模板**：不同角色的敏感点、性癖必须来自各自的经历与人设，不能把同一组（比如「后颈／耳／腰」）发给所有人；同一个班里十个人，写出来要能一眼分清谁是谁。',
+      '  · **未满 18 岁的角色，这四项一律留空**，不写任何与性相关的内容。',
       '  · 只有这一轮正文里**明确发生或显露**了（本人说出来、身体有反应、事后被看出来）才更新；敏感点、经验这类**按格式补进对应的一条**，不要重复描述同一个部位；',
       '  · 没有新信息就**不要**写这几个字段，不要重复回传原值。',
       '- 关系进度只写一行数值：`好感 中 · 信任 弱 · 欲望 无`。三档都用 无／弱／中／强 四级；没有变化就不写。已有的「好感度／信任度」继续用，另加「欲望」与「依据」两项。',
@@ -12084,6 +12099,73 @@ reg('rebuildSummaries', async ({ gameId }) => {
    * 重发那一轮代价太大（整轮结算都会重跑、时间金钱都可能变），
    * 所以给一个「只补衣服」的入口。
    */
+  reg('refreshSecrets', async ({ gameId, name }) => {
+    const s0 = await loadState(gameId);
+    const nm = String(name || '').trim();
+    if (!nm) throw new Error('没指明是谁');
+    const idx0 = (s0.npcs || []).findIndex((n) => String((n && n.姓名) || '').trim() === nm);
+    if (idx0 < 0) throw new Error('角色表里没有「' + nm + '」');
+    const npc0 = s0.npcs[idx0];
+    const age0 = ageNumberOf(npc0, sceneTimeOf(s0.world));
+    if (age0 > 0 && age0 < 18) throw new Error('「' + nm + '」未满 18 岁，不生成这类内容');
+    const sys = [
+      '你在给一个小说模拟器补录某个角色的私密设定。只输出一个 JSON 对象，不要任何解释。',
+      '',
+      '【输出格式】',
+      '{"性癖":["名词"],"敏感点":["部位"],"敏感度":{"部位":0},"底线":["一句话"],"经验":["部位：程度"]}',
+      '',
+      '【规则】',
+      '· 依据这个人的性别、年龄、身份、性格、经历与当前处境，给出自洽的一套；不要凭空编，也不要当剧情已经发生。',
+      '· 性癖只写名词（如 抖M／恋足／束缚／羞耻），每个不超过 6 字；敏感点只写身体部位名（后颈／耳／腰／腿根／足心）；敏感度是部位到 0~100 的数字；底线一条一句能说出口的话；经验按「部位：程度」，程度只用 未涉足／生涩／熟悉／接受／熟练／炉火纯青。',
+      '· 不同角色必须不一样：不要给所有人同一组部位或同一种癖好，结合各自的经历写。',
+      '· 未满 18 岁就全部留空数组或空对象。',
+      '· 只写短词和短句，不要解释原因、不要写故事。',
+    ].join('\n');
+    const user = [
+      '角色：' + nm,
+      '性别：' + String(npc0.性别 || ''),
+      '年龄：' + String(npc0.年龄 == null ? '' : npc0.年龄),
+      '生日：' + String(npc0.生日 || ''),
+      '身份：' + String(npc0.身份 || ''),
+      '与主角关系：' + String(npc0.与主角关系 || ''),
+      '表性格：' + String(npc0.表性格 || ''),
+      '里性格：' + String(npc0.里性格 || ''),
+      '背景：' + String(npc0.背景 || ''),
+      '当前状态：' + String(npc0.当前状态 || ''),
+    ].join('\n');
+    const raw = await callSlot(s0, 'settle', [
+      { role: 'system', content: sys },
+      { role: 'user', content: user },
+    ], { maxTokens: tokOf(s0, 'settle'), tag: '刷新私密' });
+    let parsed = null;
+    try { parsed = JSON.parse(repairJson(extractJson(raw))); } catch (e) { parsed = null; }
+    if (!parsed || typeof parsed !== 'object') throw new Error('模型没给出可用的私密设定');
+    const pickList = (v, max) => (Array.isArray(v) ? v : (v == null || v === '' ? [] : [v]))
+      .map((x) => String(x == null ? '' : x).trim()).filter(Boolean).slice(0, max);
+    const out = {};
+    const fet = pickList(parsed.性癖, 4); if (fet.length) out.性癖 = fet;
+    const sen = pickList(parsed.敏感点, 4); if (sen.length) out.敏感点 = sen;
+    const deg = parsed.敏感度 && typeof parsed.敏感度 === 'object' && !Array.isArray(parsed.敏感度) ? parsed.敏感度 : null;
+    if (deg) {
+      const clean = {};
+      Object.keys(deg).forEach((k) => {
+        const v = Number(deg[k]);
+        if (Number.isFinite(v) && v >= 0) clean[String(k)] = Math.max(0, Math.min(100, Math.round(v)));
+      });
+      if (Object.keys(clean).length) out.敏感度 = clean;
+    }
+    const bot = pickList(parsed.底线, 4); if (bot.length) out.底线 = bot;
+    const exp = pickList(parsed.经验, 6); if (exp.length) out.经验 = exp;
+    if (!Object.keys(out).length) throw new Error('模型没给出可用的私密设定');
+    const live = await loadState(gameId);
+    const i2 = (live.npcs || []).findIndex((n) => String((n && n.姓名) || '').trim() === nm);
+    if (i2 < 0) throw new Error('角色表里没有「' + nm + '」');
+    Object.assign(live.npcs[i2], out);
+    await saveState(live);
+    await turnLog('[私密] 补录 ' + nm + '：' + Object.keys(out).join('/'));
+    return { ok: true, state: live, got: out };
+  });
+
   reg('refreshWear', async ({ gameId, name }) => {
     const s = await loadState(gameId);
     const nm = String(name || '').trim();

@@ -4460,6 +4460,7 @@ function createGenericViews(React) {
           React.useEffect(()=>{if(state?.phase!=='character'||!Array.isArray(draft?.npcs))return;setDraft(current=>{const npcs=withActorIds(current.npcs);return npcs.every((x,i)=>x===current.npcs[i])?current:{...current,npcs};});},[state?.phase,draft?.npcs]);
           const [bfNote, setBfNote] = React.useState('');
           // 正在刷新穿着的角色名（空 = 没在刷）
+          const [secretsBusy, setSecretsBusy] = React.useState('');
           const [wearBusy, setWearBusy] = React.useState('');
           // 关系图回放：-1 表示看最新一轮，否则看第 N 轮结束时的关系网
           const [relRound, setRelRound] = React.useState(-1);
@@ -12364,7 +12365,27 @@ function toggleFans(npc) {
                   h(
                     'div',
                     { className: 'sim-panel' },
-                    h('div', { className: 'sim-panel-h' }, '🔒 私密'),
+                    h('div', { className: 'sim-panel-h' },
+                      '🔒 私密',
+                      kind === 'npc' && npc
+                        ? h('button', {
+                            className: 'sim-ibtn',
+                            title: '让 AI 按这个人的人设补录私密设定',
+                            disabled: busy || !!secretsBusy,
+                            onClick: function () {
+                              const nm2 = String(npc.姓名 || '').trim();
+                              if (!nm2) return;
+                              setSecretsBusy(nm2); setErr('');
+                              Promise.resolve(call('refreshSecrets', { name: nm2 }, gameId))
+                                .then(function (r) {
+                                  setSecretsBusy('');
+                                  if (r && r.state) { setState(r.state); setDraft(r.state); setDps(r.state); }
+                                })
+                                .catch(function (e) { setSecretsBusy(''); setErr(String((e && e.message) || e)); });
+                            },
+                          }, secretsBusy ? '…' : '⟳')
+                        : null
+                    ),
                     h(
                       'div',
                       { className: 'sim-know-list' },
