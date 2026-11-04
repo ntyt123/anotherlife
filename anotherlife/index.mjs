@@ -12073,7 +12073,7 @@ reg('rebuildSummaries', async ({ gameId }) => {
    * 所以给一个「只补衣服」的入口。
    */
   // 私密内容的最小年龄。与气味引擎的 10 岁阈值无关，别混用。
-  const MIN_SECRET_AGE = 18;
+  const MIN_SECRET_AGE = 10;
 
   reg('refreshSecrets', async ({ gameId, name }) => {
     const s0 = await loadState(gameId);
