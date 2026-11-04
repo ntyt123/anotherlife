@@ -10911,7 +10911,9 @@ function renderTrace(v) {
                       // 敏感点会带一个第三参数（部位→0~100）：点越亮表示这里越敏感
                       const sv = sens && typeof sens === 'object' ? Number(sens[c]) : NaN;
                       const has = Number.isFinite(sv) && sv > 0;
-                      return h('span', { className: 'tag', key: i }, c,
+                      // 底线是一句话，长了会把整行撑开：面板上只显示前 16 字，完整内容放悬浮
+                      const shown = label === '底线' && c.length > 16 ? c.slice(0, 16) + '…' : c;
+                      return h('span', { className: 'tag', key: i, title: label === '底线' ? c : undefined }, shown,
                         has
                           ? h('span', { className: 'sens', title: Math.round(sv) + '/100', style: { opacity: Math.max(0.25, Math.min(1, sv / 100 + 0.15)) } })
                           : null
