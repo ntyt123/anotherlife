@@ -1,3 +1,4 @@
+import { createHarness } from './harness.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -124,4 +125,84 @@ test('未保存编辑不会被导入覆盖，界面入口确实内嵌文件转�
     await importFile(m, '其他.txt', '新指导'); assert.match(words(m.render()), /请先保存当前修改/); assert.equal(walk(m.render()).find(n => n.type === 'textarea' && n.props.rows === 18).props.value, '我的未保存修改');
     const source = fs.readFileSync(new URL('../client.js', import.meta.url), 'utf8'); assert.match(source, /function parseWritingStyleFile\(/); assert.match(source, /function serializeWritingStyleFile\(/); assert.doesNotMatch(source, /^import .*writing-style-transfer/m);
   } finally { m.cleanup(); }
+});
+
+
+test('原生文件选择开始读取时，导入控件旁立即显示文件名和状态', async () => {
+  let finishRead; const pendingRead = new Promise(resolve => { finishRead = resolve; });
+  const m = await open(async (name) => {
+    if (name === 'writingStyleUploadBegin') return { id: 'up', chunkChars: 48000 };
+    if (name === 'writingStyleUploadFinish') return { id: 'source', name: '长篇小说.txt', chars: 4, bytes: 12, lines: 1 };
+  });
+  try { const control = walk(m.field('导入 TXT／Markdown')).find(n => n.type === 'input');
+    control.props.onChange({ target: { files: [{ name: '长篇小说.txt', size: 12, arrayBuffer: () => pendingRead }], value: '长篇小说.txt' } }); await m.flush();
+    const status = walk(m.render()).find(n => n.props['data-style-source-status']); assert.ok(status, '文件控件旁应有导入状态'); assert.match(words(status), /长篇小说.txt/); assert.match(words(status), /读取/);
+  } finally { finishRead(new TextEncoder().encode('测试原文').buffer); for(let i=0;i<5;i++)await m.flush(); m.cleanup(); }
+});
+test('文件读取失败在导入控件旁显示真实错误，不误报编码失败', async () => {
+  const m = await open(); try { const control = walk(m.field('导入 TXT／Markdown')).find(n => n.type === 'input');
+    control.props.onChange({ target: { files: [{ name: '无法读取.txt', size: 10, arrayBuffer: async () => { throw new Error('文件已移动，无法读取'); } }], value: '无法读取.txt' } }); for(let i=0;i<3;i++)await m.flush();
+    const status = walk(m.render()).find(n => n.props['data-style-source-status']); assert.ok(status, '失败必须在文件控件旁可见'); assert.equal(status.props.role, 'alert'); assert.match(words(status), /文件已移动/); assert.doesNotMatch(words(status), /切换文本编码/);
+  } finally { m.cleanup(); }
+});
+
+
+test('原生文件选择自动读取GBK，并明确提示下一步而不自动分析', async () => {
+  const pieces = []; const m = await open(async name => {
+    if (name === 'writingStyleUploadBegin') return { id: 'up', chunkChars: 48000 };
+    if (name === 'writingStyleUploadFinish') return { id: 'source', name: '旧编码小说.txt', chars: 2, bytes: 6, lines: 1 };
+  }); try {
+    const control = walk(m.field('导入 TXT／Markdown')).find(n => n.type === 'input'); const bytes = Uint8Array.from([0xc4, 0xe3, 0xba, 0xc3]);
+    await control.props.onChange({ target: { files: [{ name: '旧编码小说.txt', size: 4, arrayBuffer: async () => bytes.buffer }], value: '旧编码小说.txt' } }); await m.flush();
+    const chunk = m.calls.find(([name]) => name === 'writingStyleUploadChunk'); assert.equal(chunk[1].text, '你好');
+    const status = walk(m.render()).find(n => n.props['data-style-source-status']); assert.match(words(status), /容量预检 → 开始提炼/); assert.ok(!m.calls.some(([name]) => name === 'writingStyleStart'));
+  } finally { m.cleanup(); }
+});
+test('宿主未加载导入接口时，就地显示具体错误和重启提示，不自动重试', async () => {
+  const m = await open(async name => { if (name === 'writingStyleUploadBegin') throw new Error('没有 dsh-tavern-simulator/writing-style-upload-begin 处理器'); });
+  try { const control = walk(m.field('导入 TXT／Markdown')).find(n => n.type === 'input'); const bytes = new TextEncoder().encode('测试');
+    await control.props.onChange({ target: { files: [{ name: '原文.txt', size: bytes.length, arrayBuffer: async () => bytes.buffer }], value: '原文.txt' } }); await m.flush();
+    const status = walk(m.render()).find(n => n.props['data-style-source-status']); assert.equal(status.props.role, 'alert'); assert.match(words(status), /处理器/); assert.match(words(status), /重启DSH/); assert.equal(m.calls.filter(([name]) => name === 'writingStyleUploadBegin').length, 1);
+  } finally { m.cleanup(); }
+});
+test('上传错误在原文控件旁可见，清理分片但不提交不调用模型', async () => {
+  const m = await open(async name => { if (name === 'writingStyleUploadBegin') return { id: 'up', chunkChars: 4 }; if (name === 'writingStyleUploadChunk') throw new Error('网络上传中断'); });
+  try { const control = walk(m.field('导入 TXT／Markdown')).find(n => n.type === 'input'); const bytes = new TextEncoder().encode('测试原文');
+    await control.props.onChange({ target: { files: [{ name: '网络测试.txt', size: bytes.length, arrayBuffer: async () => bytes.buffer }], value: '网络测试.txt' } }); await m.flush();
+    const status = walk(m.render()).find(n => n.props['data-style-source-status']); assert.match(words(status), /网络上传中断/); assert.ok(m.calls.some(([name]) => name === 'writingStyleUploadCancel')); assert.ok(!m.calls.some(([name]) => name === 'writingStyleUploadFinish' || name === 'writingStyleStart'));
+  } finally { m.cleanup(); }
+});
+test('保存成功后目录刷新失败仍保留已选原文，不误报整个导入失败', async () => {
+  let saved = false; const m = await open(async name => {
+    if (name === 'writingStyleUploadBegin') return { id: 'up', chunkChars: 48000 };
+    if (name === 'writingStyleUploadFinish') { saved = true; return { id: 'source', name: '已保存.txt', chars: 2, bytes: 6, lines: 1 }; }
+    if (name === 'writingStyleCatalog' && saved) throw new Error('目录暂时不可读');
+  }); try { const control = walk(m.field('导入 TXT／Markdown')).find(n => n.type === 'input'); const bytes = new TextEncoder().encode('原文');
+    await control.props.onChange({ target: { files: [{ name: '已保存.txt', size: bytes.length, arrayBuffer: async () => bytes.buffer }], value: '已保存.txt' } }); await m.flush();
+    const status = walk(m.render()).find(n => n.props['data-style-source-status']); assert.match(words(status), /原文已保存并选中/); assert.equal(walk(m.field('原文资料')).find(n => n.type === 'select').props.value, 'source'); assert.ok(!m.calls.some(([name]) => name === 'writingStyleUploadCancel'));
+  } finally { m.cleanup(); }
+});
+test('22MB合成原文经文件选择回调到实际宿主分片完整保存，零模型调用', async () => {
+  const host = await createHarness(); const m = await open((name, args) => host.call(name, args));
+  try {
+    const size = 22 * 1024 * 1024, unit = '合成文本。'.repeat(20) + '\n', head = '合成开头\n', tail = '合成结尾'; const encoder = new TextEncoder();
+    const available = size - encoder.encode(head + tail).length, repeat = Math.floor(available / encoder.encode(unit).length);
+    const text = head + unit.repeat(repeat) + 'x'.repeat(available - repeat * encoder.encode(unit).length) + tail, bytes = encoder.encode(text); assert.equal(bytes.byteLength, size);
+    const control = walk(m.field('导入 TXT／Markdown')).find(n => n.type === 'input');
+    await control.props.onChange({ target: { files: [{ name: '合成22MB.txt', size, arrayBuffer: async () => bytes.buffer }], value: '合成22MB.txt' } }); await m.flush();
+    const status = walk(m.render()).find(n => n.props['data-style-source-status']); assert.match(words(status), /已导入/);
+    const sourcePath = [...host.files.keys()].find(path => /simulator-style-source-/.test(path)); assert.ok(sourcePath); const stored = JSON.parse(host.files.get(sourcePath)); assert.equal(stored.text, text); assert.equal(stored.bytes, size);
+    assert.equal(host.requests.length, 0); assert.ok(!m.calls.some(([name]) => name === 'writingStyleStart')); assert.equal(walk(m.field('原文资料')).find(n => n.type === 'select').props.value, stored.id);
+  } finally { m.cleanup(); host.cleanup(); }
+});
+
+
+test('上传中取消后清理已收分片，不提交原文或继续分析', async () => {
+  let release; const pending = new Promise(resolve => { release = resolve; });
+  const m = await open(async name => { if (name === 'writingStyleUploadBegin') return { id: 'up', chunkChars: 2 }; if (name === 'writingStyleUploadChunk') return pending; });
+  try { const control = walk(m.field('导入 TXT／Markdown')).find(n => n.type === 'input'); const bytes = new TextEncoder().encode('需要分片上传的原文');
+    const uploading = control.props.onChange({ target: { files: [{ name: '取消测试.txt', size: bytes.length, arrayBuffer: async () => bytes.buffer }], value: '取消测试.txt' } }); await m.flush();
+    assert.ok(m.calls.some(([name]) => name === 'writingStyleUploadChunk')); await m.click('取消导入'); release({}); await uploading; await m.flush();
+    const status = walk(m.render()).find(n => n.props['data-style-source-status']); assert.match(words(status), /已取消导入/); assert.equal(m.calls.filter(([name]) => name === 'writingStyleUploadChunk').length, 1); assert.ok(m.calls.some(([name]) => name === 'writingStyleUploadCancel')); assert.ok(!m.calls.some(([name]) => name === 'writingStyleUploadFinish' || name === 'writingStyleStart'));
+  } finally { release({}); m.cleanup(); }
 });

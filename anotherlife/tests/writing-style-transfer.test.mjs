@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { decodeWritingStyleFile, parseWritingStyleFile, serializeWritingStyleFile, WRITING_STYLE_FILE_LIMIT, WRITING_STYLE_GUIDE_LIMIT } from '../lib/writing-style-transfer.mjs';
+import { decodeWritingStyleFile, parseWritingStyleFile, serializeWritingStyleFile, WRITING_STYLE_FILE_LIMIT, WRITING_STYLE_GUIDE_LIMIT, decodeWritingStyleSourceFile, WRITING_STYLE_SOURCE_LIMIT } from '../lib/writing-style-transfer.mjs';
 import { STYLE_LIMITS } from '../lib/writing-style-core.mjs';
 import { createHarness } from './harness.mjs';
 
@@ -73,4 +73,17 @@ test('本机到远端：JSON和TXT经独立真实宿主保存加载，不需要�
     assert.equal(local.requests.length, 0); assert.equal(remote.requests.length, 0);
     assert.ok(!remote.writes.some(path => /style-source-|style-task-/.test(path)));
   } finally { local.cleanup(); remote.cleanup(); }
+});
+
+
+test('原文读取自动识别UTF8和GBK，手选错误编码时明确失败', () => {
+  const utf = decodeWritingStyleSourceFile(new TextEncoder().encode('原文😀')); assert.equal(utf.text, '原文😀'); assert.equal(utf.encoding, 'UTF-8');
+  const gb = decodeWritingStyleSourceFile(Uint8Array.from([0xc4,0xe3,0xba,0xc3])); assert.equal(gb.text, '你好'); assert.equal(gb.encoding, 'GB18030／GBK');
+  assert.throws(() => decodeWritingStyleSourceFile(Uint8Array.from([0xc4,0xe3,0xba,0xc3]), 'utf-8'), /所选编码/); assert.equal(WRITING_STYLE_SOURCE_LIMIT, STYLE_LIMITS.sourceBytes);
+});
+
+
+test('22MB GBK原文解码成33MB UTF8时明确报上限，不静默截断或上传', () => {
+  const bytes = new Uint8Array(22 * 1024 * 1024); for (let i = 0; i < bytes.length; i += 2) { bytes[i] = 0xc4; bytes[i + 1] = 0xe3; }
+  assert.throws(() => decodeWritingStyleSourceFile(bytes), /解码后.*33.0 MB.*超过32 MB/);
 });

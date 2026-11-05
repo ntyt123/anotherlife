@@ -4470,6 +4470,31 @@ function serializeWritingStyleFile(draft, format = 'json') {
 }
 
 
+const WRITING_STYLE_SOURCE_LIMIT = 32 * 1024 * 1024;
+function decodeWritingStyleSourceFile(buffer, requested = 'auto') {
+  const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+  if (bytes.byteLength > WRITING_STYLE_SOURCE_LIMIT) throw new Error('原文文件超过32 MB，请拆分后导入');
+  let encoding = requested, text;
+  if (!['auto', 'utf-8', 'gb18030'].includes(encoding)) throw new Error('文本编码选项无效');
+  if (encoding === 'auto') {
+    if (bytes[0] === 0xff && bytes[1] === 0xfe) encoding = 'utf-16le';
+    else if (bytes[0] === 0xfe && bytes[1] === 0xff) encoding = 'utf-16be';
+    else encoding = 'utf-8';
+  }
+  try { text = new TextDecoder(encoding, { fatal: true }).decode(bytes); }
+  catch {
+    if (requested !== 'auto' || encoding !== 'utf-8') throw new Error('无法按所选编码解码，请选择自动识别或正确的文本编码');
+    encoding = 'gb18030';
+    try { text = new TextDecoder(encoding, { fatal: true }).decode(bytes); } catch { throw new Error('无法识别原文编码，请另存为UTF-8后导入'); }
+  }
+  if (!text.trim()) throw new Error('原文为空');
+  if (text.includes('\u0000')) throw new Error('原文含异常空字符，请检查编码或文件类型');
+  const savedBytes = byteSize(text.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n'));
+  if (savedBytes > WRITING_STYLE_SOURCE_LIMIT) throw new Error('文件解码后按UTF-8保存约' + (savedBytes / 1048576).toFixed(1) + ' MB，超过32 MB原文上限，请拆分后导入');
+  return { text, encoding: ({ 'utf-8': 'UTF-8', gb18030: 'GB18030／GBK', 'utf-16le': 'UTF-16LE', 'utf-16be': 'UTF-16BE' })[encoding] };
+}
+
+
 function createWritingStyleViews(React, { downloadFile } = {}) {
   const h = React.createElement;
   const emptyDraft = () => ({ id: '', name: '', guide: '', evidence: [], sourceId: '', version: 0 });
@@ -4485,7 +4510,9 @@ function createWritingStyleViews(React, { downloadFile } = {}) {
     const [sourceId, setSourceId] = React.useState('');
     const [paste, setPaste] = React.useState('');
     const [sourceName, setSourceName] = React.useState('');
-    const [encoding, setEncoding] = React.useState('utf-8');
+    const [encoding, setEncoding] = React.useState('auto');
+    const [sourceStatus, setSourceStatus] = React.useState(null);
+    const sourceRun = React.useRef(null);
     const [providers, setProviders] = React.useState([]);
     const [models, setModels] = React.useState([]);
     const [options, setOptions] = React.useState({ provider: '', model: '', contextWindow: 1000000, maxTokens: 8192, mode: 'full', allowEstimateOverflow: false });
@@ -4509,6 +4536,8 @@ function createWritingStyleViews(React, { downloadFile } = {}) {
     };
     React.useEffect(() => {
       const token = ++owner.current;
+      if (sourceRun.current) sourceRun.current.cancelled = true;
+      setSourceStatus(null);
       setTask(null); setPlan(null); setDraft(emptyDraft()); setDirty(false); setReview(false); setConfirm(''); setRaw(''); setPartials([]); setBusy(false);
       Promise.all([api('writingStyleCatalog'), api('modelChoices')]).then(([db, choices]) => {
         if (owner.current !== token) return;
@@ -4517,7 +4546,7 @@ function createWritingStyleViews(React, { downloadFile } = {}) {
         setOptions(v => ({ ...v, ...pref, provider: pref.provider || current.provider || '', model: pref.model || current.model || '', allowEstimateOverflow: false }));
         setModels(choices.models || []);
       }).catch(e => { if (owner.current === token) setNote(errorText(e)); });
-      return () => { owner.current++; };
+      return () => { if (sourceRun.current) sourceRun.current.cancelled = true; owner.current++; };
     }, [gameId]);
     React.useEffect(() => {
       if (!options.provider) { setModels([]); return; }
@@ -4541,22 +4570,49 @@ function createWritingStyleViews(React, { downloadFile } = {}) {
     }, [taskId, task?.status === 'queued', gameId]);
     function changeOption(key, value) { setOptions(v => ({ ...v, [key]: value })); setPlan(null); }
     function edit(key, value) { setDraft(v => ({ ...v, [key]: value })); setDirty(true); }
-    async function upload(text, name) {
-      const token = owner.current;
-      if (!text.trim()) throw new Error('原文为空');
-      const begin = await api('writingStyleUploadBegin', { name, chars: text.length });
-      let complete = false;
+    async function importSource(loader, name) {
+      if (sourceRun.current && !sourceRun.current.cancelled) return;
+      const run = { owner: owner.current, cancelled: false }; sourceRun.current = run;
+      const report = status => { if (owner.current === run.owner && sourceRun.current === run) setSourceStatus({ name, ...status }); };
+      const check = () => { if (run.cancelled || owner.current !== run.owner) throw new Error('已取消导入'); };
+      let uploadId = '', complete = false;
+      report({ phase: 'reading', message: '正在读取原文…' });
       try {
-      const size = begin.chunkChars || 48000;
-      for (let start = 0, index = 0; start < text.length; start += size, index++) {
-        if (owner.current !== token) return;
-        await api('writingStyleUploadChunk', { id: begin.id, index, text: text.slice(start, start + size) });
-        if (owner.current === token) setNote('上传原文 ' + Math.round(Math.min(text.length, start + size) / text.length * 100) + '%');
+        const decoded = await loader(); check(); const text = decoded.text;
+        if (!text.trim()) throw new Error('原文为空');
+        report({ phase: 'connecting', message: '已读取' + (decoded.encoding ? ' · ' + decoded.encoding : '') + '，正在准备上传…' });
+        const begin = await api('writingStyleUploadBegin', { name, chars: text.length }); uploadId = begin.id; check();
+        if (!uploadId) throw new Error('原文上传接口未返回编号，请确认宿主已重启加载新版插件');
+        const size = begin.chunkChars || 48000;
+        for (let start = 0, index = 0; start < text.length; start += size, index++) {
+          check(); report({ phase: 'uploading', progress: Math.round(start / text.length * 100), message: '正在上传原文…' });
+          await api('writingStyleUploadChunk', { id: uploadId, index, text: text.slice(start, start + size) }); check();
+          report({ phase: 'uploading', progress: Math.round(Math.min(text.length, start + size) / text.length * 100), message: '正在上传原文…' });
+        }
+        check(); report({ phase: 'saving', progress: 100, message: '上传完成，正在保存原文…' });
+        const doc = await api('writingStyleUploadFinish', { id: uploadId });
+        if (!doc?.id) throw new Error('导入接口未返回原文资料，请确认宿主已重启加载新版插件');
+        complete = true; if (owner.current !== run.owner) return;
+        setSourceId(doc.id); setPlan(null); setPaste(''); setSourceName(doc.name);
+        setCatalog(db => ({ ...db, sources: [...db.sources.filter(x => x.id !== doc.id), doc] }));
+        report({ phase: 'complete', message: '已导入 ' + doc.chars + ' 字。下一步：容量预检 → 开始提炼；尚未调用模型。' });
+        try { const db = await api('writingStyleCatalog'); if (owner.current === run.owner) setCatalog(db); }
+        catch (e) { report({ phase: 'complete', message: '原文已保存并选中；列表刷新失败：' + errorText(e) + '。可点“刷新原文列表”。' }); }
+      } catch (e) {
+        let message = errorText(e);
+        if (/writing-style.*(?:处理器|handler|注册)|(?:handler|处理器).*writing-style/i.test(message)) message += '；请完整退出并重启DSH后重试。';
+        report({ phase: run.cancelled ? 'cancelled' : 'error', message });
+      } finally {
+        if (uploadId && !complete) await api('writingStyleUploadCancel', { id: uploadId }).catch(() => {});
+        if (sourceRun.current === run) sourceRun.current = null;
       }
-      const doc = await api('writingStyleUploadFinish', { id: begin.id }); if (owner.current !== token) return;
-      complete = true;
-      setSourceId(doc.id); setPlan(null); setPaste(''); setSourceName(doc.name); await reload(); setNote('已导入 ' + doc.name + '，' + doc.chars + ' 字；尚未调用模型。');
-      } finally { if (!complete) await api('writingStyleUploadCancel', { id: begin.id }).catch(() => {}); }
+    }
+    function importSourceFile(file) {
+      return importSource(async () => {
+        if (file.size > WRITING_STYLE_SOURCE_LIMIT) throw new Error('原文文件超过32 MB，请拆分后导入');
+        let buffer; try { buffer = await file.arrayBuffer(); } catch (e) { throw new Error('无法读取文件：' + errorText(e)); }
+        return decodeWritingStyleSourceFile(buffer, encoding);
+      }, file.name);
     }
     async function inspectTask(id) {
       if (dirty) { setConfirm('replace:' + id); return; }
@@ -4607,14 +4663,19 @@ function createWritingStyleViews(React, { downloadFile } = {}) {
           field('原文资料', h('select', { className: 'sim-select', value: sourceId, disabled: busy, onChange: e => { setSourceId(e.target.value); setPlan(null); } },
             h('option', { value: '' }, '选择已导入原文'), catalog.sources.map(s => h('option', { key: s.id, value: s.id }, s.name + ' · ' + s.chars + '字')))),
           selectedSource ? h('div', { className: 'sim-hint' }, selectedSource.chars + '字 · ' + selectedSource.lines + '行 · ' + (selectedSource.bytes / 1048576).toFixed(2) + ' MB') : null,
-          field('文本编码', h('select', { className: 'sim-select', value: encoding, onChange: e => setEncoding(e.target.value) }, h('option', { value: 'utf-8' }, 'UTF-8'), h('option', { value: 'gb18030' }, 'GB18030／GBK'))),
+          field('文本编码', h('select', { className: 'sim-select', value: encoding, disabled: busy, onChange: e => setEncoding(e.target.value) }, h('option', { value: 'auto' }, '自动识别'), h('option', { value: 'utf-8' }, 'UTF-8'), h('option', { value: 'gb18030' }, 'GB18030／GBK'))),
           field('导入 TXT／Markdown', h('input', { type: 'file', accept: '.txt,.md,text/plain,text/markdown', disabled: busy, onChange: e => {
             const file = e.target.files?.[0]; e.target.value = ''; if (!file) return;
-            action(async () => { if (file.size > 32 * 1048576) throw new Error('原文超过32 MB'); let text; try { text = new TextDecoder(encoding, { fatal: true }).decode(await file.arrayBuffer()); } catch { throw new Error('无法按当前编码读取，请切换文本编码后重新导入'); } await upload(text, file.name); })();
+            return action(() => importSourceFile(file))();
           } })),
+          sourceStatus ? h('div', { 'data-style-source-status': true, role: sourceStatus.phase === 'error' ? 'alert' : 'status', 'aria-live': 'polite', style: { whiteSpace: 'pre-wrap', margin: '8px 0', padding: 10, border: '1px solid var(--sim-bd)', borderRadius: 7 } },
+            h('strong', null, sourceStatus.name), h('div', null, sourceStatus.message),
+            sourceStatus.phase === 'uploading' ? h('div', null, h('progress', { value: sourceStatus.progress, max: 100, style: { width: '100%' } }), sourceStatus.progress + '%') : null,
+            ['reading', 'connecting', 'uploading'].includes(sourceStatus.phase) ? h('button', { type: 'button', className: 'sim-btn', disabled: false, onClick: () => { if (sourceRun.current) sourceRun.current.cancelled = true; setSourceStatus(v => ({ ...v, phase: 'cancelling', message: '正在取消，等待当前步骤结束…' })); } }, '取消导入') : null) : null,
+          button('刷新原文列表', async () => { const db = await reload(); if (!sourceId && db.sources.length) setSourceId(db.sources[db.sources.length - 1].id); }),
           h('details', null, h('summary', null, '或粘贴原文'), field('资料名称', input(sourceName, setSourceName)),
             h('textarea', { className: 'sim-ta', rows: 7, value: paste, onChange: e => setPaste(e.target.value), placeholder: '粘贴小说原文，不是剧情摘要' }),
-            button('导入粘贴原文', () => upload(paste, sourceName || '粘贴原文'))),
+            button('导入粘贴原文', () => importSource(async () => ({ text: paste }), sourceName || '粘贴原文'))),
           field('提炼服务', h('select', { className: 'sim-select', value: options.provider, disabled: busy, onChange: e => { changeOption('provider', e.target.value); changeOption('model', ''); } },
             h('option', { value: '' }, '选择服务'), providers.map(p => h('option', { key: p.id, value: p.id }, p.name || p.id)))),
           field('提炼模型', h(React.Fragment, null, input(options.model, v => changeOption('model', v), { list: 'sim-style-models-' + gameId }),

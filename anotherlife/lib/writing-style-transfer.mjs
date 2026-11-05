@@ -65,3 +65,28 @@ export function serializeWritingStyleFile(draft, format = 'json') {
   if (byteSize(content) > WRITING_STYLE_FILE_LIMIT) throw new Error('导出资料超过2 MB，无法完整导回；请减少依据或导出TXT正文');
   return { filename: stem + '.' + format, content, mime: format === 'txt' ? 'text/plain;charset=utf-8' : 'application/json;charset=utf-8' };
 }
+
+
+export const WRITING_STYLE_SOURCE_LIMIT = 32 * 1024 * 1024;
+export function decodeWritingStyleSourceFile(buffer, requested = 'auto') {
+  const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+  if (bytes.byteLength > WRITING_STYLE_SOURCE_LIMIT) throw new Error('原文文件超过32 MB，请拆分后导入');
+  let encoding = requested, text;
+  if (!['auto', 'utf-8', 'gb18030'].includes(encoding)) throw new Error('文本编码选项无效');
+  if (encoding === 'auto') {
+    if (bytes[0] === 0xff && bytes[1] === 0xfe) encoding = 'utf-16le';
+    else if (bytes[0] === 0xfe && bytes[1] === 0xff) encoding = 'utf-16be';
+    else encoding = 'utf-8';
+  }
+  try { text = new TextDecoder(encoding, { fatal: true }).decode(bytes); }
+  catch {
+    if (requested !== 'auto' || encoding !== 'utf-8') throw new Error('无法按所选编码解码，请选择自动识别或正确的文本编码');
+    encoding = 'gb18030';
+    try { text = new TextDecoder(encoding, { fatal: true }).decode(bytes); } catch { throw new Error('无法识别原文编码，请另存为UTF-8后导入'); }
+  }
+  if (!text.trim()) throw new Error('原文为空');
+  if (text.includes('\u0000')) throw new Error('原文含异常空字符，请检查编码或文件类型');
+  const savedBytes = byteSize(text.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n'));
+  if (savedBytes > WRITING_STYLE_SOURCE_LIMIT) throw new Error('文件解码后按UTF-8保存约' + (savedBytes / 1048576).toFixed(1) + ' MB，超过32 MB原文上限，请拆分后导入');
+  return { text, encoding: ({ 'utf-8': 'UTF-8', gb18030: 'GB18030／GBK', 'utf-16le': 'UTF-16LE', 'utf-16be': 'UTF-16BE' })[encoding] };
+}
