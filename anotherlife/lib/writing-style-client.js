@@ -1,8 +1,11 @@
-export function createWritingStyleViews(React) {
+import { decodeWritingStyleFile, parseWritingStyleFile, serializeWritingStyleFile, WRITING_STYLE_FILE_LIMIT } from './writing-style-transfer.mjs';
+
+export function createWritingStyleViews(React, { downloadFile } = {}) {
   const h = React.createElement;
   const emptyDraft = () => ({ id: '', name: '', guide: '', evidence: [], sourceId: '', version: 0 });
   const errorText = e => String(e?.message || e || '操作失败');
   function download(name, body, type = 'application/json') {
+    if (typeof downloadFile === 'function') return downloadFile({ name, body, type });
     const url = URL.createObjectURL(new Blob([body], { type }));
     const a = document.createElement('a'); a.href = url; a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
@@ -172,12 +175,19 @@ export function createWritingStyleViews(React) {
         field('文风名称', input(draft.name, v => edit('name', v))),
         h('textarea', { className: 'sim-ta', rows: 18, disabled: busy, value: draft.guide, onChange: e => edit('guide', e.target.value), placeholder: '提炼结果会显示在这里，也可直接粘贴或编写文风指导。只有此正文会在启用后注入写作。' }),
         h('div', { className: 'sim-acts' }, button('保存', () => saveDraft(false)), button('另存为', () => saveDraft(true)),
-          button('导出指导', async () => { if (!draft.guide.trim()) throw new Error('指导为空'); download((draft.name || '文风指导').replace(/[\\/:*?"<>|]/g, '_') + '.json', JSON.stringify({ type: 'anotherlife-writing-style', version: 1, name: draft.name, guide: draft.guide, evidence: draft.evidence }, null, 2)); }),
+          ['json', 'txt'].map(format => button('导出 ' + format.toUpperCase(), async () => { const file = serializeWritingStyleFile(draft, format); download(file.filename, file.content, file.mime); })),
           draft.id ? button('删除', async () => setConfirm('delete')) : null),
-        field('导入已有文风 JSON', h('input', { type: 'file', accept: '.json', disabled: busy, onChange: e => {
+        field('导入文风 JSON／TXT', h('input', { type: 'file', accept: '.json,.txt,.md,application/json,text/plain,text/markdown', disabled: busy, onChange: e => {
           const file = e.target.files?.[0]; e.target.value = ''; if (!file) return;
-          action(async () => { if (dirty) throw new Error('请先保存或新建，避免覆盖未保存的修改'); if (file.size > 2 * 1048576) throw new Error('指导文件过大'); const j = JSON.parse(await file.text()); if (j.type !== 'anotherlife-writing-style' || typeof j.guide !== 'string') throw new Error('不是文风指导导出文件'); setDraft({ ...emptyDraft(), name: String(j.name || '导入指导'), guide: j.guide, evidence: Array.isArray(j.evidence) ? j.evidence.map(v => ({ ...v, verified: false, note: '导入资料，需本机原文重新核验' })) : [] }); setDirty(true); })();
+          action(async () => {
+            if (dirty) throw new Error('请先保存当前修改，避免导入覆盖未保存内容');
+            if (file.size > WRITING_STYLE_FILE_LIMIT) throw new Error('指导文件超过2 MB，请确认选择的不是小说原文');
+            const imported = parseWritingStyleFile(decodeWritingStyleFile(await file.arrayBuffer()), file.name);
+            setDraft({ ...emptyDraft(), ...imported }); setReview(true); setDirty(true);
+            setNote('已导入为草稿；保存后可在写作指导中选择，尚未启用。');
+          })();
         } })),
+        h('div', { className: 'sim-hint' }, 'JSON保留名称、指导和依据；TXT仅含指导正文。导入无需原小说，不调用模型。'),
         h('details', null, h('summary', null, '提炼依据（不随指导注入正文）'),
           draft.evidence.length ? draft.evidence.map((e, i) => h('div', { key: i, className: 'sim-card', style: { marginTop: 8 } },
             h('strong', null, e.dimension + ' · ' + (e.verified ? '原文匹配' : '未核验')),

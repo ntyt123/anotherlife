@@ -8,8 +8,9 @@ const begin = '// WRITING_STYLE_VIEWS_BEGIN', end = '// WRITING_STYLE_VIEWS_END'
 if (source.split(begin).length !== 2 || source.split(end).length !== 2) throw new Error('文风界面构建标记缺失或重复');
 const start = source.indexOf(begin), finish = source.indexOf(end, start);
 const normalize = s => s.replace(/\r\n/g, '\n');
-const factory = normalize(fs.readFileSync(path.join(root, 'lib/writing-style-client.js'), 'utf8')).replace('export function createWritingStyleViews', 'function createWritingStyleViews');
-const block = begin + '\n' + factory + '\n      const { WritingStylePanel } = createWritingStyleViews(React);\n      ';
+const transfer = normalize(fs.readFileSync(path.join(root, 'lib/writing-style-transfer.mjs'), 'utf8')).replace(/^export /gm, '');
+const factory = normalize(fs.readFileSync(path.join(root, 'lib/writing-style-client.js'), 'utf8')).replace(/^import .*from '.\/writing-style-transfer\.mjs';\n/m, '').replace('export function createWritingStyleViews', 'function createWritingStyleViews');
+const block = begin + '\n' + transfer + '\n' + factory + '\n      const { WritingStylePanel } = createWritingStyleViews(React);\n      ';
 if (process.argv.includes('--check')) {
   if (normalize(source.slice(start, finish)) !== block) throw new Error('文风界面与工厂源码不一致，请运行 npm run build:writing-style');
   console.log('文风界面工厂与内嵌源码一致');

@@ -11,7 +11,7 @@ function mount(handler) {
     useState(initial) { const i = cursor++; if (!(i in slots)) slots[i] = typeof initial === 'function' ? initial() : initial; return [slots[i], v => { slots[i] = typeof v === 'function' ? v(slots[i]) : v; }]; },
     useRef(initial) { const i = cursor++; if (!(i in slots)) slots[i] = { current: initial }; return slots[i]; },
     useEffect(fn, deps) { const i = cursor++, old = slots[i]; if (!old || deps.some((v, n) => !Object.is(v, old.deps[n]))) { old?.cleanup?.(); slots[i] = { deps }; effects.push(() => { slots[i].cleanup = fn(); }); } } };
-  const views = createWritingStyleViews(React), calls = []; let changed = 0, gameId = 'test';
+  const downloads = []; const views = createWritingStyleViews(React, { downloadFile: file => downloads.push(file) }), calls = []; let changed = 0, gameId = 'test';
   const api = async (name, args) => {
     calls.push([name, args]); if (handler) { const result = await handler(name, args); if (result !== undefined) return result; }
     if (name === 'writingStyleCatalog') return { guides: [{ id: 'style:sample', name: '已存文风', version: 1 }], sources: [], jobs: [], preferences: {} };
@@ -25,7 +25,7 @@ function mount(handler) {
   const flush = async () => { for (let i = 0; i < 8; i++) { while (effects.length) effects.shift()(); await Promise.resolve(); } };
   const click = async text => { const button = walk(render()).find(n => n.type === 'button' && words(n) === text); assert.ok(button, '按钮不存在：' + text); assert.equal(button.props.disabled, false, '按钮不应被禁用：' + text); await button.props.onClick(); await flush(); };
   const field = name => walk(render()).find(n => n.type === 'div' && n.props.className === 'sim-field' && words(n.kids[0]) === name);
-  return { render, flush, click, calls, field, views, setGame: v => { gameId = v; }, get changed() { return changed; }, cleanup() { slots.forEach(s => s?.cleanup?.()); } };
+  return { render, flush, click, calls, downloads, field, views, setGame: v => { gameId = v; }, get changed() { return changed; }, cleanup() { slots.forEach(s => s?.cleanup?.()); } };
 }
 async function open(handler) { const m = mount(handler); m.render(); await m.flush(); await m.click('从小说提炼／管理文风'); return m; }
 
@@ -85,4 +85,43 @@ test('生成中的结果不自动覆盖正在编辑的指导', async () => {
 test('主入口使用工厂外置稳定组件，并保留原指导选择流程', () => {
   const source = fs.readFileSync(new URL('../client.js', import.meta.url), 'utf8');
   assert.match(source, /const \{ WritingStylePanel \} = createWritingStyleViews\(React\)/); assert.match(source, /h\(WritingStylePanel, \{ call, gameId, activeId: wskill.id/); assert.match(source, /call\('saveWritingSkill', \{ id: id \|\| '' \}, gameId\)/);
+});
+
+
+const importFile = async (m, name, body) => {
+  const input = walk(m.field('导入文风 JSON／TXT')).find(n => n.type === 'input');
+  const bytes = new TextEncoder().encode(body); input.props.onChange({ target: { files: [{ name, size: bytes.byteLength, arrayBuffer: async () => bytes.buffer }], value: name } }); await m.flush();
+};
+test('真实导出按钮分别生成JSON和TXT文件，文件内容来自当前草稿', async () => {
+  const m = await open(); try { await m.click('已存文风'); await m.click('导出 JSON'); await m.click('导出 TXT');
+    assert.equal(m.downloads.length, 2); assert.equal(m.downloads[0].name, '已存文风.json'); assert.equal(JSON.parse(m.downloads[0].body).guide, '已有正文');
+    assert.equal(m.downloads[1].name, '已存文风.txt'); assert.equal(m.downloads[1].body.replace(/^\uFEFF/, ''), '已有正文');
+    assert.ok(!m.calls.some(([name]) => name === 'saveWritingSkill' || name === 'writingStyleSave'));
+  } finally { m.cleanup(); }
+});
+test('TXT导入先预览，保存后才入库且不调用模型或上传小说', async () => {
+  const m = await open(); try { const body = '<文风>\n  {{user}}\n\n</文风>\n'; await importFile(m, '本机提炼.txt', body);
+    assert.equal(walk(m.render()).find(n => n.type === 'textarea' && n.props.rows === 18).props.value, body);
+    assert.equal(walk(m.field('文风名称')).find(n => n.type === 'input').props.value, '本机提炼'); assert.match(words(m.render()), /已导入为草稿/);
+    assert.ok(!m.calls.some(([name]) => /writingStyle(?:Start|Upload|Save)|saveWritingSkill/.test(name)));
+    await m.click('保存'); const saved = m.calls.find(([name]) => name === 'writingStyleSave')[1]; assert.equal(saved.guide, body); assert.equal(saved.id, ''); assert.equal(saved.sourceId, '');
+    assert.ok(!m.calls.some(([name]) => name === 'saveWritingSkill'));
+  } finally { m.cleanup(); }
+});
+test('JSON导入不沿用本机编号、原文关联和版本号', async () => {
+  const m = await open(); try { await importFile(m, '文风.json', JSON.stringify({ type: 'anotherlife-writing-style', version: 1, id: '本机编号', sourceId: '本机原文', name: '可迁移文风', guide: '完整指导', evidence: [{ quote: '示例引文', verified: true }] }));
+    assert.match(words(m.render()), /未核验/); await m.click('保存'); const saved = m.calls.find(([name]) => name === 'writingStyleSave')[1];
+    assert.equal(saved.id, ''); assert.equal(saved.sourceId, ''); assert.equal(saved.expectedVersion, 0); assert.equal(saved.evidence[0].verified, false);
+  } finally { m.cleanup(); }
+});
+test('损坏JSON保留当前已打开指导，不产生保存调用', async () => {
+  const m = await open(); try { await m.click('已存文风'); await importFile(m, '损坏.json', '{错误JSON');
+    assert.match(words(m.render()), /JSON格式错误/); assert.equal(walk(m.render()).find(n => n.type === 'textarea' && n.props.rows === 18).props.value, '已有正文'); assert.ok(!m.calls.some(([name]) => name === 'writingStyleSave'));
+  } finally { m.cleanup(); }
+});
+test('未保存编辑不会被导入覆盖，界面入口确实内嵌文件转换模块', async () => {
+  const m = await open(); try { walk(m.render()).find(n => n.type === 'textarea' && n.props.rows === 18).props.onChange({ target: { value: '我的未保存修改' } });
+    await importFile(m, '其他.txt', '新指导'); assert.match(words(m.render()), /请先保存当前修改/); assert.equal(walk(m.render()).find(n => n.type === 'textarea' && n.props.rows === 18).props.value, '我的未保存修改');
+    const source = fs.readFileSync(new URL('../client.js', import.meta.url), 'utf8'); assert.match(source, /function parseWritingStyleFile\(/); assert.match(source, /function serializeWritingStyleFile\(/); assert.doesNotMatch(source, /^import .*writing-style-transfer/m);
+  } finally { m.cleanup(); }
 });
