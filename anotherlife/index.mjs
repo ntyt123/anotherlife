@@ -20,6 +20,8 @@ import { BASIC_WEAR_KEYS, cleanGeneratedValue, extraModelDiffs, rejectedUpdateDe
 import { WARDROBE_RULES, wardrobeCompletionTool, inspectWardrobeResult, currentWardrobeIssues, reconcileWardrobeIssues, refreshStoredWardrobeIssues, wardrobeDiagnosticDiff } from './lib/wardrobe-repair.mjs';
 import { INITIAL_DATA_RULES, initialParseTool, mergeInitialData, sanitizeInitialHomes, initialDataIssues, initialRepairPatch, seedInitialAssets } from './lib/initial-data.mjs';
 import {createCreationHost,worldCreationTool,creationWorldResult,normalizeCreationCareer,recordCreationWarnings,syncCreationWardrobes,creationBasis,WORLD_CREATION_RULES} from './lib/creation-flow.mjs';
+import { createWritingStyleHost } from './lib/writing-style-host.mjs';
+import { STYLE_PREFIX } from './lib/writing-style-core.mjs';
 import {initPromptStore,registerPromptDefaults,applyBlockOverrides,promptText,promptBlock,loadPrompts,PROMPT_FILE_NAME} from './lib/prompt-overrides.mjs';
 import {BLOCK_DEFAULTS,SECRETS_RULES,SECRETS_REFRESH_RULES} from './lib/prompt-defaults.mjs';
 import { feedPeople, canReadFeed, assertFeedAccess, visibleFeed, commentRecords, replyTarget, appendFeedComment, findFeedAction, normalizeGeneratedFeed } from './lib/feed-core.mjs';
@@ -61,7 +63,7 @@ const REV = (() => {
   try {
     const version = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')).version;
     const hash = createHash('sha256');
-    for (const name of ['index.mjs', 'lib/runtime-core.mjs', 'lib/story-parser.mjs', 'lib/weibo-core.mjs', 'lib/state-transactions.mjs', 'lib/data-integrity.mjs', 'lib/phone-core.mjs', 'lib/initial-data.mjs', 'lib/feed-core.mjs', 'lib/wardrobe-repair.mjs']) hash.update(readFileSync(new URL('./' + name, import.meta.url), 'utf8').replace(/\r\n/g, '\n'));
+    for (const name of ['index.mjs', 'lib/runtime-core.mjs', 'lib/story-parser.mjs', 'lib/weibo-core.mjs', 'lib/state-transactions.mjs', 'lib/data-integrity.mjs', 'lib/phone-core.mjs', 'lib/initial-data.mjs', 'lib/feed-core.mjs', 'lib/wardrobe-repair.mjs', 'lib/writing-style-core.mjs', 'lib/writing-style-host.mjs']) hash.update(readFileSync(new URL('./' + name, import.meta.url), 'utf8').replace(/\r\n/g, '\n'));
     return 'host-v71-' + version + '-' + hash.digest('hex').slice(0, 12);
   } catch { return 'host-v71-source-unavailable'; }
 })();
@@ -158,7 +160,7 @@ export function apply(ctx) {
   const requestContext = new AsyncLocalStorage();
   const transactions = createAuxiliaryTransactions({ readJson, writeJson, statePath, readExtras: readBundleExtras, writeExtras: writeBundleExtras, warn: (message) => turnLog(message) });
   const readonlyHandles = new Set(['ping', 'getState', 'turnProgress', 'stopGenerate', 'replyChunk', 'releaseReply', 'mainModel', 'modelChoices', 'modelsOf', 'readLogs', 'stateInfo', 'reasoningOptions', 'cardName']);
-  const sharedHandles = new Set(['saveWritingPrefs', 'saveJailbreak', 'savePerson', 'saveWritingSkill', 'applyPreset', 'saveOracleAgent', 'setKey', 'setSkin', 'saveConfig', 'saveReasoning', 'saveTokens', 'listPresets', 'savePreset', 'deletePreset', 'setRepoDir', 'gitStatus', 'checkUpdate', 'pullUpdate', 'commitPush', 'cloneRepo', 'galleryList', 'galleryGet', 'galleryAdd', 'galleryRename', 'galleryRemove']);
+  const sharedHandles = new Set(['writingStyleDelete', 'saveWritingPrefs', 'saveJailbreak', 'savePerson', 'saveWritingSkill', 'applyPreset', 'saveOracleAgent', 'setKey', 'setSkin', 'saveConfig', 'saveReasoning', 'saveTokens', 'listPresets', 'savePreset', 'deletePreset', 'setRepoDir', 'gitStatus', 'checkUpdate', 'pullUpdate', 'commitPush', 'cloneRepo', 'galleryList', 'galleryGet', 'galleryAdd', 'galleryRename', 'galleryRemove']);
   ctx.effect(() => () => replies.clear());
 
   // ────────────────────────────── 常量与空模板 ──────────────────────────────
@@ -921,7 +923,7 @@ async function listWritingSkills() {
       .filter((d) => d.isDirectory())
       .map((d) => d.name);
   } catch (e) {
-    return [];
+    return writingStyles.list();
   }
   const out = [];
   for (const id of dirs) {
@@ -939,6 +941,7 @@ async function listWritingSkills() {
       /* 没有 SKILL.md 的目录跳过 */
     }
   }
+  out.push(...await writingStyles.list());
   // purpose=writing 的排前，其余按 id
   return out.sort((x, y) => {
     const wx = x.purpose === 'writing' ? 0 : 1;
@@ -951,6 +954,7 @@ async function listWritingSkills() {
 async function readWritingSkillBody(id) {
   const key = String(id || '').trim();
   if (!key) return '';
+  if (key.startsWith(STYLE_PREFIX)) return writingStyles.body(key);
   try {
     const token = await fs.resolve(SKILLS_DIR + key + '/SKILL.md');
     return parseSkillMd(await fs.readText(token)).body;
@@ -8737,6 +8741,10 @@ if (微博新条.length) {
     });
   }
 
+  const writingStyles = createWritingStyleHost({ reg, readonlyHandles, readJson, writeJson, serial, storeDir: STORE_DIR, llm,
+    currentModel: () => adm?.currentSelection?.() || {}, invalidate: () => { skillCache = { at: 0, id: '', body: '' }; },
+    selectedId: async () => String(((await readJson(SETTINGS_FILE)) || {}).writingSkillId || ''), log: turnLog });
+  ctx.effect(() => () => writingStyles.dispose());
   const genericHost = createGenericHost({ reg, loadState, saveState, withKeyStatus, applyDiffs, callSlot, callMainModel, pickToolCall, parseJsonLoose, turnLog, beginRun, endRun, RUNNING });
   const creationHost = createCreationHost({reg,loadState,saveState,withKeyStatus,normProtag,parseNatural:args=>parseNaturalData(args),genericHost,callSlot,callMainModel,pickToolCall,parseJsonLoose,seedInitialAssets,seedInitialFriends,beginRun,endRun,RUNNING,setProg,clothingReferences:async s=>refBlocks(await loadRefs(s.gameId),isAncientWorld(s)?'衣柜·古风':'衣柜·现代').filter(b=>!/内衣|内裤|文胸|胸罩|情趣|性感|透明|气味|足控|私处|露出/.test(b.content||'')).slice(0,6).map(b=>({name:b.name,content:String(b.content||'').slice(0,1000)}))});
   SETTLE_TOOL.parameters.properties.resetIncomeBaseline={type:'boolean',description:'明确为穿越、转世或重设时间时标记true，只重置原固定收支基准，不追算跳过年代；正常时间推进不填。'};
@@ -9228,6 +9236,7 @@ reg('saveOracleAgent', async ({ gameId, on }) => {
     };
   });
   reg('saveWritingSkill', async ({ id }) => {
+    if (String(id || '').startsWith(STYLE_PREFIX) && !await writingStyles.body(String(id))) throw new Error('文风已不存在，请重新读取列表');
     const g = (await readJson(SETTINGS_FILE)) || {};
     g.writingSkillId = String(id || '').trim();
     g.updatedAt = Date.now();
