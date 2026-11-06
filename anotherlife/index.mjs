@@ -22,6 +22,7 @@ import { INITIAL_DATA_RULES, initialParseTool, mergeInitialData, sanitizeInitial
 import {createCreationHost,worldCreationTool,creationWorldResult,normalizeCreationCareer,recordCreationWarnings,syncCreationWardrobes,creationBasis,WORLD_CREATION_RULES} from './lib/creation-flow.mjs';
 import { createWritingStyleHost } from './lib/writing-style-host.mjs';
 import { STYLE_PREFIX } from './lib/writing-style-core.mjs';
+import { captureScentTextState, synchronizeScentText } from './lib/scent-text-sync.mjs';
 import {initPromptStore,registerPromptDefaults,applyBlockOverrides,promptText,promptBlock,loadPrompts,PROMPT_FILE_NAME} from './lib/prompt-overrides.mjs';
 import {BLOCK_DEFAULTS,SECRETS_RULES,SECRETS_REFRESH_RULES} from './lib/prompt-defaults.mjs';
 import { feedPeople, canReadFeed, assertFeedAccess, visibleFeed, commentRecords, replyTarget, appendFeedComment, findFeedAction, normalizeGeneratedFeed } from './lib/feed-core.mjs';
@@ -63,7 +64,7 @@ const REV = (() => {
   try {
     const version = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')).version;
     const hash = createHash('sha256');
-    for (const name of ['index.mjs', 'lib/runtime-core.mjs', 'lib/story-parser.mjs', 'lib/weibo-core.mjs', 'lib/state-transactions.mjs', 'lib/data-integrity.mjs', 'lib/phone-core.mjs', 'lib/initial-data.mjs', 'lib/feed-core.mjs', 'lib/wardrobe-repair.mjs', 'lib/writing-style-core.mjs', 'lib/writing-style-host.mjs']) hash.update(readFileSync(new URL('./' + name, import.meta.url), 'utf8').replace(/\r\n/g, '\n'));
+    for (const name of ['index.mjs', 'lib/runtime-core.mjs', 'lib/story-parser.mjs', 'lib/weibo-core.mjs', 'lib/state-transactions.mjs', 'lib/data-integrity.mjs', 'lib/phone-core.mjs', 'lib/initial-data.mjs', 'lib/feed-core.mjs', 'lib/wardrobe-repair.mjs', 'lib/writing-style-core.mjs', 'lib/writing-style-host.mjs', 'lib/scent-text-sync.mjs']) hash.update(readFileSync(new URL('./' + name, import.meta.url), 'utf8').replace(/\r\n/g, '\n'));
     return 'host-v71-' + version + '-' + hash.digest('hex').slice(0, 12);
   } catch { return 'host-v71-source-unavailable'; }
 })();
@@ -7610,12 +7611,27 @@ function seasonText(s) {
   }
 
 
+  async function syncScentTextForState(s, options) {
+    const result = await synchronizeScentText(s, options, {
+      engineDiff, parseJson: parseJsonLoose,
+      stopped: () => !!RUNNING.get(String(options.gameId || s.gameId || ''))?.stop,
+      request: async (messages, count) => {
+        const r = await callSlot(s, 'settle', messages, { tag: '气味文案同步', wantTools: true, maxTokens: Math.min(16384, Math.max(2048, count * 160)) });
+        if (r && typeof r === 'object' && /length|max.?tokens|incomplete|cancel|error/i.test(String(r.finish?.kind || r.finish || r.finishReason || ''))) throw new Error('气味同步回复未完整结束');
+        return r && typeof r === 'object' ? String(r.text || '') : String(r || '');
+      },
+    });
+    if (result.total) await turnLog('[scent-text-sync] seq=' + options.seq + ' requested=' + result.requested + ' updated=' + result.changed + '/' + result.total + ' failed=' + (result.total - result.changed));
+    return result;
+  }
+
   async function runTurn(s, sendText, displayText, opts) {
     opts = opts || {};
     const gid = String(opts.gameId || '');
     resetProg(gid); // 新一轮：上一轮的降级标记不带到这一轮
     setProg(gid, 'prep', '整理这一轮要用的状态');
     const seq = s.story.current_message_index;
+    const scentTextBefore = captureScentTextState(s);
     const phoneBridge=buildPhoneStoryBridge(s,{seq});
     opts=Object.assign({},opts,{phoneBridge});
     const genericPlan = await genericHost.prepareTurn(s, opts.simulationActions || [], sendText);
@@ -7964,6 +7980,7 @@ if (微博新条.length) {
           
           // 袜子气味强度：纯算术推进，不叫模型。
           // 返回的条目自带 from（applyDiffs 已跑过），重算/删轮才能一起退回去。
+          const scentTextBeforeEngine = captureScentTextState(s);
           const sockDiffs = tickSockScent(s, sp.body);
           sockDiffs.forEach((d) => diffs.push(d));
 
@@ -7971,6 +7988,11 @@ if (微博新条.length) {
           // 需要 dh 和正文：dh 判断推进多久，正文判断她这一轮在不在场
           const underDiffs = tickUnderScent(s, Number(s._lastDh) || 0, sp.body);
           underDiffs.forEach((d) => diffs.push(d));
+
+          // 使用两处计时结束后的最终资料；不重跑主结算，不对失败条目自动重试。
+          const scentTextResult = sj ? await syncScentTextForState(s, { before: scentTextBefore, beforeEngine: scentTextBeforeEngine, seq, body: sp.body, gameId: gid }) : { diffs: [], issues: [] };
+          diffs.push(...scentTextResult.diffs);
+          dataWarnings.push(...scentTextResult.issues);
 
           // 身体痕迹消退：复用 tickSockScent 刚算好的小时差
           const traceDiffs = tickBodyTraces(s, Number(s._lastDh) || 0);
@@ -8961,6 +8983,18 @@ reg('saveOracleAgent', async ({ gameId, on }) => {
     } catch (e) {
       return { ok: false, efforts: [], error: String((e && e.message) || e) };
     }
+  });
+
+  reg('refreshScentText', async ({ gameId }) => {
+    const s = await loadState(gameId);
+    if (!s.config?.scentByAI) throw new Error('请先启用AI气味文案');
+    const last = [...(s.transcript || [])].reverse().find(x => x.role === 'assistant');
+    if (s.phase !== 'play' || !last) throw new Error('开始游玩后才能同步气味文案');
+    const before = captureScentTextState(s);
+    const result = await syncScentTextForState(s, { before, beforeEngine: before, seq: last.seq, force: true, gameId });
+    last.diffs = [...(last.diffs || []), ...result.diffs];
+    if (result.diffs.length) await saveState(s);
+    return { state: await withKeyStatus(s), note: result.issues.map(x => x.why).join('；') || (result.total ? '已同步' + result.changed + '项文案，未改变数值。' : '没有可同步的成年角色衣物资料。') };
   });
 
   reg('saveConfig', async ({ gameId, config }) => {

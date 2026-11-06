@@ -5611,6 +5611,7 @@ function createWritingStyleViews(React, { downloadFile } = {}) {
 
           // ── 写作指导：从 Tavern 的 skills 目录里选一份注入正文，随时可换 ──
           const [wskill, setWskill] = React.useState({ list: [], id: '', body: '', loaded: false, busy: false, note: '' });
+          const [scentSyncNote, setScentSyncNote] = React.useState('');
           const skillLoadedRef = React.useRef(false);
           React.useEffect(() => {
               if (tab !== 'settings' || skillLoadedRef.current) return;
@@ -13811,7 +13812,9 @@ function thinkDrifted(t) {
                       run(call('saveConfig', { config: c }, gameId));
                     },
                   }, (dcfg && dcfg.scentByAI) ? '🤖 AI 写' : '📚 引擎'),
-                  h('div', { className: 'sim-hint', style: { marginTop: 4 } }, (dcfg && dcfg.scentByAI) ? '结算模型自己写那句；浓度、材质、穿了多久仍由后台算。' : '从整句库里按档位取；同一档换个人就是另一句。')
+                  h('div', { className: 'sim-hint', style: { marginTop: 4 } }, (dcfg && dcfg.scentByAI) ? '成年角色按最终数值同步；过期时合并一次模型请求，失败不自动重试。' : '从整句库里按档位取；同一档换个人就是另一句。'),
+                  dcfg?.scentByAI ? h(Btn, { disabled: busy || phase !== 'play', title: '调用结算模型，仅同步成年角色衣物文案，不改强度或时长', onClick: () => run(call('refreshScentText', {}, gameId).then(r => { setScentSyncNote(r.note || ''); return r.state; })) }, '同步气味文案') : null,
+                  scentSyncNote ? h('div', { className: 'sim-hint', role: 'status' }, scentSyncNote) : null
                 ),
                 h('div', { className: 'sim-hint' }, '最少字数是硬要求，写不够算不合格；最多字数填 0 表示不设上限。段落数按字数自动换算。')
               ),
