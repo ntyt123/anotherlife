@@ -19,9 +19,9 @@ export function isAdultTextSyncActor(actor, date) {
   if (birthday && now) {
     age = Number(now[1]) - Number(birthday[1]);
     if (Number(now[2]) < Number(birthday[2]) || (Number(now[2]) === Number(birthday[2]) && Number(now[3]) < Number(birthday[3]))) age--;
-    if (age < 18) return false;
+    if (age < 10) return false;
   }
-  return age != null ? age >= 18 : explicit != null && explicit >= 18;
+  return age != null ? age >= 10 : explicit != null && explicit >= 10;
 }
 function slots(state) {
   const rows = [];

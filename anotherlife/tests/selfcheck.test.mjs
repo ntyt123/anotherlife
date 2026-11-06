@@ -12,7 +12,7 @@ test('结算规则把自察改成私念：由头＋念头，保留未成年留�
   assert.match(src, /自察：她一个人的时候，脑子里的念头和身体上的反应/);
   assert.match(src, /由头：具体的那件事/);
   assert.match(src, /念头：她想了什么、身体怎么反应/);
-  assert.match(src, /未满 18 岁的角色这一条留空/);
+  assert.match(src, /未满 10 岁的角色这一条留空/);
   assert.doesNotMatch(src, /她私下确认自己的身体（洗澡时摸到/);
 });
 

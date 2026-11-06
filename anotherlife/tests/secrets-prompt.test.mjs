@@ -11,11 +11,11 @@ test('私密规则默认文本保留原内容与两条边界', () => {
   assert.match(SECRETS_RULES, /【情事与身体 · 只在剧情真涉及时才写】/);
   assert.match(SECRETS_RULES, /新角色建档时就把这四项的初值给出来/);
   assert.match(SECRETS_RULES, /不许套模板/);
-  assert.match(SECRETS_RULES, /未满 18 岁的角色，这四项一律留空/);
+  assert.match(SECRETS_RULES, /未满 10 岁的角色，这四项一律留空/);
   assert.match(SECRETS_RULES, /性癖：\*\*只写名词\*\*/);
   assert.ok(SECRETS_RULES.split('\n').length > 25);
   assert.match(SECRETS_REFRESH_RULES, /补录某个角色的私密设定/);
-  assert.match(SECRETS_REFRESH_RULES, /未满 18 岁就全部留空/);
+  assert.match(SECRETS_REFRESH_RULES, /未满 10 岁就全部留空/);
 });
 
 test('提示词栏能列出两条私密规则，默认即当前版本', async () => {
@@ -70,7 +70,7 @@ test('结算请求实际带上私密规则段', async () => {
     await e.call('generateStory', {gameId: 'test', input: '继续。'});
     const sys = e.requests.map((r) => String(r.system || '')).join('\n');
     assert.match(sys, /【情事与身体 · 只在剧情真涉及时才写】/);
-    assert.match(sys, /未满 18 岁的角色，这四项一律留空/);
+    assert.match(sys, /未满 10 岁的角色，这四项一律留空/);
   } finally {
     e.cleanup();
   }

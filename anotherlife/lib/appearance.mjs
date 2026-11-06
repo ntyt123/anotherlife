@@ -66,6 +66,6 @@ export function appearanceBasis(actor={},year=''){
   out[k]=v;
  }
  const age=Number(actor.年龄),birth=typeof actor.生日==='string'?Number(actor.生日.slice(0,4)):NaN,at=Number(year);
- if(age>0&&age<18||at>0&&birth>0&&at-birth>=0&&at-birth<18){delete out.三围;delete out.罩杯;}
+ if(age>0&&age<10||at>0&&birth>0&&at-birth>=0&&at-birth<10){delete out.三围;delete out.罩杯;}
  return out;
 }

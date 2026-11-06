@@ -35,10 +35,10 @@ test('成年角色可以补录私密设定并写回存档', async () => {
   }
 });
 
-test('未满 18 岁直接拒绝，不调用模型', async () => {
+test('未满 10 岁直接拒绝，不调用模型', async () => {
   const e = await rig({姓名: '罗瑶', 性别: '女', 年龄: 15, 身份: '学生'});
   try {
-    await assert.rejects(() => e.call('refreshSecrets', {gameId: 'test', name: '罗瑶'}), /未满 18 岁/);
+    await assert.rejects(() => e.call('refreshSecrets', {gameId: 'test', name: '罗瑶'}), /未满 10 岁/);
     assert.equal(e.requests.length, 0);
     assert.equal(e.getState('test').npcs[0].性癖, undefined);
   } finally {
@@ -77,5 +77,5 @@ test('结算提示改为建档给初值，并保留未成年与模板化约束',
   assert.doesNotMatch(src + index, /新角色出场时这四项一律写「未知」/);
   assert.match(src, /新角色建档时就把这四项的初值给出来/);
   assert.match(src, /不许套模板/);
-  assert.match(src, /未满 18 岁的角色，这四项一律留空/);
+  assert.match(src, /未满 10 岁的角色，这四项一律留空/);
 });
