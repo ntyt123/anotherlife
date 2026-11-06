@@ -19,9 +19,9 @@ export function isAdultTextSyncActor(actor, date) {
   if (birthday && now) {
     age = Number(now[1]) - Number(birthday[1]);
     if (Number(now[2]) < Number(birthday[2]) || (Number(now[2]) === Number(birthday[2]) && Number(now[3]) < Number(birthday[3]))) age--;
-    if (age < 10) return false;
+    if (age < 18) return false;
   }
-  return age != null ? age >= 10 : explicit != null && explicit >= 10;
+  return age != null ? age >= 18 : explicit != null && explicit >= 18;
 }
 function slots(state) {
   const rows = [];
@@ -43,10 +43,12 @@ function slots(state) {
 export function captureScentTextState(state) {
   return new Map(slots(state).map(row => [row.key, { fingerprint: row.fingerprint, strength: row.strength, hours: row.hours, item: String(row.slot.物品), textHash: digest(row.slot.气味), meta: clone(row.slot._scentTextSync) }]));
 }
-export function planScentTextSync(state, { before = new Map(), beforeEngine = new Map(), body = '', force = false, seq = 0 } = {}) {
+export function planScentTextSync(state, { before = new Map(), beforeEngine = new Map(), body = '', force = false, seq = 0, onlyPaths } = {}) {
   if (!state.config?.scentByAI) return [];
   const rows = [];
+  const allowed = Array.isArray(onlyPaths) ? new Set(onlyPaths.map(path => JSON.stringify(path))) : null;
   for (const row of slots(state)) {
+    if (allowed && !allowed.has(JSON.stringify(row.base))) continue;
     const name = String(row.actor.姓名 || '');
     if (!force && !(row.base[0] === 'protagonist' || (name && String(body).includes(name)))) continue;
     const old = before.get(row.key), model = beforeEngine.get(row.key);

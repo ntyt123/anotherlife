@@ -12831,6 +12831,7 @@ function toggleFans(npc) {
                               .then(function (r) {
                                 setWearBusy('');
                                 if (r && r.state) { setState(r.state); setDraft(r.state); setDps(r.state); }
+                                if (r && r.issues && r.issues.length) setErr(r.issues.map(x => x.why || '').filter(Boolean).join('；'));
                               })
                               .catch(function (e) { setWearBusy(''); setErr(String((e && e.message) || e)); });
                           },

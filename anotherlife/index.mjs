@@ -22,7 +22,7 @@ import { INITIAL_DATA_RULES, initialParseTool, mergeInitialData, sanitizeInitial
 import {createCreationHost,worldCreationTool,creationWorldResult,normalizeCreationCareer,recordCreationWarnings,syncCreationWardrobes,creationBasis,WORLD_CREATION_RULES} from './lib/creation-flow.mjs';
 import { createWritingStyleHost } from './lib/writing-style-host.mjs';
 import { STYLE_PREFIX } from './lib/writing-style-core.mjs';
-import { captureScentTextState, synchronizeScentText } from './lib/scent-text-sync.mjs';
+import { captureScentTextState, synchronizeScentText, isAdultTextSyncActor } from './lib/scent-text-sync.mjs';
 import {initPromptStore,registerPromptDefaults,applyBlockOverrides,promptText,promptBlock,loadPrompts,PROMPT_FILE_NAME} from './lib/prompt-overrides.mjs';
 import {BLOCK_DEFAULTS,SECRETS_RULES,SECRETS_REFRESH_RULES} from './lib/prompt-defaults.mjs';
 import { feedPeople, canReadFeed, assertFeedAccess, visibleFeed, commentRecords, replyTarget, appendFeedComment, findFeedAction, normalizeGeneratedFeed } from './lib/feed-core.mjs';
@@ -12201,6 +12201,9 @@ reg('rebuildSummaries', async ({ gameId }) => {
     });
     if (!last) throw new Error('还没有正文可以参照');
   
+    const scentBefore = captureScentTextState(s);
+    const eligibleScent = isAdultTextSyncActor(npc, s.world?.当前日期时间);
+    const before = JSON.parse(JSON.stringify(npc.穿着 || {}));
     const body = String(last.body || '').trim();
     // 长正文只取后半段：穿着描写通常就在最近发生的事里
     const clip = body.length > 6000 ? body.slice(-6000) : body;
@@ -12214,7 +12217,7 @@ reg('rebuildSummaries', async ({ gameId }) => {
       '· 物品=衣物名称；判断不了就留空字符串。',
       '· 稀有度 N/R/SR/SSR/UR（按这个世界的珍贵程度判，普通日常衣物一律 N）。',
       '· 状态只在非正常时才写（如「褶皱」「袖口开线」），正常整洁留空。',
-      '· 气味只有女性角色的「袜子」「内衣」「内裤」写，一句短语；其他部位留空。',
+      '· 气味仅成年女性适用，客观描述衣物的清洁状态，不写笼统短语或身体反应；其余留空。启用AI气味时，先生成衣物，最终气味会另按数值同步。',
       '· **「内衣」是胸罩／文胸那一层，「内裤」是下半身贴身那条** —— 不是衬衫、不是打底衣、不是外穿的衣服。',
       '  正文里没直接写到的，按性别年龄身份给一个合理的平常款（如「白色棉质背心式」「纯棉三角」），别把外衣塞进来。',
       '· 简介每件都要写，10~25 字，写这件衣服的由来或当下的样子，不要复述物品名。',
@@ -12249,20 +12252,27 @@ reg('rebuildSummaries', async ({ gameId }) => {
     if (!got) throw new Error('模型没给出可用的穿着');
   
     // 只覆盖模型给了内容的部位 —— 它没提的部位保留原样，不要把已有的衣服抹掉
-    const before = JSON.parse(JSON.stringify(npc.穿着 || {}));
     const dirty = {};
     WEAR_KEYS.forEach(function (k) {
       const v = got[k];
       if (!v || typeof v !== 'object') return;
       if (!String(v.物品 || '').trim()) return;
-      dirty[k] = v;
+      dirty[k] = JSON.parse(JSON.stringify(v));
+      ['气味强度','穿着小时','材质','_scentTextSync'].forEach(f => delete dirty[k][f]);
+      if (!eligibleScent) dirty[k].气味 = '';
     });
     if (!Object.keys(dirty).length) throw new Error('模型返回的穿着是空的');
   
     const merged = normalizeWear(Object.assign({}, before, dirty));
+    // 同件衣物的引擎数值不让重生成覆盖；换了衣物才补新的初值。
+    Object.keys(dirty).forEach(k => {
+      if (String(before[k]?.物品 || '') !== String(merged[k]?.物品 || '')) return;
+      ['气味强度', '穿着小时', '材质', '_scentTextSync', '_上一双'].forEach(f => { if (before[k]?.[f] !== undefined) merged[k][f] = JSON.parse(JSON.stringify(before[k][f])); });
+      if (s.config?.scentByAI && eligibleScent && before[k]?.气味) merged[k].气味 = before[k].气味;
+    });
       // 模型只写文字描述，不写 气味强度 —— 那是袜子引擎按材质和穿着时长算的。
       // 这里顺手补一个，否则弹窗里没有浓度条，看着像「没生效」。
-      if (dirty.袜子 && String(dirty.袜子.物品 || '').trim()) {
+      if (eligibleScent && dirty.袜子 && String(dirty.袜子.物品 || '').trim()) {
         const w = merged.袜子;
         if (w && (w.气味强度 == null || w.气味强度 === '')) {
           const g = guessSockStrength(w.穿着时长, w.气味, nm + '|' + String(w.物品 || ''));
@@ -12276,16 +12286,24 @@ reg('rebuildSummaries', async ({ gameId }) => {
     npc.穿着 = merged;
       // 内衣内裤的气味同理：模型只写那一句，强度/材质/穿着小时由引擎补。
       // dh 传 0 —— 这里只是补值，不推进时间（时间由下一轮 runTurn 算）。
-      if ((dirty.内衣 && String(dirty.内衣.物品 || '').trim()) || (dirty.内裤 && String(dirty.内裤.物品 || '').trim())) {
-        tickUnderScent(s, 0, '');
+      if (eligibleScent && (dirty.内衣 || dirty.内裤)) {
+        // 原函数会遍历全档，这里隔离到当前角色，仅取本次返回的部位。
+        const target = { ...JSON.parse(JSON.stringify(npc)), 穿着: Object.fromEntries(['内衣','内裤'].filter(k => dirty[k]).map(k => [k, JSON.parse(JSON.stringify(merged[k]))])) };
+        const local = { ...s, protagonist: {}, npcs: [target], story: JSON.parse(JSON.stringify(s.story || {})) };
+        tickUnderScent(local, 0, '');
+        ['内衣','内裤'].forEach(k => { if (dirty[k] && target.穿着?.[k]) merged[k] = target.穿着[k]; });
       }
+    if (eligibleScent) ['袜子','内衣','内裤'].forEach(k => { if (dirty[k] && merged[k] && Number.isFinite(Number(merged[k].穿着小时))) merged[k].穿着时长 = humanSockHours(Number(merged[k].穿着小时)); });
+    const paths = Object.keys(dirty).filter(k => ['袜子','内衣','内裤'].includes(k)).map(k => ['npcs', idx, '穿着', k]);
+    const synced = await syncScentTextForState(s, { before: scentBefore, beforeEngine: captureScentTextState(s), force: true, onlyPaths: paths, seq: last.seq, gameId });
     WEAR_KEYS.forEach(function (k) {
       if (JSON.stringify(before[k]) === JSON.stringify(merged[k])) return;
-      engineDiff(['npcs', idx, '穿着', k], before[k], merged[k], 'wear');
+      last.diffs = last.diffs || [];
+      last.diffs.push(engineDiff(['npcs', idx, '穿着', k], before[k], JSON.parse(JSON.stringify(merged[k])), 'wear'));
     });
     await turnLog('[刷新穿着] ' + nm + ' → ' + Object.keys(dirty).join(' / '));
     await saveState(s);
-    return { ok: true, name: nm, filled: Object.keys(dirty), state: await loadState(gameId) };
+    return { ok: true, name: nm, filled: Object.keys(dirty), issues: synced.issues, state: await withKeyStatus(s) };
   });
   
   reg('backfillDiffs', async ({ gameId }) => {
