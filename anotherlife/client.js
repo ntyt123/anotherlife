@@ -757,6 +757,18 @@ window.__ModuleLoader__.load({
       '.sim-modal-h .who{min-width:0;flex:1}',
       '.sim-modal-h .nm{font-size:var(--sim-fs-6);font-weight:800}',
       '.sim-modal-h .chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:5px}',
+      // 角色标题仅两行：姓名与操作、单行摘要；完整资料在下方，不让长身份撑高。
+      '.sim-modal.sim-actor-modal{min-width:0;box-sizing:border-box;container-type:inline-size;container-name:sim-actor-dialog}',
+      '.sim-actor-modal .sim-actor-modal-h{display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-rows:auto auto;align-items:center;gap:6px 10px;min-width:0;padding:10px 12px}',
+      '.sim-actor-modal-h>.who{display:contents}',
+      '.sim-actor-modal-h .nm{grid-column:1;grid-row:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+      '.sim-actor-modal-h .sim-actor-actions{grid-column:2;grid-row:1;display:flex;align-items:center;gap:6px;flex-wrap:nowrap;min-width:0}',
+      '.sim-actor-modal-h .chips{grid-column:1 / -1;grid-row:2;min-width:0;max-width:100%;margin-top:0;flex-wrap:nowrap;overflow:hidden}',
+      '.sim-actor-modal-h .sim-mchip{display:block;box-sizing:border-box;min-width:0;max-width:100%;flex:0 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.4}',
+      '.sim-actor-modal-h .sim-actor-identity{max-width:calc(10em + 18px);flex-shrink:2}',
+      '.sim-actor-modal-h .sim-actor-actions>button{flex:0 0 auto;white-space:nowrap;min-height:32px;margin:0}',
+      '.sim-actor-modal-h .sim-actor-actions .sim-npc-star{display:inline-flex;align-items:center;justify-content:center;gap:4px}',
+      '@container sim-actor-dialog (max-width:520px){.sim-actor-modal-h .sim-actor-star-label{display:none}.sim-actor-modal-h .sim-actor-actions .sim-npc-star{width:32px;height:32px;padding:0}.sim-actor-modal-h .sim-actor-actions{gap:4px}.sim-actor-modal-h .sim-mchip{padding-inline:7px}}',
       '.sim-mchip{font-size:var(--sim-fs-1);padding:2px 9px;border-radius:99px;background:rgba(255,255,255,.24)}',
       '.sim-modal-x{flex:0 0 auto;background:rgba(255,255,255,.18);border:none;color:#fff;width:30px;height:30px;border-radius:9px;cursor:pointer;font-size:var(--sim-fs-4);font-family:inherit}',
       '.sim-modal-x:hover{background:rgba(255,255,255,.32)}',
@@ -12438,9 +12450,14 @@ function toggleFans(npc) {
             // 标题条上的胶囊：性别 / 身份 / 年龄 / 关系。年龄直接写「19岁」，不加前缀。
             const HEAD_KEYS = ['姓名', '性别', '年龄', '身份', '与主角关系'];
             const ancient = isAncientWorld(state); // 古风局：不显示微博/粉丝数这类现代字段
-            const chips = [npc && npc.性别, npc && npc.身份, npc && npc.年龄, rel && rel.关系]
-              .filter((x) => x != null && String(x).trim())
-              .map((x, j) => h('span', { className: 'sim-mchip', key: j }, String(x).trim()));
+            const chips = [['sex', npc && npc.性别], ['identity', npc && npc.身份], ['age', npc && npc.年龄], ['relation', rel && rel.关系]]
+              .filter(([, value]) => value != null && String(value).trim())
+              .map(([key, value]) => {
+                const full = String(value).trim();
+                const characters = key === 'identity' ? Array.from(full) : [];
+                const text = characters.length > 10 ? characters.slice(0, 10).join('') + '…' : full;
+                return h('span', { className: 'sim-mchip' + (key === 'identity' ? ' sim-actor-identity' : ''), key, 'data-actor-head-field': key }, text);
+              });
 
             // ── 底部的 JSON 编辑通道 ──
             /** 点一下把这个字段填进去；已经填过的再点一次撤回原值 */
@@ -12537,21 +12554,24 @@ function toggleFans(npc) {
               { className: 'sim-mask', onClick: () => setNpcOpen(null) },
               h(
                 'div',
-                { className: 'sim-modal' + (editing ? '' : ' viewing'), onClick: (e) => e.stopPropagation() },
+                { className: 'sim-modal sim-actor-modal' + (editing ? '' : ' viewing'), onClick: (e) => e.stopPropagation() },
                 h(
                   'div',
-                  { className: 'sim-modal-h' },
+                  { className: 'sim-modal-h sim-actor-modal-h' },
                   h('div', { className: 'who' }, h('div', { className: 'nm' }, c.nm), h('div', { className: 'chips' }, chips)),
+                  h('div', { className: 'sim-actor-actions' },
                   kind === 'npc' && npc
                     ? h('button', {
                         className: 'sim-npc-star on-modal' + (npc.重要 ? ' on' : ''),
                         title: npc.重要 ? '取消重要' : '标为重要角色',
+                        'aria-label': npc.重要 ? '取消重要' : '标为重要角色',
                         onClick: () => toggleImportant(npc),
-                      }, npc.重要 ? '★ 重要' : '☆ 标为重要')
+                      }, h('span', { 'aria-hidden': true }, npc.重要 ? '★' : '☆'), h('span', { className: 'sim-actor-star-label' }, npc.重要 ? '重要' : '标为重要'))
                     : null,
                   kind === 'npc' && npc
                     ? h('button', {
                         className: 'sim-npc-del on-modal',
+                        'aria-label': '删除角色',
                         title: '从这个列表里删掉这个人',
                         onClick: () => {
                           ask('从角色列表里删掉「' + c.nm + '」？').then((ok) => {
@@ -12567,12 +12587,14 @@ function toggleFans(npc) {
                     'button',
                     {
                       className: 'sim-modal-edit' + (editing ? ' on' : ''),
+                      'aria-label': editing ? '完成修改' : '编辑角色',
                       title: editing ? '完成修改' : '修改这个角色的设定',
                       onClick: () => setNpcOpen(Object.assign({}, npcOpen, { editing: !editing })),
                     },
                     editing ? '✓' : '✏'
                   ),
-                  h('button', { className: 'sim-modal-x', title: '关闭', onClick: () => setNpcOpen(null) }, '✕')
+                  h('button', { className: 'sim-modal-x', title: '关闭', 'aria-label': '关闭角色详情', onClick: () => setNpcOpen(null) }, '✕')
+                  )
                 ),
                 h(
                   'div',
