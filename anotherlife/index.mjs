@@ -21,6 +21,7 @@ import { WARDROBE_RULES, wardrobeCompletionTool, inspectWardrobeResult, currentW
 import { INITIAL_DATA_RULES, initialParseTool, mergeInitialData, sanitizeInitialHomes, initialDataIssues, initialRepairPatch, seedInitialAssets } from './lib/initial-data.mjs';
 import {createCreationHost,worldCreationTool,creationWorldResult,normalizeCreationCareer,recordCreationWarnings,syncCreationWardrobes,creationBasis,WORLD_CREATION_RULES} from './lib/creation-flow.mjs';
 import { createWritingStyleHost } from './lib/writing-style-host.mjs';
+import { cpEnabled, cpWeiboFacts, cpContext, CP_RULES, CP_SCHEMA, cpPayload, applyCPUpdates } from './lib/cp-core.mjs';
 import { STYLE_PREFIX } from './lib/writing-style-core.mjs';
 import { captureScentTextState, synchronizeScentText, isAdultTextSyncActor } from './lib/scent-text-sync.mjs';
 import {initPromptStore,registerPromptDefaults,applyBlockOverrides,promptText,promptBlock,loadPrompts,PROMPT_FILE_NAME} from './lib/prompt-overrides.mjs';
@@ -284,7 +285,7 @@ const WEAR_KEYS = ['头部', '上衣', '内衣', '内裤', '下衣', '袜子', '
    * 表性格／里性格／当前想法以前也在这里，那是分错了：它们是核心人设，
    * 正文模型不知道主角什么性格，写出来的人就不像。现在照常注入。
    */
-  const PANEL_ONLY = ['标签'];
+  const PANEL_ONLY = ['标签', 'cpState', 'cpEpoch'];
   /** 实体资产里代表楼层列表的字段名（会被拆成逐层条目） */
   const FLOOR_KEYS = ['每一层的设施', '楼层', '各层设施', '各层'];
 
@@ -1313,6 +1314,7 @@ async function activeWritingSkill() {
   function applyDiffs(s, diffs) {
     for (const d of diffs || []) {
       if (!d || !isSafePath(d.path)) continue;
+      if (d.path[0] === 'protagonist' && (['cpState','cpEpoch','是否艺人'].includes(d.path[1]) || (d.path.length === 1 && d.to && ['cpState','cpEpoch'].some(k => Object.hasOwn(d.to,k))))) continue;
       try { assertSafeValue(d.to); } catch (e) { continue; }
       // 顶层白名单。模型偶尔把路径写成 [身体] 而不是 [protagonist, 身体]，
       // 那样会在存档根上凭空多一个键，界面读不到，等于这条更新静默丢了。
@@ -4984,6 +4986,7 @@ const SETTLE_TOOL = {
       实体资产: { type: 'array', description: '完整的企业及经营场所清单，未变的条目保留', items: { type: 'object', additionalProperties: true } },
       虚拟资产: { type: 'array', items: { type: 'object', additionalProperties: true } },
       simulationUpdates: SIMULATION_UPDATE_SCHEMA,
+      cpUpdates: CP_SCHEMA,
       skills_items: { type: 'object', additionalProperties: true },
       world: { type: 'object', description: '世界观字段级变化，键是字段名、值是新的值', additionalProperties: true },
       protagonist: { type: 'object', description: '主角字段级变化', additionalProperties: true },
@@ -6141,6 +6144,13 @@ let aiPickFail = '';
     return v;
   }
 
+  async function prepareCPFrame(s, gid, seq, body, pending, includeReplyCards = false) {
+    if (!cpEnabled(s)) return { facts: [], cacheIds: [], enabled: false, epoch: s.protagonist?.cpEpoch || 0 };
+    const staged = stagedExtras.get(s);
+    const cache = normalizeWeiboCache(staged?.weibo || await readJson(weiboCachePath(gid)));
+    return { ...cpWeiboFacts(s, { cache, pending, body, seq, includeReplyCards }), enabled: true, epoch: s.protagonist.cpEpoch || 0 };
+  }
+
   function settleSnapshot(s) {
     const p = Object.assign({}, s.protagonist || {});
     PANEL_ONLY.forEach((k) => {
@@ -7053,6 +7063,7 @@ async function settleSystemPrompt(s, gameId, body, phoneBridge) {
       const box = sj[root];
       if (!box || typeof box !== 'object' || Array.isArray(box)) return;
       Object.keys(box).forEach((k) => {
+        if (root === 'protagonist' && ['cpState','cpEpoch','是否艺人'].includes(k)) return;
         if (s.simulation?.enabled && (k === '技能' )) return;
         if (k.startsWith('_')) { diagnostics.push({ kind: 'invalid-update', path: [root, k], why: '不允许修改内部状态', ...rejectedUpdateDetail({path:[root,k],to:originalUpdate?.[root]?.[k]}) }); return; }
         const cur = (s[root] || {})[k];
@@ -7778,6 +7789,8 @@ if (微博新条.length) {
       if (近场) {
         userContent += '\n\n【还是这些，别忘了】\n' + 近场 + '\n· 结尾停在事情正在走的位置 —— 不要每轮都让人物等主角发话。';
       }
+    const cpStoryFrame = await prepareCPFrame(s, gid, seq, '', 微博待发);
+    userContent += cpContext(s, cpStoryFrame.facts);
     if(phoneBridge.input)userContent+='\n\n'+phoneBridge.input;
     setProg(gid, 'story', '正在请求正文（主模型）');
     // 收到多少字就报一下，免得看着像卡死（尤其是不支持流式的中转，要等很久）
@@ -7906,6 +7919,9 @@ if (微博新条.length) {
     const dataBefore = { protagonist: JSON.parse(JSON.stringify({ 金钱: s.protagonist && s.protagonist.金钱, 住所: s.protagonist && s.protagonist.住所, 收支: s.protagonist && s.protagonist.收支 })), 实体资产: JSON.parse(JSON.stringify(s.实体资产 || [])) };
     const profileBeforeNames=new Set((s.npcs||[]).map(n=>n.姓名));
     const dataWarnings = [], settlementDiagnostics = [];
+    const cpTextVersion = randomUUID();
+    const cpFrame = await prepareCPFrame(s, gid, seq, sp.body, 微博待发, true);
+    let cpSubmitted = null, cpSettlementOK = false;
     let diffs = [];
     let summary = '';
     let settleOptions = [];
@@ -7915,7 +7931,7 @@ if (微博新条.length) {
       setProg(gid, 'settle', '结算中 · 变量变化 + 小总结');
       try {
         const msgs = [
-          { role: 'system', content: await settleSystemPrompt(s, gid, sp.body, phoneBridge) + (s.simulation?.enabled ? '\n' + promptText('simulation',SIMULATION_RULES) + (genericPlan ? genericPlan.context : genericHost.context(s)) : '') },
+          { role: 'system', content: await settleSystemPrompt(s, gid, sp.body, phoneBridge) + (cpFrame.enabled ? '\n' + CP_RULES + cpContext(s, cpFrame.facts) : '') + (s.simulation?.enabled ? '\n' + promptText('simulation',SIMULATION_RULES) + (genericPlan ? genericPlan.context : genericHost.context(s)) : '') },
           { role: 'user', content: '本轮正文：\n' + sp.body + (phoneBridge.settlement?'\n\n'+phoneBridge.settlement:'') },
         ];
       // 结算也量一下：这次调用的输入量一直是黑盒，而它每轮都跑一次。
@@ -7949,6 +7965,8 @@ if (微博新条.length) {
           .replace(/<think>[\s\S]*$/i, '');
         const sj = pickToolCall(settleRes) || parseJsonLoose(settleBody);
         if (sj) {
+          cpSubmitted = cpPayload(sj);
+          cpSettlementOK = !/length|max.?tokens|truncat/i.test(JSON.stringify(settleRes?.finish || ''));
           const diagnostics = [];
           s._simulationStagedActions = genericPlan ? genericPlan.actions.filter(x => x.type !== 'request') : [];
           try { diffs.push(...settleToDiffs(s, sj, diagnostics)); } finally { delete s._simulationStagedActions; }
@@ -8104,6 +8122,21 @@ if (微博新条.length) {
     } catch (e) {
       await turnLog('[微博] 回复处理失败：' + String((e && e.message) || e));
     }
+    if (cpFrame.enabled && cpSettlementOK && !cutStory && !(opts.shouldStop && opts.shouldStop())) {
+      try {
+        const live = await readJson(statePath(gid));
+        const epochMatches = !live || (live.protagonist?.cpEpoch || 0) === cpFrame.epoch;
+        if (live && (!epochMatches || live.protagonist?.是否艺人 !== true)) {
+          s.protagonist.是否艺人 = live.protagonist?.是否艺人 === true;
+          s.protagonist.cpEpoch = live.protagonist?.cpEpoch || 0;
+          if (live.protagonist?.cpState) s.protagonist.cpState = JSON.parse(JSON.stringify(live.protagonist.cpState));
+        } else {
+          const actualFrame = await prepareCPFrame(s, gid, seq, sp.body, 微博待发);
+          const result = applyCPUpdates(s, cpSubmitted, { ...actualFrame, body: sp.body, seq, textVersion: cpTextVersion, date: String(s.world?.当前日期时间 || ''), enabledAtStart: cpFrame.enabled && epochMatches });
+          diffs.push(...result.diffs); dataWarnings.push(...result.issues);
+        }
+      } catch (e) { dataWarnings.push({step:'CP',why:'CP结算未保存，旧数据保留：'+String(e.message || e)}); }
+    }
     const finalOptions = pickOptions(sp.options, settleOptions);
     if (finalOptions.length !== ROUTE_NAMES.length) dataWarnings.push({ step: '选项', why: '行动选项不完整' });
     const warningsByStep = new Map();
@@ -8117,7 +8150,7 @@ if (微博新条.length) {
       seq,
       role: 'assistant',
       ...(genericPlan ? { simulationTurnComplete: !cutStory && !(opts.shouldStop && opts.shouldStop()), simulationActionResults: genericPlan.outcomes || [], simulationConsumedActionIds: genericPlan.consumedIds || [] } : {}),
-      textVersion: randomUUID(),
+      textVersion: cpTextVersion,
       think: sp.think,
       body: sp.body,
       summary,
@@ -11112,6 +11145,20 @@ const HUMAN_MSG = [
 // 否则重发之后他「评论过」这个动作在正文里凭空消失。改成按轮次存、按轮次取。
 const WB_PENDING = {};   // gameId -> [{ 微博作者, 微博正文, 回谁, 评论, 时, 轮次 }]
 /** 记一条待发评论。回谁 为空表示直接评那条微博，否则是评某条评论。 */
+reg('weiboInteract', async ({gameId, postId, type, actionId}) => {
+  if (!['like','unlike','repost'].includes(type)) throw new Error('不支持的微博操作');
+  if (RUNNING.has(String(gameId || ''))) throw new Error('请等待当前剧情结算完成后再操作微博');
+  const s = await loadState(gameId), cache = normalizeWeiboCache(await readJson(weiboCachePath(gameId)));
+  const post = matchWeiboPost(cache, {postId}); if (!post) throw new Error('这条微博已变化，请刷新');
+  const actions = Array.isArray(s.weiboInteractions) ? s.weiboInteractions : [], id = String(actionId || randomUUID());
+  const existing = actions.find(a=>a.id===id); if(existing)return {ok:true,action:existing,state:await withKeyStatus(s)};
+  const latest = actions.filter(a=>a.postId===post.id && ['like','unlike'].includes(a.type)).at(-1);
+  if ((type==='like' && latest?.type==='like') || (type==='unlike' && latest?.type!=='like') || (type==='repost' && actions.some(a=>a.postId===post.id&&a.type==='repost'))) return {ok:true,state:await withKeyStatus(s)};
+  const action={id,postId:post.id,type,target:String(post.作者||''),postBody:String(post.正文||''),text:String(post.正文||''),seq:Number(s.story?.current_message_index)||0,date:String(s.world?.当前日期时间||''),epoch:cpEnabled(s)?(s.protagonist.cpEpoch||0):null};
+  s.weiboInteractions=actions.concat([action]);
+  await saveState(s); return {ok:true,action,state:await withKeyStatus(s)};
+});
+
 reg('queueWeiboComment', async ({ gameId, postId, parentCommentId, actionId, 微博作者, 微博正文, 回谁, 回内容, 评论 }) => {
   const text = String(评论 || '').trim();
   if (!text) throw new Error('评论不能为空');
@@ -11134,7 +11181,7 @@ reg('queueWeiboComment', async ({ gameId, postId, parentCommentId, actionId, 微
   }
   if (parentCommentId && !parent) throw new Error('目标评论已变化，请重新选择');
   const round = Number((state.story || {}).current_message_index) || 0;
-  const action = { id, postId: post.id, parentCommentId: parent ? parent.id : '', 微博作者: String(post.作者 || ''), 微博正文: String(post.正文 || ''), 回谁: parent ? String(parent.谁 || '') : '', 回内容: parent ? String(parent.内容 || '') : '', 评论: text, 时: Date.now(), 轮次: round, postSnapshot: JSON.parse(JSON.stringify(post)) };
+  const action = { id, cpEpoch: cpEnabled(state) ? (state.protagonist.cpEpoch || 0) : null, postId: post.id, parentCommentId: parent ? parent.id : '', 微博作者: String(post.作者 || ''), 微博正文: String(post.正文 || ''), 回谁: parent ? String(parent.谁 || '') : '', 回内容: parent ? String(parent.内容 || '') : '', 评论: text, 时: Date.now(), 轮次: round, postSnapshot: JSON.parse(JSON.stringify(post)) };
   const item = { id, postId: post.id, parentCommentId: action.parentCommentId, 作者: action.微博作者, 正文: action.微博正文.slice(0, 60), 回谁: action.回谁, 回内容: action.回内容, 评论: text, 轮次: round };
   state.wbMine = (state.wbMine || []).concat([item]);
   state.weiboPending = mergeWeiboActions(pending, [action]);
@@ -11650,6 +11697,7 @@ function 我的微博资料(s) {
     }
   });
 
+  for (const a of s.weiboInteractions || []) if(a.type === 'repost') 线.push({作者:me,时间:a.date,正文:'转发 @'+a.target+'：'+a.postBody,原作者:a.target,轮次:a.seq,id:a.id});
   return { 资料, 微博: 线.reverse() };   // 新的在前
 }
 
@@ -11819,7 +11867,14 @@ reg('backfillPhones', async ({ gameId }) => {
 reg('setStarMode', async ({ gameId, on }) => {
   const s = await loadState(gameId);
   if (!s.protagonist) s.protagonist = {};
+  const changed = (s.protagonist.是否艺人 === true) !== !!on;
   s.protagonist.是否艺人 = !!on;
+  if (changed) s.protagonist.cpEpoch = (Number(s.protagonist.cpEpoch) || 0) + 1;
+  if (on && changed && s.protagonist.cpState) {
+    const frame = await prepareCPFrame(s, gameId, Number(s.story?.current_message_index)||0, '', []);
+    s.protagonist.cpState.seenSources = [...new Set([...(s.protagonist.cpState.seenSources || []), ...frame.cacheIds])];
+    s.protagonist.cpState.weiboBaseline = true;
+  }
   await saveState(s);
   await turnLog('[星途] 开关 → ' + (on ? '开' : '关'));
   return await loadState(gameId);   // 返回完整状态，界面用 run() 吸收
@@ -12324,8 +12379,15 @@ reg('rebuildSummaries', async ({ gameId }) => {
     // 看着像没点上（踩过）。
     resetProg(gameId);
     setProg(gameId, 'settle', '重算变量中 · 变量变化 + 小总结');
+    const cpPreview = JSON.parse(JSON.stringify(s));
+    if (!s.simulation?.enabled) rollbackDiffs(cpPreview, latest.diffs || []);
+    cpPreview.protagonist.是否艺人 = s.protagonist.是否艺人;
+    cpPreview.protagonist.cpEpoch = s.protagonist.cpEpoch || 0;
+    const cpPending = s.transcript.find(t=>t.role==='user'&&t.seq===latest.seq)?.weiboActions || [];
+    const cpRecalcFrame = await prepareCPFrame(cpPreview, gameId, latest.seq, latest.body, cpPending);
+    const cpRecalcContext = cpRecalcFrame.enabled ? '\n' + CP_RULES + cpContext(cpPreview, cpRecalcFrame.facts) + '\n本次CP局势给的是待重算基准；同一正文/微博事件不能再次叠加。' : '';
     const msgs = [
-      { role: 'system', content: await settleSystemPrompt(s, gameId, latest.body) + (s.simulation?.enabled ? '\n' + promptText('simulation',SIMULATION_RULES) + genericHost.context(s) + '\n本次仅重核叙事资料，已确认经营、资金、经验和奖励记录保持不变；不得重报数值事件。' : '') },
+      { role: 'system', content: await settleSystemPrompt(s, gameId, latest.body) + cpRecalcContext + (s.simulation?.enabled ? '\n' + promptText('simulation',SIMULATION_RULES) + genericHost.context(s) + '\n本次仅重核叙事资料，已确认经营、资金、经验和奖励记录保持不变；不得重报数值事件。' : '') },
       { role: 'user', content: '本轮正文：\n' + latest.body + '\n\n' +
         '【这是重新结算】上一轮的变量结算没成功，所以「当前状态变量」还停在**这一轮之前**的样子 —— ' +
         '那里面写的 舆论／粉丝动态／当前状态／当前想法／穿着 都是旧值。' +
@@ -12353,6 +12415,19 @@ reg('rebuildSummaries', async ({ gameId }) => {
         (head ? '它回的是：\n' + head : '（正文是空的）')
       );
     }
+    if (cpRecalcFrame.enabled && /length|max.?tokens|truncat/i.test(JSON.stringify(res2?.finish || ''))) throw new Error('CP重算未完成，旧结果保留');
+    const oldCPState = s.protagonist.cpState ? JSON.parse(JSON.stringify(s.protagonist.cpState)) : undefined;
+    const oldCPDiffs = (latest.diffs || []).filter(d=>d.by==='cp').map(d=>JSON.parse(JSON.stringify(d)));
+    const recalculateCP = () => {
+      const value = cpPayload(sj);
+      const result = applyCPUpdates(s, value, {...cpRecalcFrame, body:latest.body,seq:latest.seq,textVersion:latest.textVersion||'',date:String(s.world?.当前日期时间||''),enabledAtStart:cpRecalcFrame.enabled});
+      const failed = value == null || result.issues.some(i=>/格式不可识别/.test(i.why));
+      if (!s.simulation?.enabled && oldCPState && cpRecalcFrame.enabled && failed) {
+        s.protagonist.cpState = oldCPState;
+        return {diffs:oldCPDiffs,issues:result.issues.concat([{step:'CP',why:'重算没有完整返回CP结果，原CP数据及回滚记录保留'}])};
+      }
+      return result;
+    };
     if (s.simulation?.enabled) {
       const diagnostics = [];
       const compatibility=normalizeSettlementUpdate(s,sj,diagnostics);
@@ -12364,6 +12439,7 @@ reg('rebuildSummaries', async ({ gameId }) => {
       const repaired = settleToDiffs(s, safe, diagnostics, compatibility.submittedFor);
       applyDiffs(s, repaired);
       tickSockScent(s, latest.body).forEach(d => repaired.push(d));
+      const cpResult = recalculateCP(); repaired.push(...cpResult.diffs); diagnostics.push(...cpResult.issues);
       latest.diffs = (latest.diffs || []).concat(repaired);
       latest.summary = String(safe.summary || latest.summary || '');
       latest.options = pickOptions(safe.options, latest.options);
@@ -12386,6 +12462,7 @@ reg('rebuildSummaries', async ({ gameId }) => {
     // 不跑它的话模型新写的袜子会一直缺字段：胶囊上的浓度环退化成点阵，气味还是模型写的那句。
     // 这时 dh 通常是 0（时间没动），所以它只补值、不累加。
     tickSockScent(s, latest.body).forEach((d) => diffs.push(d));
+    const cpResult = recalculateCP(); diffs.push(...cpResult.diffs); diagnostics.push(...cpResult.issues);
     refreshRecalculatedIssues(s,latest,{before:beforeRecalculation,diagnostics});
     await turnLog('[重算结算] gameId='+gameId+' seq='+latest.seq+' mode=变量重算 accepted='+diffs.length+' rejected='+diagnostics.length);
     setProg(gameId, 'save', '写回存档');

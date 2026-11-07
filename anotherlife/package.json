@@ -1,7 +1,7 @@
 {
   "name": "anotherlife",
   "private": true,
-  "version": "1.3.84",
+  "version": "1.3.85",
   "type": "module",
   "exports": {
     ".": "./index.mjs",
@@ -16,7 +16,7 @@
     }
   },
   "scripts": {
-    "check": "node --check index.mjs && node --check client.js && node --check lib/data-integrity.mjs && node --check lib/feed-core.mjs && node --check lib/initial-data.mjs && node --check lib/phone-core.mjs && node --check lib/runtime-core.mjs && node --check lib/state-transactions.mjs && node --check lib/story-parser.mjs && node --check lib/wardrobe-repair.mjs && node --check lib/weibo-core.mjs && node --check lib/phone-context.mjs && node --check lib/phone-story.mjs && node --check lib/feed-story.mjs && node --check lib/npc-profile.mjs && node --check lib/scent-clock.mjs && node --check lib/initial-location.mjs && node --check lib/management-core.mjs && node --check lib/generic-simulation.mjs && node --check lib/generic-host.mjs && node --check lib/generic-client.js && node --check lib/actor-identities.mjs && node --check scripts/build-generic-client.mjs && node scripts/build-generic-client.mjs --check && node --check lib/opening-presets.js && node --check lib/creation-flow.mjs && node --check lib/setup-result.mjs && node --check lib/creation-wardrobe.mjs && node --check lib/writing-style-core.mjs && node --check lib/writing-style-host.mjs && node --check lib/writing-style-client.js && node scripts/build-writing-style-client.mjs --check && node --check lib/writing-style-transfer.mjs && node --check lib/scent-text-sync.mjs",
+    "check": "node --check index.mjs && node --check client.js && node --check lib/data-integrity.mjs && node --check lib/feed-core.mjs && node --check lib/initial-data.mjs && node --check lib/phone-core.mjs && node --check lib/runtime-core.mjs && node --check lib/state-transactions.mjs && node --check lib/story-parser.mjs && node --check lib/wardrobe-repair.mjs && node --check lib/weibo-core.mjs && node --check lib/phone-context.mjs && node --check lib/phone-story.mjs && node --check lib/feed-story.mjs && node --check lib/npc-profile.mjs && node --check lib/scent-clock.mjs && node --check lib/initial-location.mjs && node --check lib/management-core.mjs && node --check lib/generic-simulation.mjs && node --check lib/generic-host.mjs && node --check lib/generic-client.js && node --check lib/actor-identities.mjs && node --check scripts/build-generic-client.mjs && node scripts/build-generic-client.mjs --check && node --check lib/opening-presets.js && node --check lib/creation-flow.mjs && node --check lib/setup-result.mjs && node --check lib/creation-wardrobe.mjs && node --check lib/writing-style-core.mjs && node --check lib/writing-style-host.mjs && node --check lib/writing-style-client.js && node scripts/build-writing-style-client.mjs --check && node --check lib/writing-style-transfer.mjs && node --check lib/scent-text-sync.mjs && node --check lib/cp-core.mjs && node --check lib/cp-client.js && node --check scripts/build-cp-client.mjs && node scripts/build-cp-client.mjs --check",
     "test": "node --experimental-vm-modules --test tests/*.test.mjs",
     "build:generic": "node scripts/build-generic-client.mjs",
     "build:writing-style": "node scripts/build-writing-style-client.mjs"
