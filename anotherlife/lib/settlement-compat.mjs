@@ -7,7 +7,7 @@ const pathRoots={主角:'protagonist',玩家:'protagonist',世界:'world',世界
 const boxes={主角:'protagonist',玩家:'protagonist',世界:'world',世界状态:'world'};
 const lists={角色:'chars',人物:'chars',npcs:'chars',NPC:'chars',人物关系:'relationships',关系:'relationships',rels:'relationships'};
 const standard=new Set(['world','protagonist','chars','relationships','other','diffs','实体资产','虚拟资产','skills_items']);
-const metadata=new Set(['summary','options','simulationUpdates','粉丝动态','resetIncomeBaseline','固定资料变更依据','think','reasoning','analysis','检查清单','思考','导演笔记']);
+const metadata=new Set(['summary','options','simulationUpdates','cpUpdates','CP动态','CP更新','粉丝动态','resetIncomeBaseline','固定资料变更依据','think','reasoning','analysis','检查清单','思考','导演笔记']);
 const internal=new Set(['config','story','transcript','simulation','phone','gameId','phase']);
 const decoded=v=>{if(typeof v!=='string'||!/^\s*[\[{]/.test(v))return v;try{const out=JSON.parse(v);assertSafeValue(out);return out;}catch{return v;}};
 function location(s,key){if(daily.has(key))return ['protagonist',key];const p=own(s.protagonist,key),w=own(s.world,key);return p!==w?[p?'protagonist':'world',key]:null;}
