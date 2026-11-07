@@ -4234,7 +4234,7 @@ function tickBodyTraces(s, dh) {
       raw.强度 = next;
     });
   };
-  walk(s.protagonist, []);
+  walk(s.protagonist, ['protagonist']);
   npcs.forEach((n, i) => walk(n, ['npcs', i]));
   return out;
 }
