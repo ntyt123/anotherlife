@@ -3529,8 +3529,15 @@ const FAN_LAYERS = ['唯粉', 'CP粉', '路人盘', '黑粉'];
  * 入参 changes: [{ 姓名, 圈层, 增减, 原因 }]
  * 只处理「追踪粉丝」为真的角色；没开标记的一律跳过（省得每轮都更新一堆路人艺人）。
  */
+function fanEventDiffs(before, after, path) {
+  if (JSON.stringify(before) === JSON.stringify(after)) return [];
+  if (before && after && typeof before === 'object' && typeof after === 'object' && !Array.isArray(before) && !Array.isArray(after)) {
+    return Object.keys(after).flatMap(key => fanEventDiffs(before[key], after[key], path.concat(key)));
+  }
+  return [{path,from:before,to:after,byFan:true,byFanEvent:true,_had:before!==undefined,_prev:before===undefined?null:JSON.parse(JSON.stringify(before))}];
+}
 function applyFanDeltas(s, changes, now) {
-  const out = [];
+  const out = [], snapshots = new Map();
   const list = Array.isArray(changes) ? changes : [];
   if (!list.length) return out;
   const owners = [{ who: s.protagonist, base: ['protagonist'] }].concat(
@@ -3550,6 +3557,7 @@ function applyFanDeltas(s, changes, now) {
     if (!hit || !hit.who) return;
     // 先看标记：没开「追踪粉丝」的角色一律不动（省钱、省 token）
     if (hit.who.追踪粉丝 !== true && hit.who !== s.protagonist) return;
+    if (!snapshots.has(hit.who)) snapshots.set(hit.who, { path: hit.base.concat('粉丝'), before: hit.who.粉丝 === undefined ? undefined : JSON.parse(JSON.stringify(hit.who.粉丝)) });
     // 没有 粉丝 字段就建一个：老存档、或刚开标记的角色都是这种情况。
     // 总量优先从旧的「全网粉丝数」搬（数字或「2400万」这种写法都认），搬不动就先给个普通量级。
     const f = (hit.who.粉丝 && typeof hit.who.粉丝 === 'object') ? hit.who.粉丝 : (function () {
@@ -3584,21 +3592,22 @@ function applyFanDeltas(s, changes, now) {
     const after = Math.max(0, Math.round(before + delta));
     if (after === before) return;
     // 圈层明细
-    out.push({ path: hit.base.concat(['粉丝', '层级', layer, '量']), from: before, to: after, byFan: true, _had: true, _prev: before });
+
     cur.量 = after;
     if (c.原因) cur.状态 = String(c.原因).slice(0, 40);
     f.层级[layer] = cur;
     // 总量与本周
     const totalBefore = Number(f.总量) || 0;
     const totalAfter = Math.max(0, totalBefore + delta);
-    out.push({ path: hit.base.concat(['粉丝', '总量']), from: totalBefore, to: totalAfter, byFan: true, _had: true, _prev: totalBefore });
+
     f.总量 = totalAfter;
     const weekBefore = Number(f.本周) || 0;
-    out.push({ path: hit.base.concat(['粉丝', '本周']), from: weekBefore, to: weekBefore + delta, byFan: true, _had: true, _prev: weekBefore });
+
     f.本周 = weekBefore + delta;
     // 记下「最近一次有动态」的时间：tickFans 靠它判断该不该自然掉粉
     if (now != null) f.最近动态 = now;
   });
+  for (const [who, snapshot] of snapshots) out.push(...fanEventDiffs(snapshot.before, who.粉丝, snapshot.path));
   return out;
 }
 
@@ -7963,15 +7972,18 @@ if (微博新条.length) {
           .replace(/<think>[\s\S]*?<\/think>/gi, '')
           // 没有闭合的 <think>（被输出预算截断）：从 <think> 起整段丢掉
           .replace(/<think>[\s\S]*$/i, '');
-        const sj = pickToolCall(settleRes) || parseJsonLoose(settleBody);
+        let sj = pickToolCall(settleRes) || parseJsonLoose(settleBody);
         if (sj) {
+          const originalSettlement = sj;
           cpSubmitted = cpPayload(sj);
           cpSettlementOK = !/length|max.?tokens|truncat/i.test(JSON.stringify(settleRes?.finish || ''));
           const diagnostics = [];
           s._simulationStagedActions = genericPlan ? genericPlan.actions.filter(x => x.type !== 'request') : [];
-          try { diffs.push(...settleToDiffs(s, sj, diagnostics)); } finally { delete s._simulationStagedActions; }
+          const compatibility = normalizeSettlementUpdate(s, sj, diagnostics);
+          sj = compatibility.update;
+          try { diffs.push(...settleToDiffs(s, sj, diagnostics, compatibility.submittedFor)); } finally { delete s._simulationStagedActions; }
           if (diagnostics.length) { const issue=settlementIssueFromDiagnostics(diagnostics); settlementDiagnostics.push(...issue.details); dataWarnings.push({ step:'资料',why:issue.why }); }
-          await turnLog('[settle-shape] gameId=' + gid + ' seq=' + seq + ' keys=' + Object.keys(sj).join(',') + ' other=' + (Array.isArray(sj.other) ? sj.other.length : 0) + ' accepted=' + diffs.length + ' rejected=' + diagnostics.length);
+          await turnLog('[settle-shape] gameId=' + gid + ' seq=' + seq + ' keys=' + Object.keys(originalSettlement).join(',') + ' other=' + (Array.isArray(originalSettlement.other) ? originalSettlement.other.length : 0) + ' accepted=' + diffs.length + ' rejected=' + diagnostics.length);
           summary = String(sj.summary || '');
           settleOptions = Array.isArray(sj.options) ? sj.options : [];
           applyDiffs(s, diffs);
@@ -12451,13 +12463,26 @@ reg('rebuildSummaries', async ({ gameId }) => {
       return withKeyStatus(s);
     }
     // 先把这个旧轮已经应用过的变量改动退回去，再按新结果重新算 —— 否则是叠加两次
+    const oldFanDiffs = (latest.diffs || []).filter(d=>d.byFan===true).map(d=>JSON.parse(JSON.stringify(d)));
+    const oldFanValues = oldFanDiffs.map(d=>{const value=getByPath(s,d.path);return {path:d.path,value:value===undefined?undefined:JSON.parse(JSON.stringify(value))};});
     rollbackDiffs(s, latest.diffs || []);
     const beforeRecalculation=JSON.parse(JSON.stringify(s)),diagnostics=[];
-    const diffs = settleToDiffs(s, sj, diagnostics);
+    const compatibility = normalizeSettlementUpdate(s, sj, diagnostics);
+    const diffs = settleToDiffs(s, compatibility.update, diagnostics, compatibility.submittedFor);
     latest.diffs = diffs;
     latest.summary = String(sj.summary || '');
     latest.options = pickOptions(sj.options, latest.options);
     applyDiffs(s, diffs);
+    const fanRejected = diagnostics.some(d=>d.path?.[0]==='粉丝动态');
+    if (Object.hasOwn(compatibility.update,'粉丝动态') && !fanRejected) {
+      diffs.push(...applyFanDeltas(s, compatibility.update.粉丝动态, Number(s.story?.sockTick)));
+      ensureFanFields(s);
+      diffs.push(...tickFans(s, Number(s.story?.sockTick)));
+    } else if (oldFanDiffs.length) {
+      for (const item of oldFanValues) { if(item.value===undefined)delByPath(s,item.path);else setByPath(s,item.path,item.value); }
+      diffs.push(...oldFanDiffs);
+      if(fanRejected)diagnostics.push({path:['粉丝动态'],why:'粉丝事件未完整返回，原有粉丝结果及回滚记录保留'});
+    }
     // 重算只跑了 applyDiffs —— 补「气味强度 / 穿着小时 / 材质」那段在 tickSockScent 里，
     // 不跑它的话模型新写的袜子会一直缺字段：胶囊上的浓度环退化成点阵，气味还是模型写的那句。
     // 这时 dh 通常是 0（时间没动），所以它只补值、不累加。

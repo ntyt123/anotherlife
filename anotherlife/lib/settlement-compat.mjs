@@ -42,7 +42,21 @@ export function normalizeSettlementUpdate(state,raw,diagnostics=[]){
   const remember=(source,path,original)=>{const k=key(source,path);if(!submitted.has(k))submitted.set(k,[]);submitted.get(k).push(original);};
   const warn=(path,value,why)=>diagnostics.push({kind:'unmapped-update',source:'compatibility',path:Array.isArray(path)?path:[],why,...rejectedUpdateDetail({path,value})});
   const append=(source,row,original)=>{if(!Array.isArray(update[source]))update[source]=[];update[source].push(row);remember(source,row?.path,original);};
-  for(const source of ['diffs','other'])if(Array.isArray(raw[source])){update[source]=[];for(const original of raw[source]){const row=obj(original)?{...original,path:pathOf(state,original.path)}:original;append(source,row,original);}}
+  const fanGroups=[];
+  const collectFans=(value,path)=>{fanGroups.push({value:decoded(value),path});};
+  if(own(raw,'粉丝动态'))collectFans(raw.粉丝动态,['粉丝动态']);
+  for(const source of ['diffs','other'])if(Array.isArray(raw[source])){
+    update[source]=[];
+    for(const original of raw[source]){
+      const eventPath=obj(original)?pathOf({protagonist:{},world:{}},original.path):null;
+      if(Array.isArray(eventPath)&&eventPath.length===1&&eventPath[0]==='粉丝动态'){
+        if(own(original,'to')||own(original,'value'))collectFans(own(original,'to')?original.to:original.value,eventPath);
+        else warn(eventPath,original,'粉丝动态缺少事件新值，未累计');
+        continue;
+      }
+      const row=obj(original)?{...original,path:pathOf(state,original.path)}:original;append(source,row,original);
+    }
+  }
   for(const root of ['world','protagonist'])if(own(raw,root)){const value=decoded(raw[root]);if(obj(value))update[root]={...value};else{warn([root],raw[root],'字段容器无法识别为对象，未应用');delete update[root];}}
   const put=(root,field,value,originalPath)=>{
     if(field.startsWith('_')){warn(originalPath,value,'不允许修改内部状态');return;}
@@ -61,6 +75,30 @@ export function normalizeSettlementUpdate(state,raw,diagnostics=[]){
     if(!target){warn([k],value,own(state.protagonist,k)&&own(state.world,k)?'字段同时存在于人物和世界，无法确定归属，未应用':'无法确定字段归属，未应用');delete update[k];continue;}
     try{put(target[0],target[1],k==='住所'?topHomes(state,value):value,[k]);}catch(error){warn([k],value,String(error.message||error));}
     delete update[k];
+  }
+  if(fanGroups.length){
+    const candidates=[],identities=new Map(),layers=new Set(['唯粉','CP粉','路人盘','黑粉']);
+    for(const [group,g] of fanGroups.entries()){
+      const rows=Array.isArray(g.value)?g.value:obj(g.value)?[g.value]:null;
+      if(!rows){warn(g.path,g.value,'粉丝动态内容不是事件列表，未累计');continue;}
+      for(const [index,c] of rows.entries()){
+        const name=String(c?.姓名??'').trim(),layer=String(c?.圈层??'').trim();
+        const v=typeof c?.增减==='string'?c.增减.replace(/[,，\s]/g,''):c?.增减,delta=Number(v);
+        if(!obj(c)||!name||!layers.has(layer)||!['number','string'].includes(typeof v)||v===''||!Number.isFinite(delta)){warn(g.path.concat(index),c,'粉丝事件需明确姓名、有效圈层和数值增减，未累计');continue;}
+        const row={...c,姓名:name,圈层:layer,增减:delta};
+        const identity=JSON.stringify([name,layer,String(c.原因||''),String(c.eventId??c.事件ID??c.id??'')]);
+        const entry={row,group,identity,path:g.path.concat(index)};candidates.push(entry);
+        if(!identities.has(identity))identities.set(identity,new Map());
+        const groups=identities.get(identity);if(!groups.has(group))groups.set(group,new Set());groups.get(group).add(delta);
+      }
+    }
+    const conflicts=new Set();
+    for(const [identity,groups] of identities){
+      const variants=new Set([...groups.values()].map(values=>JSON.stringify([...values].sort((a,b)=>a-b))));
+      if(variants.size>1){conflicts.add(identity);warn(['粉丝动态'],candidates.filter(c=>c.identity===identity).map(c=>c.row),'同一粉丝事件跨容器提交不同增减，未累计；请区分事件依据');}
+    }
+    const seen=new Set();update.粉丝动态=[];
+    for(const c of candidates){const key=c.identity+'|'+c.row.增减;if(conflicts.has(c.identity)||seen.has(key))continue;seen.add(key);update.粉丝动态.push(c.row);}
   }
   return {update,submittedFor:(row,source)=>{const rows=submitted.get(key(source,row?.path));return rows?.length?rows.shift():undefined;}};
 }
