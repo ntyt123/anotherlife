@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { findReplyAction } from './weibo-core.mjs';
+import { assertSafeValue } from './runtime-core.mjs';
 const clone = x => x === undefined ? undefined : JSON.parse(JSON.stringify(x));
 const hash = x => createHash('sha256').update(JSON.stringify(x)).digest('hex').slice(0, 24);
 const text = x => String(x ?? '').trim();
@@ -52,12 +53,56 @@ export function cpContext(s, facts = []) {
 }
 export const CP_SCHEMA = { type: 'array', description: '星途开启时提交有正文或已提供微博事实依据的CP事件；没有就空数组。禁止直接修改protagonist.cpState。', items: { type:'object', properties: { partner:{type:'string'}, type:{type:'string',enum:['create','activity']}, evidence:{type:'string'}, title:{type:'string'}, sourceIds:{type:'array',items:{type:'string'}}, count:{}, delta:{}, percent:{}, estimated:{type:'boolean'}, name:{type:'string'}, heat:{type:'number'}, cohesion:{type:'number'}, controversy:{type:'number'}, status:{type:'string'}, origin:{type:'string'}, topics:{type:'array',items:{type:'object',properties:{title:{type:'string'},comments:{type:'array',items:{type:'object',properties:{stance:{type:'string'},text:{type:'string'}},required:['text'],additionalProperties:true}}},required:['title','comments'],additionalProperties:true}} }, required:['partner','type','evidence','title'], additionalProperties:true } };
 export const CP_RULES = `【星途CP结算】仅在主角是否艺人=true时有效。只统计主角与明确女性艺人/演艺从业者的CP，不统计其他人的CP，不把嗑CP当真实恋情，不改好感/婚恋/现金/旧粉丝圈层。
-返回cpUpdates数组。首次type=create，必须引用本轮正文中明确已形成CP粉群体的原文证据；同框/私下喜欢/未来计划/否认尚未成立不能创建。partner写对应人物姓名或actorId。CP成立不能仅由微博普通点赞推断。成立前的旧微博不追溯补算。
-已有CP的公开活动、避嫌、澄清、退坑等正文新事实可用type=activity；evidence须引用本轮正文。已提供publicWeiboInteractions的实际点赞/取消点赞/评论/回复/转发也须纳入已有CP评估，填写对应sourceIds；同一互动被正文复述时合并为一项，不另外再记故事涨幅；输入中每条相关新互动都要覆盖，不能忽略。纯转述旧事不重复计数，延续同一活动可写已有eventId并追加讨论。
-数字：正文有明确总数写count，有增减写delta，有比例写percent（如-30表示下降30%）；同时有总数和增量优先count，只算一次。仅定性描述则依据已知规模、曝光、反应强弱给合理估算delta并estimated=true，不编造精确事实。形成但无明确人数时可估算初始人数。没相关事实不变，不随时间自动涨跌。
-每个有效事件给title、origin（作品/综艺/舞台/真人向等）、必要的heat/cohesion/controversy(0到100)及status。活动至少一个topics话题，每题3到5条不同立场comments:{stance,text}（CP粉/作品粉/唯粉/路人等），只讨论已发生的公开事实，不编造私下见面/官方声明/黑料；讨论猜测不是下轮新事件依据。没有更新不覆盖旧状态，缺失项留空而非写无/暂无。
-示例：cpUpdates:[{partner:'女艺人甲',type:'create',evidence:'观众为他们成立了CP应援群。',title:'合作作品带来第一批CP粉',delta:600,estimated:true,heat:28,cohesion:35,controversy:5,status:'初生',topics:[{title:'这对搭档的合作表现',comments:[{stance:'CP粉',text:'这次合作确实让人想继续关注。'},{stance:'作品粉',text:'先看作品本身。'},{stance:'路人',text:'观众喜欢搭档不代表两人已经恋爱。'}]}]}]。`;
+每次结算都返回cpUpdates数组；确实没有相关事件才返回[]，不能省略字段，也不能只在summary或普通说明里写CP事实。CP结果写进本次结算工具，使用普通JSON回复时同样保留cpUpdates。
+首次type=create：公开观众已经开始嗑两人的搭配、配对二创或弹幕留言，即使只是零星讨论，也可以记录初生CP。不要求成立应援群、超话、站子或达到固定人数；角色CP也可关联明确对应的两位演员。必须引用本轮原文，搭档归属必须明确，不能把第三方CP移给主角。单纯同框、私下喜欢、工作人员私下玩笑、未来计划或明确否认有人嗑的描述不创建。partner写对应人物姓名或actorId。CP成立不能仅由微博普通点赞推断，成立前的旧微博不追溯补算。
+已有CP的公开活动、避嫌、澄清、退坑等正文新事实可用type=activity，evidence引用本轮正文。已提供publicWeiboInteractions的实际点赞/取消点赞/评论/回复/转发须纳入已有CP评估，填写对应sourceIds；同一互动被正文复述时合并为一项，不另外再记故事涨幅。输入中每条相关新互动都要覆盖，纯转述旧事不重复计数，延续同一活动可写已有eventId并追加讨论。
+数字：正文有明确总数写count，有增减写delta，有比例写percent（如-30表示下降30%）；同时有总数和增量优先count，只算一次。只有定性萌芽且没有可靠规模依据时保持人数未知，省略count/delta/percent，不随手给默认人数或把播放、点赞数直接当CP粉人数。已有可信基数且事件支持估算时可给有依据的delta并estimated=true，否则保留人数，只记录活动与讨论。没相关事实不变，不随时间自动涨跌。
+每个有效事件给title、origin（作品/综艺/舞台/真人向等）、必要的heat/cohesion/controversy(0到100)及status。活动至少一个topics话题，每题3到5条不同立场comments:{stance,text}，只讨论已发生的公开事实，不编造私下见面/官方声明/黑料；讨论猜测不是下轮新事件依据。没有更新不覆盖旧状态，缺失项留空而非写无/暂无。
+初生示例：cpUpdates:[{partner:'女艺人甲',type:'create',evidence:'有观众开始嗑主角与女艺人甲饰演的两个角色，出现配对二创与零星留言。',title:'角色搭档出现第一批公开配对讨论',origin:'作品',status:'初生',topics:[{title:'观众开始关注这对角色搭档',comments:[{stance:'CP粉',text:'先关注这次合作。'},{stance:'作品粉',text:'角色搭档不等于真人恋情。'},{stance:'路人',text:'目前只是零星讨论。'}]}]}]，这里没有可靠人数依据，所以不填数值。`;
 export function cpPayload(sj) { return sj?.cpUpdates ?? sj?.CP动态 ?? sj?.CP更新; }
+export function cpSettlementTool(tool, enabled) {
+  if (!enabled) return tool;
+  return {...tool,parameters:{...tool.parameters,required:[...new Set([...list(tool.parameters?.required),'cpUpdates'])]}};
+}
+// 只补CP域，不用可见文本覆盖主工具已经采纳的世界/人物资料。
+export function collectCPResults(sources, state) {
+  const groups=new Map(),conflicts=new Set(),invalid=[],issues=[];
+  let provided=false,valid=false,empty=false,candidates=0;
+  const object=v=>v&&typeof v==='object'&&!Array.isArray(v);
+  const fields={count:['count','人数','总人数'],delta:['delta','增减'],percent:['percent','百分比']};
+  for(const source of list(sources)){
+    if(!object(source))continue;
+    for(const field of ['cpUpdates','CP动态','CP更新']){
+      if(!Object.hasOwn(source,field)||source[field]===undefined)continue;
+      provided=true;candidates++;let value=source[field];
+      try{if(typeof value==='string')value=JSON.parse(value);assertSafeValue(value);}catch{invalid.push({invalid:true});continue;}
+      const rows=Array.isArray(value)?value:Array.isArray(value?.items)?value.items:object(value)&&(value.partnerId||value.partner||value.搭档||value.姓名)?[value]:null;
+      if(!rows){invalid.push(value??{invalid:true});continue;}
+      valid=true;if(!rows.length)empty=true;
+      for(const raw of rows){
+        if(!object(raw)){invalid.push({invalid:true});continue;}
+        const row=clone(raw);
+        for(const [name,aliases]of Object.entries(fields)){let number=null;for(const alias of aliases){const n=cpNumber(name==='percent'?text(row[alias]).replace(/%$/,''):row[alias]);if(n!=null){number=n;break;}}if(number==null)delete row[name];else row[name]=number;}
+        const partner=row.partnerId||row.partner||row.搭档||row.姓名;
+        const resolved=state?resolveActor(state,partner):null;
+        const refs=[...new Set(list(row.sourceIds||row.微博来源).map(text))].sort();
+        const key=hash([resolved?.id||text(partner),refs.length?refs:text(row.evidence||row.依据||row.正文依据)]);
+        const previous=groups.get(key);
+        if(!previous){groups.set(key,row);continue;}
+        for(const name of Object.keys(fields))if(previous[name]!=null&&row[name]!=null&&previous[name]!==row[name]){
+          if(!conflicts.has(key))issues.push({step:'CP',why:'同一CP事件数值冲突：'+name+'分别为'+previous[name]+'与'+row[name]+'，该事件未更新'});
+          conflicts.add(key);
+        }
+        for(const [name,value]of Object.entries(row))if(previous[name]==null||previous[name]===''||(Array.isArray(previous[name])&&!previous[name].length))previous[name]=clone(value);
+      }
+    }
+  }
+  if(!provided)return{provided:false,payload:undefined,issues:[{step:'CP',why:'本轮结算未返回CP结果，原CP数据保留；没有新事件也应返回空数组'}],conflicted:false,candidates:0};
+  if(!valid||(!groups.size&&!empty&&invalid.length))return{provided:true,payload:invalid[0]??{invalid:true},issues,conflicted:false,candidates};
+  if(invalid.length)issues.push({step:'CP',why:'部分CP结果格式不可识别，旧数据保留；其他有效CP事件继续处理'});
+  return{provided:true,payload:[...groups.entries()].filter(([key])=>!conflicts.has(key)).map(([,row])=>row),issues,conflicted:conflicts.size>0,candidates};
+}
+
 function cpDiffs(before, after, path = ['protagonist','cpState']) {
   if (JSON.stringify(before) === JSON.stringify(after)) return [];
   const object = v => v && typeof v === 'object';

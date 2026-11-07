@@ -21,7 +21,7 @@ import { WARDROBE_RULES, wardrobeCompletionTool, inspectWardrobeResult, currentW
 import { INITIAL_DATA_RULES, initialParseTool, mergeInitialData, sanitizeInitialHomes, initialDataIssues, initialRepairPatch, seedInitialAssets } from './lib/initial-data.mjs';
 import {createCreationHost,worldCreationTool,creationWorldResult,normalizeCreationCareer,recordCreationWarnings,syncCreationWardrobes,creationBasis,WORLD_CREATION_RULES} from './lib/creation-flow.mjs';
 import { createWritingStyleHost } from './lib/writing-style-host.mjs';
-import { cpEnabled, cpWeiboFacts, cpContext, CP_RULES, CP_SCHEMA, cpPayload, applyCPUpdates } from './lib/cp-core.mjs';
+import { cpEnabled, cpWeiboFacts, cpContext, CP_RULES, CP_SCHEMA, cpSettlementTool, collectCPResults, applyCPUpdates } from './lib/cp-core.mjs';
 import { STYLE_PREFIX } from './lib/writing-style-core.mjs';
 import { captureScentTextState, synchronizeScentText, isAdultTextSyncActor } from './lib/scent-text-sync.mjs';
 import {initPromptStore,registerPromptDefaults,applyBlockOverrides,promptText,promptBlock,loadPrompts,PROMPT_FILE_NAME} from './lib/prompt-overrides.mjs';
@@ -6171,6 +6171,14 @@ let aiPickFail = '';
     return v;
   }
 
+  function cpResponseSources(response, primary) {
+    const sources=[primary];
+    for(const call of response?.toolCalls||[])if(call.name===SETTLE_TOOL.name){try{const value=parseToolArgs(call.args);if(value)sources.push(value);}catch{}}
+    // 思考通道不是额外提交，补充只读取同次可见文本。
+    const visible=String(response?.text||'').replace(/<think>[\s\S]*?<\/think>/gi,'').replace(/<think>[\s\S]*$/i,'');
+    try{const value=parseJsonLoose(visible);if(value)sources.push(value);}catch{}
+    return sources;
+  }
   async function prepareCPFrame(s, gid, seq, body, pending, includeReplyCards = false) {
     if (!cpEnabled(s)) return { facts: [], cacheIds: [], enabled: false, epoch: s.protagonist?.cpEpoch || 0 };
     const staged = stagedExtras.get(s);
@@ -7071,7 +7079,7 @@ async function settleSystemPrompt(s, gameId, body, phoneBridge) {
     if(!baseline){baseline=JSON.parse(JSON.stringify(s));rollbackDiffs(baseline,turn.diffs||[]);}
     const fresh=dataIntegrityIssues(baseline,s,turn.body,turn.diffs||[]).filter(computed);
     let issues=old.filter(x=>x&&(computed(x)?existingOnly&&fresh.some(y=>y.step===x.step&&y.why===x.why):existingOnly||!(x.step==='settle'||x.step==='资料'&&/^\d+项资料更新已跳过/.test(String(x.why||'')))));
-    if(!existingOnly){issues.push(...fresh);if(diagnostics.length){const current=settlementIssueFromDiagnostics(diagnostics);issues.push({step:'资料',why:current.why,details:current.details});}}
+    if(!existingOnly){issues.push(...fresh);const cpIssues=diagnostics.filter(x=>x?.step==='CP'),ordinary=diagnostics.filter(x=>x?.step!=='CP');issues.push(...cpIssues);if(ordinary.length){const current=settlementIssueFromDiagnostics(ordinary);issues.push({step:'资料',why:current.why,details:current.details});}}
     if(issues.length)turn.issues=issues;else delete turn.issues;
   }
 
@@ -7974,7 +7982,7 @@ if (微博新条.length) {
         const settleRes = await callSlot(s, 'settle', msgs, {
           maxTokens: tokOf(s, 'settle'),
           tag: '结算',
-          tools: [SETTLE_TOOL],
+          tools: [cpSettlementTool(SETTLE_TOOL, cpFrame.enabled)],
           wantTools: true,
             // 思考强度：模型会先在自己的 reasoning 通道里把角色逐个过一遍，
             // 不占工具参数那点输出空间（正文只有几十字时尤其明显）
@@ -7995,7 +8003,7 @@ if (微博新条.length) {
         let sj = pickToolCall(settleRes) || parseJsonLoose(settleBody);
         if (sj) {
           const originalSettlement = sj;
-          cpSubmitted = cpPayload(sj);
+          cpSubmitted = cpResponseSources(settleRes, sj);
           cpSettlementOK = !/length|max.?tokens|truncat/i.test(JSON.stringify(settleRes?.finish || ''));
           const diagnostics = [];
           s._simulationStagedActions = genericPlan ? genericPlan.actions.filter(x => x.type !== 'request') : [];
@@ -8164,8 +8172,10 @@ if (微博新条.length) {
           if (live.protagonist?.cpState) s.protagonist.cpState = JSON.parse(JSON.stringify(live.protagonist.cpState));
         } else {
           const actualFrame = await prepareCPFrame(s, gid, seq, sp.body, 微博待发);
-          const result = applyCPUpdates(s, cpSubmitted, { ...actualFrame, body: sp.body, seq, textVersion: cpTextVersion, date: String(s.world?.当前日期时间 || ''), enabledAtStart: cpFrame.enabled && epochMatches });
-          diffs.push(...result.diffs); dataWarnings.push(...result.issues);
+          const submission = collectCPResults(cpSubmitted, s);
+          const result = applyCPUpdates(s, submission.payload, { ...actualFrame, body: sp.body, seq, textVersion: cpTextVersion, date: String(s.world?.当前日期时间 || ''), enabledAtStart: cpFrame.enabled && epochMatches });
+          diffs.push(...result.diffs); dataWarnings.push(...submission.issues,...result.issues);
+          await turnLog('[CP结算] gameId='+gid+' seq='+seq+' provided='+submission.provided+' candidates='+submission.candidates+' events='+(Array.isArray(submission.payload)?submission.payload.length:0)+' diffs='+result.diffs.length+' issues='+(submission.issues.length+result.issues.length));
         }
       } catch (e) { dataWarnings.push({step:'CP',why:'CP结算未保存，旧数据保留：'+String(e.message || e)}); }
     }
@@ -12438,7 +12448,7 @@ reg('rebuildSummaries', async ({ gameId }) => {
     const res2 = await callSlot(s, 'settle', msgs, {
       maxTokens: tokOf(s, 'settle'),
       tag: '重算结算',
-      tools: [SETTLE_TOOL],
+      tools: [cpSettlementTool(SETTLE_TOOL, cpRecalcFrame.enabled)],
       wantTools: true,
         reasoningEffort: await reasoningOf(s, 'settle'),
     });
@@ -12459,13 +12469,19 @@ reg('rebuildSummaries', async ({ gameId }) => {
     if (cpRecalcFrame.enabled && /length|max.?tokens|truncat/i.test(JSON.stringify(res2?.finish || ''))) throw new Error('CP重算未完成，旧结果保留');
     const oldCPState = s.protagonist.cpState ? JSON.parse(JSON.stringify(s.protagonist.cpState)) : undefined;
     const oldCPDiffs = (latest.diffs || []).filter(d=>d.by==='cp').map(d=>JSON.parse(JSON.stringify(d)));
+    let cpRecalcAudit = null;
     const recalculateCP = () => {
-      const value = cpPayload(sj);
+      if(!cpRecalcFrame.enabled)return{diffs:[],issues:[]};
+      if(Array.isArray(latest.issues))latest.issues=latest.issues.filter(issue=>issue.step!=='CP');
+      const submission = collectCPResults(cpResponseSources(res2, sj), s);
+      const value = submission.payload;
       const result = applyCPUpdates(s, value, {...cpRecalcFrame, body:latest.body,seq:latest.seq,textVersion:latest.textVersion||'',date:String(s.world?.当前日期时间||''),enabledAtStart:cpRecalcFrame.enabled});
-      const failed = value == null || result.issues.some(i=>/格式不可识别/.test(i.why));
-      if (!s.simulation?.enabled && oldCPState && cpRecalcFrame.enabled && failed) {
+      const failed = value == null || submission.conflicted || result.issues.some(i=>/格式不可识别/.test(i.why));
+      cpRecalcAudit={provided:submission.provided,candidates:submission.candidates,events:Array.isArray(value)?value.length:0,issues:submission.issues.length+result.issues.length,kept:!!(oldCPState&&failed)};
+      result.issues.unshift(...submission.issues);
+      if (oldCPState && cpRecalcFrame.enabled && failed) {
         s.protagonist.cpState = oldCPState;
-        return {diffs:oldCPDiffs,issues:result.issues.concat([{step:'CP',why:'重算没有完整返回CP结果，原CP数据及回滚记录保留'}])};
+        return {diffs:s.simulation?.enabled?[]:oldCPDiffs,issues:result.issues.concat([{step:'CP',why:'重算CP结果不完整或存在冲突，原CP数据及回滚记录保留'}])};
       }
       return result;
     };
@@ -12485,7 +12501,7 @@ reg('rebuildSummaries', async ({ gameId }) => {
       latest.summary = String(safe.summary || latest.summary || '');
       latest.options = pickOptions(safe.options, latest.options);
       refreshRecalculatedIssues(s,latest,{diagnostics});
-      await turnLog('[重算结算] gameId='+gameId+' seq='+latest.seq+' mode=资料重核 accepted='+repaired.length+' rejected='+diagnostics.length);
+      await turnLog('[重算结算] gameId='+gameId+' seq='+latest.seq+' mode=资料重核 accepted='+repaired.length+' rejected='+diagnostics.length + ' cp=' + JSON.stringify(cpRecalcAudit));
       for (const issue of diagnostics) await turnLog('[通用资料重核] ' + String(issue.why || ''));
       setProg(gameId, 'save', '写回存档');
       await saveState(s);
@@ -12518,7 +12534,7 @@ reg('rebuildSummaries', async ({ gameId }) => {
     tickSockScent(s, latest.body).forEach((d) => diffs.push(d));
     const cpResult = recalculateCP(); diffs.push(...cpResult.diffs); diagnostics.push(...cpResult.issues);
     refreshRecalculatedIssues(s,latest,{before:beforeRecalculation,diagnostics});
-    await turnLog('[重算结算] gameId='+gameId+' seq='+latest.seq+' mode=变量重算 accepted='+diffs.length+' rejected='+diagnostics.length);
+    await turnLog('[重算结算] gameId='+gameId+' seq='+latest.seq+' mode=变量重算 accepted='+diffs.length+' rejected='+diagnostics.length + ' cp=' + JSON.stringify(cpRecalcAudit));
     setProg(gameId, 'save', '写回存档');
     await saveState(s);
     return withKeyStatus(s);
