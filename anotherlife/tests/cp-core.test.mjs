@@ -33,3 +33,6 @@ test('未来微博评论不提前进入统计',()=>{const s=fixture();establish(
 test('已处理微博没有再返回CP更新时不误报新互动',()=>{const s=fixture();establish(s);s.protagonist.cpState.seenSources=['weibo:a'];const r=applyCPUpdates(s,null,{facts:[{id:'weibo:a',partnerId:'b',type:'点赞'}]});assert.equal(r.issues.length,0);});
 
 test('已有CP更新只记录变化叶和追加事件，不在每轮复制整份CP历史',()=>{const s=fixture();establish(s);const u=activity(),r=applyCPUpdates(s,[u],context(u));assert.ok(r.diffs.length>0);assert.ok(!r.diffs.some(d=>d.path.length===2));assert.ok(r.diffs.some(d=>d.path.includes('events')&&d._had===false));});
+
+test('已有CP正文公开同框首映红毯无需重复CP术语也可更新',()=>{for(const what of ['再次同框','共同出席首映礼','一起走上红毯']){const s=fixture();establish(s);const u=activity({evidence:'主角甲和女演员乙'+what+'。'}),r=applyCPUpdates(s,[u],context(u));assert.ok(r.diffs.length>0);assert.equal(s.protagonist.cpState.pairs[0].count,700);}});
+test('明确粉丝配对的自然表述兼容，不强迫正文写CP关键字',()=>{const s=fixture(),quote='粉丝们将主角甲和女演员乙称作最佳一对，聚在一起讨论他们的合作。';const r=applyCPUpdates(s,[{partner:'女演员乙',type:'create',evidence:quote,title:'搭档引发支持',delta:20,topics:topic}],{body:quote});assert.equal(r.diffs.length,1);assert.equal(s.protagonist.cpState.pairs[0].count,20);});
