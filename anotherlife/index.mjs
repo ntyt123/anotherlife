@@ -5370,7 +5370,10 @@ function pickToolCall(r) {
     const controller = new AbortController();
     options.signal = controller.signal;
     if (typeof opts.shouldStop === 'function' && opts.shouldStop()) return { text: '', reasoning: '', toolCalls: [], finish: { kind: 'stopped' }, stopped: true };
-    const it = llm.stream(options)[Symbol.asyncIterator]();
+    const detachAbort = trackRunAbort(controller, active);
+    let it;
+    try {
+    it = llm.stream(options)[Symbol.asyncIterator]();
     // 诊断：DSH 的 llm.stream 返回的不一定是标准 asyncIterator。
     // 如果它没有 return()，我那段 finally 里的清理就是空操作 —— 必须先看清楚。
     await apiLog(
@@ -5385,10 +5388,11 @@ function pickToolCall(r) {
     // 无论正常结束还是抛错（超时、上游断流），都必须把迭代器关掉。
     // 不关的话上游连接会挂在那里占着连接池 —— 表现是「一次失败之后，
     // 整个 DSH 的模型调用全部失败，重启才好」，神谕那次就是这么来的。
-    try {
     for (;;) {
       const waitMs = gotAny ? idleMs : firstMs;
-      const step = await waitForStreamStep(it, waitMs, opts.shouldStop);
+      let step;
+      try { step = await waitForStreamStep(it, waitMs, opts.shouldStop); }
+      catch (error) { if (typeof opts.shouldStop === 'function' && opts.shouldStop()) { finish = {kind:'stopped'}; break; } throw error; }
       if (step && step.__stopped) { controller.abort(); finish = { kind: 'stopped' }; break; }
       if (step && step.__timeout) {
         controller.abort();
@@ -5474,6 +5478,7 @@ function pickToolCall(r) {
     if (stopped) await apiLog('[' + tag + '] 玩家按了停止，已保留 ' + text.length + ' 字', t0);
     return { text, reasoning, finish, toolCalls: callList, truncated: isTruncated(finish), stopped: stopped, images: images, chunkTypes: Object.keys(seen) };
     } finally {
+      detachAbort();
       try {
         controller.abort();
         await closeStreamIterator(it);
@@ -5712,6 +5717,7 @@ const STYLE_NOTES_DEFAULT = [
           delete noTools.tools;
           r = await callMainModel(messages, Object.assign({}, noTools, { provider: cfg.provider, model: cfg.model }));
         }
+        if ((r?.stopped || (typeof opts.shouldStop === 'function' && opts.shouldStop())) && !['story','assistant'].includes(slot)) throw new Error('已停止生成');
         if (opts.wantTools) {
           await apiLog(
             '[槽位·' + tag + '] ' + who + ' → 工具 ' + ((r && r.toolCalls) || []).length + ' 次 / 正文 ' + String((r && r.text) || '').length + ' 字' + '（思考 ' + String((r && r.reasoning) || '').length + '）思考档=' + String(opts.reasoningEffort || '未设') + ' 耗时=' + (Date.now() - t0) + 'ms',
@@ -5743,6 +5749,7 @@ const STYLE_NOTES_DEFAULT = [
     try {
       const out = await slotOnce();
       await apiLog('[槽位·' + tag + '] ' + who + ' → ' + String(out || '').length + ' 字', t0);
+      if (typeof opts.shouldStop === 'function' && opts.shouldStop()) throw new Error('已停止生成');
       return out;
     } catch (e) {
       await apiLog('[槽位·' + tag + '] ' + who + ' → 失败：' + String((e && e.message) || e), t0);
@@ -5766,25 +5773,36 @@ const STYLE_NOTES_DEFAULT = [
     // 超时保护：接口卡住时不要无限等
     const timeoutMs = opts.timeoutMs || 240000;
     const ctrl = typeof AbortController === 'function' ? new AbortController() : null;
-    const timer = ctrl ? setTimeout(() => { try { ctrl.abort(); } catch (e) {} }, timeoutMs) : null;
+    const detachAbort = trackRunAbort(ctrl, active);
+    let rejectCancellation, abortListener, stopPoll;
+    const cancelled = new Promise((_, reject) => { rejectCancellation = reject; });
+    cancelled.catch(() => {});
+    const cancel = () => { const error = new Error('aborted'); error.name = 'AbortError'; rejectCancellation(error); };
+    if (ctrl) { abortListener = cancel; ctrl.signal.addEventListener('abort', abortListener, {once:true}); if(ctrl.signal.aborted)cancel(); }
+    const abort = () => { if(ctrl)ctrl.abort();else cancel(); };
+    const timer = setTimeout(abort, timeoutMs);
+    if (typeof opts.shouldStop === 'function') stopPoll = setInterval(() => { if(opts.shouldStop())abort(); },100);
     let res = null;
     let text = '';
     try {
-      res = await fetchFn(url, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(body),
-        signal: ctrl ? ctrl.signal : undefined,
-      });
-      text = await res.text();
+      if (typeof opts.shouldStop === 'function' && opts.shouldStop()) throw new Error('已停止生成');
+      const result = await Promise.race([cancelled, (async () => {
+        const response = await fetchFn(url, {method:'POST',headers,body:JSON.stringify(body),signal:ctrl?ctrl.signal:undefined});
+        return {res:response,text:await response.text()};
+      })()]);
+      res = result.res; text = result.text;
     } catch (e) {
       const m = String((e && e.message) || e);
+      if (typeof opts.shouldStop === 'function' && opts.shouldStop()) throw new Error('已停止生成');
       if ((e && e.name === 'AbortError') || /abort/i.test(m)) {
         throw new Error('「' + slot + '」模型 ' + Math.round(timeoutMs / 1000) + ' 秒没有返回（已中断，可重试）：' + String(cfg.model || ''));
       }
       throw e;
     } finally {
       if (timer) clearTimeout(timer);
+      if (stopPoll) clearInterval(stopPoll);
+      if (ctrl && abortListener) ctrl.signal.removeEventListener('abort',abortListener);
+      detachAbort();
     }
     if (!res.ok) throw new Error('HTTP ' + res.status + '：' + String(text).slice(0, 500));
     const data = JSON.parse(text);
@@ -7881,9 +7899,9 @@ if (微博新条.length) {
         await turnLog('[正文·工具] 取到正文 ' + String(sp.body || '').length + ' 字，思考 ' + String(sp.think || '').length + ' 字，选项 ' + sp.options.length + ' 条');
       }
       if(!toolBodyAccepted){
-        if(r?.stopped)throw new Error('已停止生成');
         const compatible=plainStoryFallback(r?.text);
         if(!compatible.accepted){
+          if(r?.stopped)throw new Error('已停止生成');
           const originalReply=String(r?.text??'');
           await turnLog('[正文·普通兼容] 未取得正文：'+compatible.why);
           throw new Error('模型未返回可用正文。\n\n模型原始回复：\n'+(originalReply.length?originalReply:'未返回可见文本。'));
@@ -7936,7 +7954,8 @@ if (微博新条.length) {
     let settleOptions = [];
     const settleCfg = (s.config && s.config.settle) || {};
     let phoneSettled=!settleCfg.model;
-    if (settleCfg.model || s.simulation?.enabled) {
+    if(r.stopped)dataWarnings.push({step:'正文',why:'已停止，保留已收到正文，本轮未结算'});
+    if (!r.stopped && (settleCfg.model || s.simulation?.enabled)) {
       setProg(gid, 'settle', '结算中 · 变量变化 + 小总结');
       try {
         const msgs = [
@@ -7972,6 +7991,7 @@ if (微博新条.length) {
           .replace(/<think>[\s\S]*?<\/think>/gi, '')
           // 没有闭合的 <think>（被输出预算截断）：从 <think> 起整段丢掉
           .replace(/<think>[\s\S]*$/i, '');
+        if (RUNNING.get(String(gid || ''))?.stop || settleRes?.stopped) throw new Error('已停止生成');
         let sj = pickToolCall(settleRes) || parseJsonLoose(settleBody);
         if (sj) {
           const originalSettlement = sj;
@@ -8649,9 +8669,16 @@ if (微博新条.length) {
    */
   const RUNNING = new Map();
   function beginRun(gid) {
-    const r = { stop: false };
+    const r = { stop: false, controllers: new Set() };
     RUNNING.set(String(gid), r);
     return r;
+  }
+  function trackRunAbort(controller, run) {
+    if (!controller || !run) return () => {};
+    if (!run.controllers) run.controllers = new Set();
+    run.controllers.add(controller);
+    if (run.stop) controller.abort();
+    return () => run.controllers.delete(controller);
   }
   function endRun(gid) {
     RUNNING.delete(String(gid));
@@ -8660,6 +8687,8 @@ if (微博新条.length) {
     const r = RUNNING.get(String(gid));
     if (!r) return false;
     r.stop = true;
+    for (const controller of r.controllers || []) { try { controller.abort(); } catch {} }
+    setProg(gid, 'stopping', '正在停止生成…');
     return true;
   }
 

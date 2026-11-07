@@ -4865,6 +4865,8 @@ function createWritingStyleViews(React, { downloadFile } = {}) {
           const [relRound, setRelRound] = React.useState(-1);
           const [tab, setTab] = React.useState('setup');
           const [busy, setBusy] = React.useState(false);
+          const [stopping, setStopping] = React.useState(false);
+          const stopRequestRef = React.useRef(false);
           const [err, setErr] = React.useState('');
           React.useEffect(() => {
             if (state && state.recoveryInfo && state.recoveryInfo.message) setErr(state.recoveryInfo.message);
@@ -4902,7 +4904,8 @@ function createWritingStyleViews(React, { downloadFile } = {}) {
           const [asOpen, setAsOpen] = React.useState(false); // 助手浮窗
           const [asLog, setAsLog] = React.useState([]); // 助手的对话记录
           const [asIn, setAsIn] = React.useState(''); // 助手输入框
-          const [asBusy, setAsBusy] = React.useState(false); // 助手正在等回复
+          const [asBusy, setAsBusy] = React.useState(false);
+          React.useEffect(() => { if(!busy && !asBusy){ setStopping(false); stopRequestRef.current=false; } }, [busy,asBusy,gameId]); // 助手正在等回复
           // 哪条回答刚存成笔记（按钮上闪一下「已存 ✓」）
           const [asNoteAt, setAsNoteAt] = React.useState(-1);
           const asBodyRef = React.useRef(null); // 助手消息区（新消息来了滚到底）
@@ -5725,7 +5728,16 @@ function createWritingStyleViews(React, { downloadFile } = {}) {
           }, [tab, gameId]);
 
 
+          function requestStop() {
+            if (stopRequestRef.current) return;
+            stopRequestRef.current = true; setStopping(true); setErr('');
+            return call('stopGenerate', {}, gameId).then(result => {
+              if (!result?.hit) { stopRequestRef.current=false; setStopping(false); setErr('当前没有正在生成的任务'); }
+              return result;
+            }).catch(error => { stopRequestRef.current=false; setStopping(false); setErr(msg(error)); });
+          }
           function run(p, reload) {
+            setStopping(false); stopRequestRef.current=false;
             setBusy(true);
             setErr('');
             return Promise.resolve(p)
@@ -14793,7 +14805,7 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
                       },
                     }),
                     busy
-                      ? h(Btn, { onClick: () => run(call('stopGenerate', {}, gameId)) }, '停止')
+                      ? h(Btn, { disabled: stopping, onClick: requestStop }, stopping ? '停止中…' : '停止')
                       : h(Btn, { primary: true, disabled: !input.trim() && !genericPending.length, onClick: () => sendTurn() }, '行动')
                   )
                   // 阶段进度条不放这里：它一出现就会改 inputBar 的高度 → 正文容器被浏览器
@@ -15251,7 +15263,7 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
                       },
                     }),
                     asBusy
-                      ? h(Btn, { onClick: () => run(call('stopGenerate', {}, gameId)) }, '停止')
+                      ? h(Btn, { disabled: stopping, onClick: requestStop }, stopping ? '停止中…' : '停止')
                       : h(Btn, { primary: true, disabled: !String(asIn).trim(), onClick: () => sendAssistant() }, '发送')
                   ),
                   // 右下角缩放手柄

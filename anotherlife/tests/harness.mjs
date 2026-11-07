@@ -7,7 +7,7 @@ export const pluginRoot = path.dirname(path.dirname(fileURLToPath(import.meta.ur
 export const clone = (value) => JSON.parse(JSON.stringify(value));
 
 // 实际模块在隔离 VM 中运行；存档和日志只写入 Map，外部进程一律拒绝。
-export async function createHarness({ stream, readFailure, writeFailure, maxTimerMs = Infinity } = {}) {
+export async function createHarness({ stream, readFailure, writeFailure, fetchImpl, maxTimerMs = Infinity } = {}) {
   const files = new Map(), writes = [], handles = new Map(), disposers = [];
   const normalize = (value) => String(value && value.targetKey || value).replace(/\\/g, '/');
   const missing = () => Object.assign(new Error('ENOENT: 文件不存在'), { code: 'ENOENT' });
@@ -43,7 +43,7 @@ export async function createHarness({ stream, readFailure, writeFailure, maxTime
       return (async function* () { yield { type: 'text-delta', index: 0, text: '测试正文。' }; yield { type: 'finish', reason: { kind: 'stop' } }; })();
     },
   };
-  const context = vm.createContext({ console, Buffer, URL, URLSearchParams, TextEncoder, TextDecoder, AbortController, setTimeout: (fn, ms, ...args) => setTimeout(fn, Math.min(ms, maxTimerMs), ...args), clearTimeout, setInterval, clearInterval, process: { env: { DSH_SIM_STORE_DIR: 'memory/' } } });
+  const context = vm.createContext({ fetch: fetchImpl, console, Buffer, URL, URLSearchParams, TextEncoder, TextDecoder, AbortController, setTimeout: (fn, ms, ...args) => setTimeout(fn, Math.min(ms, maxTimerMs), ...args), clearTimeout, setInterval, clearInterval, process: { env: { DSH_SIM_STORE_DIR: 'memory/' } } });
   const modules = new Map(), nativeLoads = new Map();
   const denied = () => { throw new Error('回归测试禁止真实写盘及外部命令'); };
   async function load(filename) {
