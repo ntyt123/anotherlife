@@ -40,13 +40,13 @@ export function createWritingStyleHost({ reg, readonlyHandles, readJson, writeJs
   }
   async function preflight(args) {
     const doc = await source(args.sourceId);
-    const selection = currentModel?.() || {};
+    const selection = (await currentModel?.()) || {};
     const provider = String(args.provider || selection.provider || '').trim(), model = String(args.model || selection.model || '').trim();
     const info = await metadata(provider, model);
     const declared = Number(info.contextWindow || info.context?.contextWindow) || 0;
     const contextWindow = Number(args.contextWindow) || declared;
     const maxTokens = args.maxTokens == null ? 8192 : Number(args.maxTokens);
-    const options = { provider, model, contextWindow, maxTokens, mode: args.mode === 'chapters' ? 'chapters' : 'full', allowEstimateOverflow: args.allowEstimateOverflow === true };
+    const options = { provider, model, contextWindow, maxTokens, reasoningEffort: String(args.reasoningEffort == null || args.reasoningEffort === '__inherit__' ? selection.reasoningEffort || '' : args.reasoningEffort).trim(), mode: args.mode === 'chapters' ? 'chapters' : 'full', allowEstimateOverflow: args.allowEstimateOverflow === true };
     const plan = planStyleAnalysis(doc, options);
     const id = randomUUID();
     for (const [key, value] of plans) if (Date.now() - value.at > 1800000) plans.delete(key);
@@ -61,7 +61,7 @@ export function createWritingStyleHost({ reg, readonlyHandles, readJson, writeJs
     if (!llm?.stream) throw new Error('当前运行时没有可用的模型服务');
     const ctl = new AbortController(); control.controller = ctl;
     const options = { provider: j.options.provider, model: j.options.model, maxTokens: j.options.maxTokens, temperature: 0.25,
-      system: messages[0].content, signal: ctl.signal,
+      system: messages[0].content, signal: ctl.signal, ...(j.options.reasoningEffort ? { reasoningEffort: j.options.reasoningEffort } : {}),
       messages: [{ id: 'style-' + randomUUID(), role: 'user', source: { kind: 'user' }, content: [{ type: 'text', text: messages[1].content }] }] };
     let raw = '', finish = '', usage;
     const blocks = new Map(); let iterator;
@@ -222,7 +222,7 @@ export function createWritingStyleHost({ reg, readonlyHandles, readJson, writeJs
       const budget = inputBudget(Number(options.contextWindow) || Number(info.contextWindow || info.context?.contextWindow), Number(options.maxTokens) || j.options.maxTokens);
       const allowEstimateOverflow = options.allowEstimateOverflow === true;
       if (j.plan.batches.slice(j.nextBatch).some(b => b.inputTokens > budget.available) && !(j.options.mode === 'full' && allowEstimateOverflow)) throw new Error('剩余原文超过新容量，请提高容量，或新建分章任务；旧任务未改动');
-      j.options = { ...j.options, provider, model, contextWindow: budget.capacity, maxTokens: budget.output, allowEstimateOverflow };
+      j.options = { ...j.options, ...(Object.hasOwn(options, 'reasoningEffort') ? { reasoningEffort: String(options.reasoningEffort || '').trim() } : {}), provider, model, contextWindow: budget.capacity, maxTokens: budget.output, allowEstimateOverflow };
       Object.assign(j.plan, budget);
     }
     j.status = 'queued'; j.error = ''; await persist(j); launch(j); return taskSummary(j);

@@ -26,12 +26,28 @@ export function normalizeManagement(value) {
   const ids = new Set(); for (const unit of out.units) { idText(unit.id); if (ids.has(unit.id)) throw new Error('经营单位标识重复'); ids.add(unit.id); }
   return out;
 }
+export function normalizeShareholders(value) {
+  return (Array.isArray(value)?value:value&&typeof value==='object'?[value]:[]).map((row,index)=>{
+    assertSafeValue(row);
+    const name=text(row.name||row.actorName||row.姓名||row.名字);
+    const fields=['share','ratio','比例','持股比例'].filter(k=>row[k]!=null&&row[k]!=='');
+    if(!fields.length)throw new Error('股东'+(name||index+1)+'缺少持股比例');
+    const values=fields.map(k=>{
+      const raw=row[k],s=typeof raw==='string'?raw.trim().replace(/％/g,'%').replace(/[,，\s]/g,''):raw;
+      let n=typeof s==='string'&&/%$/.test(s)?quantity(s.slice(0,-1),'股东持股百分比')/100:quantity(s,'股东持股比例');
+      if(n>1&&Number.isInteger(n)&&n<=100)n/=100;
+      return rate(n);
+    });
+    if(values.some(n=>Math.abs(n-values[0])>1e-6))throw new Error('股东'+(name||index+1)+'的比例字段互相冲突');
+    return {actorId:text(row.actorId||row.角色ID),name,share:values[0]};
+  });
+}
 export function createUnit(raw) {
   assertSafeValue(raw); const id = idText(raw.id);
   const stock = {}; for (const [key, value] of Object.entries(raw.stock || {})) stock[idText(key)] = quantity(value, '库存');
   const unit = {
     id, name: required(raw.name, '单位名称'), kind: text(raw.kind) || 'business', kindName:text(raw.kindName), currency: text(raw.currency), description: text(raw.description), businessProfile:Object.fromEntries(['businessScope','organization','development','operatingStatus','premises'].map(k=>[k,text(raw.businessProfile?.[k])])), resources:rows(raw.resources).map(x=>({id:idText(x.id),name:required(x.name,'物资名称'),unit:text(x.unit)})), periodElapsedDays:0, periodIndex:0,
-    balance: money(raw.balance ?? 0), balanceKnown:raw.balanceKnown!==false&&raw.balance!=null&&raw.balance!=='', stock, shareholders: rows(raw.shareholders).map(x => ({ actorId: text(x.actorId), name: text(x.name), share: rate(x.share) })),
+    balance: money(raw.balance ?? 0), balanceKnown:raw.balanceKnown!==false&&raw.balance!=null&&raw.balance!=='', stock, shareholders: normalizeShareholders(raw.shareholders),
     facilities: rows(raw.facilities).map(x => ({ ...x, id: idText(x.id), name: required(x.name, '设施名称'), level: quantity(x.level ?? 1, '设施等级', false) })),
     facilityDefinitions: rows(raw.facilityDefinitions).map(normalizeFacilityDefinition), productionRules: rows(raw.productionRules).map(normalizeProductionRule),
     orders: [], productionOrders: [], staff: rows(raw.staff).map(x=>({...x,id:idText(x.id),count:quantity(x.count??1),salary:money(x.salary??0),salaryKnown:x.salary!=null&&x.salary!=='',workFraction:rate(x.workFraction??1)})), projects: rows(raw.projects), contracts: rows(raw.contracts), works: rows(raw.works), rights: rows(raw.rights),

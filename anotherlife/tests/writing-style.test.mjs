@@ -7,13 +7,13 @@ import { createHarness } from './harness.mjs';
 const sample = '第一章 开始\n她把铅笔推回桌子中间。\n第二章 继续\n他没答话，把门留了一条缝。\n最后一章\n杯子仍在原来的位置。';
 const result = (quote = '她把铅笔推回桌子中间。') => ({ name: '日常对话与心理', guide: '## 底色\n让动作、对白与矛盾的心理互相修正，不绑定时代、人称或人物。\n## 示例\n甲把笔推回去。乙说自己不缺，手却没收回来。', evidence: [{ dimension: '细节', claim: '物件参与关系变化', quote, startLine: 2, scope: '日常相处，非每个场景硬性要求', kind: '倾向' }] });
 const reply = value => (async function* () { yield { type: 'text-delta', index: 0, text: typeof value === 'string' ? value : JSON.stringify(value) }; yield { type: 'finish', reason: { kind: 'stop' } }; })();
-function rig(stream, initialFiles) {
+function rig(stream, initialFiles, reasoningEffort) {
   const files = initialFiles || new Map(), handles = new Map(), readonlyHandles = new Set(), requests = [], queues = new Map(); let selection = '', invalidations = 0;
   const serial = (key, fn) => { const run = (queues.get(key) || Promise.resolve()).catch(() => {}).then(fn); queues.set(key, run); return run; };
   const api = createWritingStyleHost({ reg: (k, fn) => handles.set(k, fn), readonlyHandles, readJson: async p => files.has(p) ? JSON.parse(files.get(p)) : null,
     writeJson: async (p, v) => files.set(p, JSON.stringify(v)), serial, storeDir: 'memory/',
     llm: { resolveModelInfo: async () => ({ contextWindow: 1000000 }), stream: options => { requests.push(options); return stream ? stream(options, requests.length) : reply(result()); } },
-    currentModel: () => ({ provider: 'test', model: 'long-context' }), selectedId: async () => selection, invalidate: () => { invalidations++; } });
+    currentModel: () => ({ provider: 'test', model: 'long-context', reasoningEffort }), selectedId: async () => selection, invalidate: () => { invalidations++; } });
   return { api, files, requests, handles, call: (name, args = {}) => handles.get(name)(args), setSelection: v => { selection = v; }, get invalidations() { return invalidations; } };
 }
 async function upload(r, text = sample) {
@@ -182,3 +182,5 @@ test('重启后未完成任务标为中断，保留阶段结果且不自动恢�
 test('文风库损坏时拒绝覆盖，读操作不改写原文件', async () => {
   const r = rig(); try { r.files.set('memory/simulator-writing-styles.json', '{损坏内容'); await assert.rejects(r.api.list()); assert.equal(r.files.get('memory/simulator-writing-styles.json'), '{损坏内容'); } finally { r.api.dispose(); }
 });
+
+test('文风任务继承思考档，独立任务显式设置优先并传入真实请求形状',async()=>{const r=rig(undefined,undefined,'high');try{const source=await upload(r);const a=await begin(r,source);assert.equal((await finished(r,a.job.id)).status,'completed');assert.equal(r.requests.at(-1).reasoningEffort,'high');const b=await begin(r,source,{reasoningEffort:'low'});assert.equal((await finished(r,b.job.id)).status,'completed');assert.equal(r.requests.at(-1).reasoningEffort,'low');}finally{r.api.dispose();}});

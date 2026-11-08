@@ -99,16 +99,23 @@ function payRewards(sim, task, turn) {
   system.rewardLog.push({id:key,taskId:task.id,name:task.name,turn,rewards:copy(reward)});task.status='claimed';
   return {money:reward.money||0,items:arr(reward.items)};
 }
+function normalizeSystemEvent(sim,event) {
+  const aliases={complete:'narrativeComplete',completed:'narrativeComplete',claimtask:'claim',claimreward:'claim',receivereward:'claim',领取:'claim',领奖:'claim',领取奖励:'claim',领取任务奖励:'claim',completetask:'narrativeComplete',taskcompleted:'narrativeComplete',completenarrative:'narrativeComplete',完成任务:'narrativeComplete',任务完成:'narrativeComplete'};
+  const input=str(event.type||event.action||event.类型),key=input.replace(/[\s_-]/g,'').toLowerCase();
+  let taskId=event.taskId||event.taskID||event.task_id||event.任务ID||event.任务编号;
+  if(!taskId){const label=str(event.taskName||event.任务名称),matches=[...sim.boundSystem.tasks,...sim.boundSystem.achievements].filter(t=>t.name===label);if(label&&matches.length===1)taskId=matches[0].id;}
+  return {...event,type:aliases[key]||input,taskId,evidence:event.evidence||event.依据||event.完成依据||''};
+}
 export function processBoundSystem(raw, event, turn=0, options={}) {
-  const sim=normalizeSimulation(raw);if(!sim.settings.boundSystemEnabled)throw new Error('系统绑定未开启');assertSafeValue(event);
+  const sim=normalizeSimulation(raw);if(!sim.settings.boundSystemEnabled)throw new Error('系统绑定未开启');assertSafeValue(event);event=normalizeSystemEvent(sim,event);
   const eventId=requiredId(event.id);if(sim.boundSystem.processedEvents.includes(eventId))return {simulation:sim,money:0,items:[]};
   const system=sim.boundSystem;let cash=0;const items=[];if(['publishTask','publishAchievement'].includes(event.type)){const other=event.type==='publishTask'?system.achievements:system.tasks;if(other.some(x=>x.id===event.task?.id))throw new Error('任务与成就标识重复');}
   if(event.type==='publishTask'||event.type==='publishAchievement')publishTask(event.type==='publishTask'?system.tasks:system.achievements,event.task,system,event.type==='publishAchievement');
   else if(event.type==='metric') { const key=requiredId(event.metricKey);system.metrics[key]=quantity((system.metrics[key]||0)+quantity(event.amount,'任务增量'),'任务进度'); }
-  else if(event.type==='narrativeComplete'){const task=[...system.tasks,...system.achievements].find(x=>x.id===event.taskId);if(!task||task.mode!=='narrative')throw new Error('叙事任务不存在');if(!str(event.evidence))throw new Error('缺少任务达成依据');if(task.status==='active'){task.evidence=str(event.evidence);task.status='completed';task.completedAtTurn=turn;}}
+  else if(event.type==='narrativeComplete'){const task=[...system.tasks,...system.achievements].find(x=>x.id===event.taskId);if(!task||task.mode!=='narrative')throw new Error('叙事任务不存在');if(!options.modelGenerated&&!str(event.evidence))throw new Error('缺少任务达成依据');if(task.status==='active'){task.evidence=str(event.evidence);task.status='completed';task.completedAtTurn=turn;}}
   else if(event.type==='message'){if(!str(event.text))throw new Error('系统消息为空');system.messages.push({role:'assistant',content:str(event.text),source:'story',turn,eventId});}
   else if(['failTask','expireTask','cancelTask'].includes(event.type)){const task=[...system.tasks,...system.achievements].find(x=>x.id===event.taskId);if(!task)throw new Error('任务不存在');if(task.status==='claimed')throw new Error('已领取任务不能通过失败事件撤奖');if(!str(event.evidence))throw new Error('任务状态变化缺少依据');task.status=({failTask:'failed',expireTask:'expired',cancelTask:'cancelled'})[event.type];task.evidence=str(event.evidence);}
-  else if(event.type==='claim'){const task=[...system.tasks,...system.achievements].find(x=>x.id===event.taskId);if(!task||!['completed','claimed'].includes(task.status))throw new Error('任务尚未完成');const reward=payRewards(sim,task,turn);cash=decimalAdd(cash,reward.money);items.push(...reward.items);}
+  else if(event.type==='claim'){const task=[...system.tasks,...system.achievements].find(x=>x.id===event.taskId);if(options.modelGenerated&&task?.mode==='narrative'&&task.status==='active'){task.status='completed';task.completedAtTurn=turn;task.evidence=str(event.evidence);}if(!task||!['completed','claimed'].includes(task.status))throw new Error('任务尚未完成');const reward=payRewards(sim,task,turn);cash=decimalAdd(cash,reward.money);items.push(...reward.items);}
   else throw new Error('不支持的系统事件');
   for(const task of [...system.tasks,...system.achievements]){
     if(task.status==='active'&&task.mode==='metric'&&Math.max(0,(system.metrics[task.metricKey]||0)-(task.metricStart||0))>=task.target){task.status='completed';task.completedAtTurn=turn;}
@@ -161,7 +168,7 @@ export function applySimulationUpdates(raw, update, turn=0, setup=false) {
   },'经营指令第'+(index+1)+'条');
   if(sim.settings.boundSystemEnabled){
     if(update.systemPersona!=null&&(!setup||!sim.boundSystem.persona))sim.boundSystem.persona=str(update.systemPersona);if(update.systemGuidance!=null&&(!setup||!sim.boundSystem.guidance))sim.boundSystem.guidance=str(update.systemGuidance);
-    for(const[index,event]of arr(update.systemEvents).entries())guard(()=>{const result=processBoundSystem(sim,{...event,id:event.id||'system:'+turn+':'+index},turn);sim=result.simulation;cash=decimalAdd(cash,result.money);items.push(...result.items);});
+    for(const[index,event]of (Array.isArray(update.systemEvents)?update.systemEvents:obj(update.systemEvents)?[update.systemEvents]:[]).entries())guard(()=>{const result=processBoundSystem(sim,{...event,id:event.id||'system:'+turn+':'+index},turn,{modelGenerated:true});sim=result.simulation;cash=decimalAdd(cash,result.money);items.push(...result.items);});
   }
   return {simulation:sim,personalDelta:cash,items,issues};
 }
@@ -209,7 +216,7 @@ export const MANAGEMENT_OPERATION_SCHEMA={
     type:{type:'string',enum:[...MANAGEMENT_OPERATION_TYPES],description:'必填操作类型；建立或登记经营单位用createUnit。'},
     id:{type:'string',description:'动作唯一标识；同一动作保持不变，程序用于防止重复记账。'},
     sourceActionId:{type:'string'},unitId:{type:'string',description:'操作目标的既有单位id；createUnit改用unit.id。'},unitIds:{type:'array',items:{type:'string'}},
-    unit:{type:'object',description:'仅createUnit使用，填写已有依据的单位资料，不以补资料为由猜测余额。',properties:{id:{type:'string'},name:{type:'string'},kind:{type:'string'},kindName:{type:'string'},currency:{type:'string'},balance:{type:'number',minimum:0},balanceKnown:{type:'boolean'},description:{type:'string',minLength:40},businessProfile:businessProfileSchema(),resources:{type:'array',items:{type:'object',additionalProperties:true}},stock:{type:'object',additionalProperties:true},shareholders:{type:'array',items:{type:'object',additionalProperties:true}},periodRules:{type:'object',additionalProperties:true}},required:['id','name','description','businessProfile'],additionalProperties:true},
+    unit:{type:'object',description:'仅createUnit使用，填写已有依据的单位资料，不以补资料为由猜测余额。',properties:{id:{type:'string'},name:{type:'string'},kind:{type:'string'},kindName:{type:'string'},currency:{type:'string'},balance:{type:'number',minimum:0},balanceKnown:{type:'boolean'},description:{type:'string',minLength:40},businessProfile:businessProfileSchema(),resources:{type:'array',items:{type:'object',additionalProperties:true}},stock:{type:'object',additionalProperties:true},shareholders:{type:'array',description:'股东列表，优先使用actorId/name/share；share为0至1比例。',items:{type:'object',properties:{actorId:{type:'string'},name:{type:'string'},share:{type:'number',minimum:0,maximum:1}},required:['share'],additionalProperties:true}},periodRules:{type:'object',additionalProperties:true}},required:['id','name','description','businessProfile'],additionalProperties:true},
     name:{type:'string'},description:{type:'string'},amount:{type:'number',minimum:0},amountKnown:{type:'boolean'},priceKnown:{type:'boolean'},costKnown:{type:'boolean'},
     quantity:{type:'number',minimum:0},unitPrice:{type:'number',minimum:0},days:{type:'number',minimum:0},period:{type:'string'},
     actorId:{type:'string'},actorName:{type:'string'},targetUnitId:{type:'string'},exchangeRate:{type:'number',exclusiveMinimum:0},toUnitId:{type:'string'},resourceId:{type:'string'},toResourceId:{type:'string'},

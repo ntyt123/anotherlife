@@ -22,7 +22,7 @@ function resolveActor(s, value) {
   return matches.length === 1 ? { actor: matches[0], id: matches[0].actorId || 'name:' + cleanName(matches[0].姓名) } : null;
 }
 function partnerFor(s, a, b) { const x = resolveActor(s, a), y = resolveActor(s, b); if (!x || !y || x.id === y.id) return null; return x.id === 'player' ? y : y.id === 'player' ? x : null; }
-function makeFact(s, id, type, a, b, content, postId = '', seq = 0) { const partner = partnerFor(s, a, b); if (!partner || !text(partner.actor.性别).includes('女')) return null; return { id: 'weibo:' + id, partnerId: partner.id, partner: partner.actor.姓名, type, actor: text(a), target: text(b), text: text(content), postId, seq }; }
+function makeFact(s, id, type, a, b, content, postId = '', seq = 0) { const partner = partnerFor(s, a, b); if (!partner) return null; return { id: 'weibo:' + id, partnerId: partner.id, partner: partner.actor.姓名, type, actor: text(a), target: text(b), text: text(content), postId, seq }; }
 function cardPosts(body) { const posts = []; for (const m of text(body).matchAll(/:::weibo\s*\n([\s\S]*?)\n:::/g)) { const p = { 评论列表: [] }; for (const line of m[1].split(/\r?\n/)) { const i = line.indexOf('|'); if (i < 0) continue; const k = line.slice(0, i).trim(), v = line.slice(i + 1).trim(); if (k.startsWith('评论-')) p.评论列表.push({ 谁: k.slice(3), 内容: v }); else if (!['__proto__','constructor','prototype'].includes(k)) p[k] = v; } if (p.作者 && p.正文) posts.push(p); } return posts; }
 // 只收可明确确定操作者、对象的公开互动，数字点赞/转发总数不是互动身份。
 export function cpWeiboFacts(s, { cache, pending = [], body = '', seq = 0, includeReplyCards = false } = {}) {
@@ -51,11 +51,11 @@ export function cpContext(s, facts = []) {
   if (!cpEnabled(s)) return '';
   return '\n【CP局势·只读】\n' + JSON.stringify({ pairs: list(s.protagonist.cpState?.pairs).map(p => ({ id:p.id, partner:p.partner, partnerId:p.partnerId, name:p.name, count:p.count, countKnown:p.countKnown, heat:p.heat, cohesion:p.cohesion, controversy:p.controversy, status:p.status, recentEvents:list(p.events).slice(-3).map(e=>({id:e.id,title:e.title,evidence:e.evidence,sourceIds:e.sourceIds})) })), publicWeiboInteractions: facts.filter(f => !list(s.protagonist.cpState?.seenSources).includes(f.id)) });
 }
-export const CP_SCHEMA = { type: 'array', description: '星途开启时提交有正文或已提供微博事实依据的CP事件；没有就空数组。禁止直接修改protagonist.cpState。', items: { type:'object', properties: { partner:{type:'string'}, type:{type:'string',enum:['create','activity']}, evidence:{type:'string'}, title:{type:'string'}, sourceIds:{type:'array',items:{type:'string'}}, count:{}, delta:{}, percent:{}, estimated:{type:'boolean'}, name:{type:'string'}, heat:{type:'number'}, cohesion:{type:'number'}, controversy:{type:'number'}, status:{type:'string'}, origin:{type:'string'}, topics:{type:'array',items:{type:'object',properties:{title:{type:'string'},comments:{type:'array',items:{type:'object',properties:{stance:{type:'string'},text:{type:'string'}},required:['text'],additionalProperties:true}}},required:['title','comments'],additionalProperties:true}} }, required:['partner','type','evidence','title'], additionalProperties:true } };
+export const CP_SCHEMA = { type: 'array', description: '星途开启时提交有正文或已提供微博事实依据的CP事件；没有就空数组。禁止直接修改protagonist.cpState。', items: { type:'object', properties: { partner:{type:'string'}, type:{type:'string',enum:['create','activity']}, evidence:{type:'string'}, title:{type:'string'}, sourceIds:{type:'array',items:{type:'string'}}, count:{}, delta:{}, percent:{}, estimated:{type:'boolean'}, name:{type:'string'}, heat:{type:'number'}, cohesion:{type:'number'}, controversy:{type:'number'}, status:{type:'string'}, origin:{type:'string'}, topics:{type:'array',items:{type:'object',properties:{title:{type:'string'},comments:{type:'array',items:{type:'object',properties:{stance:{type:'string'},text:{type:'string'}},required:['text'],additionalProperties:true}}},required:['title','comments'],additionalProperties:true}} }, required:['partner','type'], additionalProperties:true } };
 export const CP_RULES = `【星途CP结算】仅在主角是否艺人=true时有效。只统计主角与明确女性艺人/演艺从业者的CP，不统计其他人的CP，不把嗑CP当真实恋情，不改好感/婚恋/现金/旧粉丝圈层。
 每次结算都返回cpUpdates数组；确实没有相关事件才返回[]，不能省略字段，也不能只在summary或普通说明里写CP事实。CP结果写进本次结算工具，使用普通JSON回复时同样保留cpUpdates。
-首次type=create：公开观众已经开始嗑两人的搭配、配对二创或弹幕留言，即使只是零星讨论，也可以记录初生CP。不要求成立应援群、超话、站子或达到固定人数；角色CP也可关联明确对应的两位演员。必须引用本轮原文，搭档归属必须明确，不能把第三方CP移给主角。单纯同框、私下喜欢、工作人员私下玩笑、未来计划或明确否认有人嗑的描述不创建。partner写对应人物姓名或actorId。CP成立不能仅由微博普通点赞推断，成立前的旧微博不追溯补算。
-已有CP的公开活动、避嫌、澄清、退坑等正文新事实可用type=activity，evidence引用本轮正文。已提供publicWeiboInteractions的实际点赞/取消点赞/评论/回复/转发须纳入已有CP评估，填写对应sourceIds；同一互动被正文复述时合并为一项，不另外再记故事涨幅。输入中每条相关新互动都要覆盖，纯转述旧事不重复计数，延续同一活动可写已有eventId并追加讨论。
+首次type=create：公开观众已经开始嗑两人的搭配、配对二创或弹幕留言，即使只是零星讨论，也可以记录初生CP。不要求成立应援群、超话、站子或达到固定人数；角色CP也可关联明确对应的两位演员。evidence可概括本轮事实，不要求逐字照抄；CP成立、阶段与变化由你结合上下文判断，程序不再用原文或关键词二次否决。搭档归属必须明确，不能把第三方CP移给主角。单纯同框、私下喜欢、工作人员私下玩笑、未来计划或明确否认有人嗑的描述不创建。partner写对应人物姓名或actorId。CP成立不能仅由微博普通点赞推断，成立前的旧微博不追溯补算。
+已有CP的公开活动、避嫌、澄清、退坑等正文新事实可用type=activity，evidence说明本轮事实，可用自己的话概括。已提供publicWeiboInteractions的实际点赞/取消点赞/评论/回复/转发须纳入已有CP评估，填写对应sourceIds；同一互动被正文复述时合并为一项，不另外再记故事涨幅。输入中每条相关新互动都要覆盖，纯转述旧事不重复计数，延续同一活动可写已有eventId并追加讨论。
 数字：正文有明确总数写count，有增减写delta，有比例写percent（如-30表示下降30%）；同时有总数和增量优先count，只算一次。只有定性萌芽且没有可靠规模依据时保持人数未知，省略count/delta/percent，不随手给默认人数或把播放、点赞数直接当CP粉人数。已有可信基数且事件支持估算时可给有依据的delta并estimated=true，否则保留人数，只记录活动与讨论。没相关事实不变，不随时间自动涨跌。
 每个有效事件给title、origin（作品/综艺/舞台/真人向等）、必要的heat/cohesion/controversy(0到100)及status。活动至少一个topics话题，每题3到5条不同立场comments:{stance,text}，只讨论已发生的公开事实，不编造私下见面/官方声明/黑料；讨论猜测不是下轮新事件依据。没有更新不覆盖旧状态，缺失项留空而非写无/暂无。
 初生示例：cpUpdates:[{partner:'女艺人甲',type:'create',evidence:'有观众开始嗑主角与女艺人甲饰演的两个角色，出现配对二创与零星留言。',title:'角色搭档出现第一批公开配对讨论',origin:'作品',status:'初生',topics:[{title:'观众开始关注这对角色搭档',comments:[{stance:'CP粉',text:'先关注这次合作。'},{stance:'作品粉',text:'角色搭档不等于真人恋情。'},{stance:'路人',text:'目前只是零星讨论。'}]}]}]，这里没有可靠人数依据，所以不填数值。`;
@@ -115,29 +115,23 @@ export function applyCPUpdates(s, payload, { body = '', facts = [], cacheIds = [
   const issues = [], diffs = [];
   if (!enabledAtStart || !cpEnabled(s)) return { diffs, issues };
   if (payload == null) { if (facts.length && list(s.protagonist.cpState?.pairs).some(p=>facts.some(f=>f.partnerId===p.partnerId&&!list(s.protagonist.cpState?.seenSources).includes(f.id)))) issues.push({step:'CP',why:'有新的微博互动，本轮结算未提交CP结果，已保留等待后续结算'}); return { diffs, issues }; }
-  const updates = Array.isArray(payload) ? payload : Array.isArray(payload.items) ? payload.items : payload.partner || payload.搭档 ? [payload] : null;
+  const updates = Array.isArray(payload) ? payload : Array.isArray(payload.items) ? payload.items : payload.partnerId || payload.partner || payload.搭档 || payload.姓名 ? [payload] : null;
   if (!updates) return { diffs, issues:[{step:'CP',why:'CP结果格式不可识别，旧数据保留'}] };
   const before = clone(s.protagonist.cpState), next = clone(before || { version:1,pairs:[],seenSources:[],weiboBaseline:false });
   next.pairs = list(next.pairs); next.seenSources=list(next.seenSources); const used=new Set(next.seenSources), fm=new Map(facts.map(f=>[f.id,f]));
   const warn = why => issues.push({step:'CP',why});
   for (const u of updates) {
     if (!u || typeof u !== 'object') continue;
-    const actor=resolveActor(s,u.partnerId||u.partner||u.搭档||u.姓名); if (!actor || actor.id==='player' || !text(actor.actor.性别).includes('女')) { warn('CP搭档无法唯一对应女性人物，该项未更新'); continue; }
+    const actor=resolveActor(s,u.partnerId||u.partner||u.搭档||u.姓名); if (!actor || actor.id==='player') { warn('CP搭档无法唯一对应已有角色，该项未更新'); continue; }
     let p=next.pairs.find(p=>p.partnerId===actor.id || (String(p.partnerId).startsWith('name:') && [actor.actor.姓名,...list(actor.actor.曾用名),...list(actor.actor.aliases)].map(cleanName).includes(cleanName(p.partner)))); const create=!p;
     const evidence=text(u.evidence||u.依据||u.正文依据), title=text(u.title||u.活动||u.事件);
-    const refs=list(u.sourceIds||u.微博来源).map(text), unique=[...new Set(refs)];
-    if(unique.some(id=>!fm.has(id)||fm.get(id).partnerId!==actor.id)){warn('CP微博来源无法核对，该项未更新');continue;}
-    const sourceFacts=unique.map(id=>fm.get(id));
-    const storyValid=!!evidence&&text(body).includes(evidence);
-    if(!storyValid&&!sourceFacts.length){warn('CP事件没有本轮正文或实际微博依据，该项未更新');continue;}
-    if(!create && !sourceFacts.length && (!storyValid || !text(body).includes(text(actor.actor.姓名)) || !/CP|cp|西皮|嗑|磕|粉|同台|同框|合照|合作|路演|直播|采访|微博|澄清|避嫌|退坑|应援|节目|播出|公开|出席|首映|红毯|颁奖|典礼|发布会|签售|见面会/.test(evidence) || /私下|无人知晓|尚未公开|没有公开|未公开/.test(evidence))){warn('该CP没有新的公开活动依据，人数保留');continue;}
-    if(create){ const identity=text(actor.actor.身份); const near=text(body).split(/[。！？\n]/).filter(x=>x.includes(actor.actor.姓名)).join(' '); if(!storyValid||!/(?:CP|cp|西皮|嗑|磕|应援群|超话|CP党|粉丝群|粉丝.{0,40}(?:两人|一对|一起)|(?:两人|一对|搭档).{0,40}(?:粉|党|应援))/.test(evidence)||/(?:没有|尚未|并未|不曾|计划|打算|如果|假如|将会|可能|准备|不会|尚无|不要).{0,8}(?:成立|形成|建立|CP党|CP粉|应援群)/.test(evidence)||!text(body).includes(text(actor.actor.姓名))||!(actor.actor.是否艺人===true||/演员|艺人|歌手|女星|模特|偶像|音乐剧|表演|戏剧|练习生|舞者|乐手/.test(identity+' '+near))){warn('正文尚未确认该CP粉群体成立或搭档演艺身份，该项未建档');continue;} }
+    const refs=[...new Set(list(u.sourceIds||u.微博来源).map(text))], unique=refs.filter(id=>fm.has(id)&&fm.get(id).partnerId===actor.id);
+    // 剧情事实以模型结算为准。可识别来源仅辅助关联和去重，不作为采纳门槛。
     const allUsed=unique.length>0&&unique.every(id=>used.has(id)); if(allUsed)continue;
     // 正文证据若直接引用已知微博互动，也绑定其来源，避免换成正文来源再加一次。
     if(!unique.length&&p){ for(const f of facts)if(f.partnerId===p.partnerId&&evidence&&(evidence.includes(f.text)||f.text.includes(evidence)||(/微博|点赞|取消点赞|转发|回复|评论/.test(evidence)&&evidence.includes(f.type))))unique.push(f.id); if(unique.length&&unique.every(id=>used.has(id)))continue; }
     const eventKey=text(u.eventId||u.事件ID), oldEvent=p&&eventKey?list(p.events).find(e=>e.id===eventKey):null;
-    if(eventKey&&!oldEvent){warn('CP活动ID不存在，该项未更新');continue;}
-    const key=unique.length?'sources:'+unique.slice().sort().join('|'):'story:'+hash([actor.id,evidence]);
+    const key=unique.length?'sources:'+unique.slice().sort().join('|'):refs.length?'model-sources:'+hash([actor.id,refs.slice().sort()]):'story:'+hash([actor.id,evidence||title||[seq,u.type,u.count,u.delta,u.percent]]);
     if(list(p?.events).some(e=>list(e.keys).includes(key)))continue;
     let count=cpNumber(u.count??u.人数??u.总人数), delta=cpNumber(u.delta??u.增减), percent=cpNumber(text(u.percent??u.百分比).replace(/%$/,''));
     if(create){p={id:'cp_'+hash(['player',actor.id]),partnerId:actor.id,partner:actor.actor.姓名,name:text(u.name||u.CP名)||s.protagonist.姓名+' × '+actor.actor.姓名,count:0,countKnown:false,heat:0,cohesion:0,controversy:0,status:'初生',origin:text(u.origin||u.来源),createdSeq:seq,createdAt:date,peak:0,events:[]};next.pairs.push(p);}
@@ -148,7 +142,7 @@ export function applyCPUpdates(s, payload, { body = '', facts = [], cacheIds = [
     if(text(u.status||u.状态))p.status=text(u.status||u.状态); if(text(u.origin||u.来源))p.origin=text(u.origin||u.来源);p.peak=Math.max(p.peak||0,p.count);p.updatedSeq=seq;p.lastDelta=p.count-previous;
     let topics=list(u.topics||u.话题).map((t,i)=>({id:'cpt_'+hash([p.id,key,i]),title:text(t.title||t.标题),comments:list(t.comments||t.讨论).map(c=>typeof c==='string'?{stance:'网友',text:c}:{stance:text(c.stance||c.立场)||'网友',text:text(c.text||c.内容)}).filter(c=>c.text)})).filter(t=>t.title&&t.comments.length);
     if(!topics.length){topics=[{id:'cpt_'+hash([p.id,key]),title:p.name+' · '+(title||'公开动态'),comments:[{stance:'CP粉',text:'关注这次公开互动，后续仍看正式消息。'},{stance:'作品粉',text:'合作表现本身也值得讨论。'},{stance:'路人',text:'公开互动不能直接证明私人关系。'}]}];warn('CP话题未完整返回，已用公开事实讨论兜底，未额外请求模型');}
-    const event={id:oldEvent?.id||'cpe_'+hash([p.id,key]),title:title||'公开动态',evidence,source:unique.length?'weibo':'story',sourceIds:unique,seq,textVersion,date,delta:p.count-previous,count:p.count,estimated:p.countSource==='estimated',topics,keys:[key]};
+    const event={id:oldEvent?.id||eventKey||'cpe_'+hash([p.id,key]),title:title||'公开动态',evidence,source:unique.length?'weibo':'story',sourceIds:unique,modelSourceIds:refs.filter(id=>!unique.includes(id)),seq,textVersion,date,delta:p.count-previous,count:p.count,estimated:p.countSource==='estimated',topics,keys:[key]};
     const point = {id:'cpp_'+hash([p.id,key]),title:event.title,date,seq,textVersion,delta:event.delta,count:p.count};
     if(oldEvent){oldEvent.changes=list(oldEvent.changes).length?oldEvent.changes:[{id:oldEvent.id,title:oldEvent.title,date:oldEvent.date,seq:oldEvent.seq,textVersion:oldEvent.textVersion,delta:oldEvent.delta,count:oldEvent.count}]; oldEvent.changes.push(point);oldEvent.delta+=event.delta;oldEvent.count=event.count;oldEvent.seq=seq;oldEvent.textVersion=textVersion;oldEvent.topics.push(...topics);oldEvent.sourceIds=[...new Set([...oldEvent.sourceIds,...unique])];oldEvent.keys.push(key);oldEvent.date=date;oldEvent.evidence=evidence||oldEvent.evidence;}else {event.changes=[point];p.events.push(event);}
     for(const id of unique)used.add(id);

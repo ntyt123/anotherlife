@@ -21,6 +21,7 @@ import { WARDROBE_RULES, wardrobeCompletionTool, inspectWardrobeResult, currentW
 import { INITIAL_DATA_RULES, initialParseTool, mergeInitialData, sanitizeInitialHomes, initialDataIssues, initialRepairPatch, seedInitialAssets } from './lib/initial-data.mjs';
 import {createCreationHost,worldCreationTool,creationWorldResult,normalizeCreationCareer,recordCreationWarnings,syncCreationWardrobes,creationBasis,WORLD_CREATION_RULES} from './lib/creation-flow.mjs';
 import { createWritingStyleHost } from './lib/writing-style-host.mjs';
+import { reasoningFor, normalizeReasoning, modelRequestOptions } from './lib/model-options.mjs';
 import { cpEnabled, cpWeiboFacts, cpContext, CP_RULES, CP_SCHEMA, cpSettlementTool, collectCPResults, applyCPUpdates } from './lib/cp-core.mjs';
 import { STYLE_PREFIX } from './lib/writing-style-core.mjs';
 import { captureScentTextState, synchronizeScentText, isAdultTextSyncActor } from './lib/scent-text-sync.mjs';
@@ -5256,6 +5257,11 @@ function pickToolCall(r) {
 }
 
   async function callMainModel(messages, opts) {
+    if (!Object.prototype.hasOwnProperty.call(opts || {}, 'reasoningEffort')) {
+      const scope = requestContext.getStore();
+      const source = scope?.gameId ? await loadState(scope.gameId) : { config: ((await readJson(SETTINGS_FILE)) || {}).config || {} };
+      opts = modelRequestOptions(source, 'body', opts || {});
+    }
     const request = requestContext.getStore();
     const active = request && RUNNING.get(request.gameId);
     if (active) {
@@ -5679,13 +5685,11 @@ const STYLE_NOTES_DEFAULT = [
    * 每个模型支持的档位不同，传错会直接报错 —— 所以前端要从 reasoningOptions 拿选项。
    */
   async function reasoningOf(s, slot) {
-    const r = (s && s.config && s.config.reasoning) || {};
-    const v = String(r[slot] || '').trim();
-    return v || undefined;
+    return reasoningFor(s, slot);
   }
 
   async function callSlot(s, slot, messages, opts) {
-    opts = opts || {};
+    opts = modelRequestOptions(s, slot, opts || {});
     let cfg = (s.config && s.config[slot]) || {};
     if (!cfg.model && !cfg.baseURL && ['phone', 'assistant'].includes(slot)) {
       const main = adm && adm.currentSelection();
@@ -8848,7 +8852,7 @@ if (微博新条.length) {
   }
 
   const writingStyles = createWritingStyleHost({ reg, readonlyHandles, readJson, writeJson, serial, storeDir: STORE_DIR, llm,
-    currentModel: () => adm?.currentSelection?.() || {}, invalidate: () => { skillCache = { at: 0, id: '', body: '' }; },
+    currentModel: async () => ({ ...(adm?.currentSelection?.() || {}), reasoningEffort: reasoningFor({ config: ((await readJson(SETTINGS_FILE)) || {}).config || {} }, 'writingStyle') }), invalidate: () => { skillCache = { at: 0, id: '', body: '' }; },
     selectedId: async () => String(((await readJson(SETTINGS_FILE)) || {}).writingSkillId || ''), log: turnLog });
   ctx.effect(() => () => writingStyles.dispose());
   const genericHost = createGenericHost({ reg, loadState, saveState, withKeyStatus, applyDiffs, callSlot, callMainModel, pickToolCall, parseJsonLoose, turnLog, beginRun, endRun, RUNNING });
@@ -9001,12 +9005,13 @@ if (微博新条.length) {
     const s = await loadState(gameId);
     if (!s.config || typeof s.config !== 'object') s.config = {};
     const r = reasoning && typeof reasoning === 'object' ? reasoning : {};
-    s.config.reasoning = {
-      body: String(r.body || '').trim(),
-      settle: String(r.settle || '').trim(),
-      retrieve: String(r.retrieve || '').trim(),
-    };
+    s.config.reasoning = normalizeReasoning(r, s.config.reasoning);
     await saveState(s);
+    try {
+      const g = (await readJson(SETTINGS_FILE)) || {};
+      g.config = { ...(g.config || {}), reasoning: s.config.reasoning };
+      await writeJson(SETTINGS_FILE, g);
+    } catch (error) { console.error('[模拟器] 思考设置写入共用配置失败', error); }
     return withKeyStatus(s);
   });
 
