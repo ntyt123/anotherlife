@@ -21,3 +21,5 @@ test('思考档部分保存与配置保存后不丢辅助设置，直连请求�
   await e.api.callMainModel([{role:'user',content:'独立资料请求'}],{});assert.equal(e.requests.at(-1).reasoningEffort,'high');
  }finally{e.cleanup();}
 });
+
+test('旧式自填API请求体同样传递思考档，未设置时不伪造参数',async()=>{const bodies=[];const e=await createHarness({fetchImpl:async(url,options)=>{bodies.push(JSON.parse(options.body));return {ok:true,status:200,text:async()=>JSON.stringify({choices:[{message:{content:'回复'}}]})};}});try{const s=e.api.defaultState();s.gameId='legacy-reason';s.config.phone={baseURL:'https://example.invalid/v1',model:'legacy-model'};s.config.reasoning={body:'high'};e.seed(s.gameId,s);await e.api.callSlot(s,'phone',[{role:'user',content:'测试'}],{});assert.equal(bodies.at(-1).reasoning_effort,'high');assert.equal(bodies.at(-1).model,'legacy-model');s.config.reasoning.body='';await e.api.callSlot(s,'phone',[{role:'user',content:'测试'}],{});assert.ok(!Object.hasOwn(bodies.at(-1),'reasoning_effort'));}finally{e.cleanup();}});

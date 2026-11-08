@@ -5769,6 +5769,7 @@ const STYLE_NOTES_DEFAULT = [
       temperature: opts.temperature != null ? opts.temperature : 0.7,
     };
     if (opts.maxTokens) body.max_tokens = opts.maxTokens;
+    if (opts.reasoningEffort) body.reasoning_effort = opts.reasoningEffort;
     if (opts.json) body.response_format = { type: 'json_object' };
     const headers = { 'Content-Type': 'application/json' };
     if (key) headers.Authorization = 'Bearer ' + key;
