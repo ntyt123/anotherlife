@@ -1,3 +1,4 @@
+import { NARRATIVE_RULES } from './lib/narrative-rules.mjs';
 import {castParseTool,decodeCastResult,CAST_PARSE_RULES} from './lib/cast-protocol.mjs';
 import {readCreationChecklist,refreshCreationChecklist} from './lib/creation-checklist.mjs';
 import {cleanSkillAndItemNotes,PLACEHOLDER_RULE,stripPlaceholderNotes,dedupeStoryLists} from './lib/description-hygiene.mjs';
@@ -6494,6 +6495,7 @@ let aiPickFail = '';
     const head = [
       '你是一款人生模拟器的叙事引擎。你不是某个固定人物，而是当前世界观里的世界本身：负责叙述环境、推进剧情、扮演除主角外的所有 NPC。',
       '主角是玩家（其设定见变量），不得替主角决定言行与心理。',
+      NARRATIVE_RULES,
       '严格跟随世界观设定（时代、时间地点、社会规则、势力、风俗、叙事基调）。现实题材中出现的真实人物，其个人信息、性格、外貌须与现实一致。',
       '【聪明不靠术语】写「聪明」「成绩好」「有天赋」时容易滑成「理科怪」：报数据、讲原理、说符号、一口气把因果讲完。中学生讲一道题不会先定义概念，他会说「你把那个移过去」「这不就跟那个一样吗」，会用笔在纸上画个圈。',
       '  · **成绩好是一种状态，不是一种腔调**：成绩好的人也追星、也打游戏、也说废话、也会有一门学不好。不要一写「成绩好」就自动配上竞赛题、专业术语、全科第一。',
@@ -6775,7 +6777,7 @@ let aiPickFail = '';
     let report=null,profileReport=null;
     try{
       result.called=true;
-      const system=[plan.wardrobes.length?promptText('wardrobe',WARDROBE_RULES):'你负责虚构人生模拟器的普通资料核对，不写故事，只提交明确列出的任务。',profiles.length?promptText('npcProfile',NPC_PROFILE_RULES)+'\n'+OCCUPATION_RULES:'',plan.events.length?'【独立资产字段】仅依据经济证据填写protagonist.住所/事业及实体资产，保留其他条目，禁止猜成交价、贷款或改余额收支；不得用资产字段代替其他任务。':'本次没有资产任务，不得返回房产、企业、余额或收支。','有服装任务用chars，有固定人物任务用profiles；没有对应任务就不返回该类字段，各类必须独立验收。'].filter(Boolean).join('\n');
+      const system=[plan.wardrobes.length?promptText('wardrobe',WARDROBE_RULES):'你负责虚构人生模拟器的普通资料核对，不写故事，只提交明确列出的任务。',profiles.length?NARRATIVE_RULES+'\n'+promptText('npcProfile',NPC_PROFILE_RULES).replace(NARRATIVE_RULES,'')+'\n'+OCCUPATION_RULES:'',plan.events.length?'【独立资产字段】仅依据经济证据填写protagonist.住所/事业及实体资产，保留其他条目，禁止猜成交价、贷款或改余额收支；不得用资产字段代替其他任务。':'本次没有资产任务，不得返回房产、企业、余额或收支。','有服装任务用chars，有固定人物任务用profiles；没有对应任务就不返回该类字段，各类必须独立验收。'].filter(Boolean).join('\n');
       const r=await callSlot(s,'settle',[{role:'system',content:system},{role:'user',content:JSON.stringify(evidence)}],{tools:[npcProfileTool(wardrobeCompletionTool(plan.wardrobes,!!plan.events.length),profiles)],wantTools:true,tag:'资料补全',maxTokens:tokOf(s,'settle'),reasoningEffort:await reasoningOf(s,'settle')});
       if(RUNNING.get(String(gid||''))?.stop)throw new Error('已停止生成');
       const via=pickToolCall(r),text=parseJsonLoose(String(r?.text||r?.reasoning||'').replace(/<think>[\s\S]*?<\/think>/gi,''));
@@ -6818,12 +6820,13 @@ async function settleSystemPrompt(s, gameId, body, phoneBridge) {
     return ([
       ...jbHead,
       '你是人生模拟器的后台变量结算器。依据本轮正文、输入里已发生的手机交流事实和当前变量快照，产出这一轮全部变量变化与一句话小总结。',
+      NARRATIVE_RULES,
       // 星途开关放最前面。放中间（第 52 条左右、25k 字里）实测模型根本扫不到：
       // think 里连「开关」两个字都没出现过，演艺字段一条没写。
       ((s && s.protagonist && s.protagonist.是否艺人 === true)
         ? '【星途模拟】主角开了这个开关（protagonist.是否艺人 为 true）。这一轮必须把演艺资料整批给齐：艺人咖位／定位／资源级别／经纪公司／所属组合／出道时间／合约到期／代表作品／作品履历／主要奖项／微博账号／全网粉丝数／抖音粉丝／小红书粉丝／商业报价／当前代言／粉丝称呼／当前舆论评价／商业价值。少一样界面就空一格。'
         : '【星途模拟】主角没开这个开关。艺人咖位／定位／资源级别／经纪公司／所属组合／出道时间／合约到期／代表作品／作品履历／主要奖项／微博账号／全网粉丝数／抖音粉丝／小红书粉丝／商业报价／当前代言／粉丝称呼／当前舆论评价／商业价值 —— 这批演艺字段全部留空，一个都不许写。其余字段跟这个开关无关。'),
-      '只记录正文和本轮手机交流中已经发生的事实，不猜测。对话里的承诺、声称或金额不代表已经兑现、付款或到账；当前变量中已反映的变化不要重复计入。',
+      '实际事件只记录正文和本轮手机交流中已经发生的事实，不猜测；本轮玩家原始输入另用于识别明确的设定更正。角色台词、愿望、计划、承诺或金额不代表已经兑现、付款或到账；设定更正不借机改写财务事实，当前变量中已反映的变化不要重复计入。',
       '【最低要求】每一轮都必须更新 world.当前日期时间 —— 哪怕故事里只过了几分钟。',
       '  · 正文里出现「第二天」「两天后」「一周后」「转眼到了」「等我再回来时」这类时间跳转，日期就必须跟着改（星期几也要对）。',
       '  · 这一条没有例外：日期不动 = 所有按时间推进的东西（袜子气味、身体痕迹、体液、生理周期）全部停摆，玩家会看到「明明过了几天，什么都没变」。',
@@ -6835,7 +6838,7 @@ async function settleSystemPrompt(s, gameId, body, phoneBridge) {
       '',
       '【第一步：写检查清单】先在一个 <think> 块里逐项过一遍（总共不超过 300 字，四节）：',
       '① 场景锚定：时间／地点／在场角色；',
-      '② 角色点名：**先扫一遍这一轮正文，列出真正出场的角色**（含只被提到、没露面的），只对这些人逐个过一遍、写「这一轮要改哪些字段」；**不在场的已登记角色不用过、也不要写**（省下的长度用来把在场角色写全）；这一轮**新出现**的称呼单独列出来（有称呼就算，如“李姐”“408 的实习生”）；',
+      '② 角色点名：**先扫一遍这一轮正文，列出真正出场的角色**（含只被提到、没露面的），只对这些人逐个过一遍、写「这一轮要改哪些字段」；**未在场且未被玩家明确更正的已登记角色不用过、也不要写；被明确更正的角色即使未出场，也要核对对应资料**（省下的长度用来把在场角色写全）；这一轮**新出现**的称呼单独列出来（有称呼就算，如“李姐”“408 的实习生”）；',
       '    **过每个出场角色时，女性角色必须过一遍「穿着.袜子 / 内衣 / 内裤」的 气味** —— 这一项每一轮都在变（她在出汗、在走动），不是「衣服没换就不用写」。',
       '   再对每个在场角色单独问一句**情事检查**：这一轮有没有身体接触、情事、身体反应？有就点名要改的字段（性癖／敏感点／经验／身体状态）—— 这一类最常被整段漏掉。',
       '   **在场的女性角色顺一下生理周期**（不在场的不必管）：按世界观当前日期推算，日期走过几天就该往前走（别长期停在「周期第 8 天」不动）；「月经状态」进经期才写、出来就清空。',
@@ -7032,7 +7035,7 @@ async function settleSystemPrompt(s, gameId, body, phoneBridge) {
       '- **字段名一律用上面列出的那个，不要用界面上的显示名**：收支（不是「月收入」「月支出」）、债务（不是「债务与欠账」）、凭证（不是「凭证与资格」）、事业（不是「事业与投资」）、住所／交通（不是「居所」）。名字写错不会报错，但内容会落到界面上看不见的地方去。',
       '- **归属钉死，别写重**：技能与状态值一律写到 skills_items 下，**不要写进主角对象**；随身物品一律写 protagonist.物品（{名字,品质,获取时间,简介,属性提升}），**不要再写「背包」**；实体资产＝已声明经营主体、投资房产、设备、土地与收藏品；自住住房和日常用车只在住所／交通，不重复建立产业，虚拟资产＝股权/版权/项目/合约/账号/商誉等无形权利。',
       '- 【当前日期时间】要随剧情推进，始终保持 `2018年8月21日 星期六 12:00:03 晴 端午节` 这一行格式：年月日 → 星期 → 时分秒 → 天气（1~2 字）→ 特殊日期（没有就省略）。时间没变化也要按实际写出当前时刻，不要留模糊描述。',
-      '- 主角的「标签」「表性格」「里性格」「当前想法」由玩家自己维护，不要写；**NPC新建或缺项时必须写表性格、里性格、背景；既有非空固定资料不重写，重大长期变化须给固定资料变更依据。当前想法和当前状态单独更新，不代替固定人设。**',
+      '- 主角的「标签」「表性格」「里性格」「当前想法」由玩家自己维护，不要写；**NPC新建或缺项时必须写表性格、里性格、背景；既有非空固定资料默认不重写；重大长期变化或玩家明确更正时，在chars中对应角色提交需变更的固定字段，并写固定资料变更依据说明来源与所改事实。当前想法和当前状态单独更新，不代替固定人设。**',
       '- 新角色的字段尽量给齐（之后每轮只补有变化的部分）：姓名／性别／**生日**／年龄（有生日就不用写）／**出生地**／种族／身份／外貌／身高／体重（女性还要三围、罩杯）／**健康状况**／**疾病与伤病**／**表性格**／**里性格**／**标签**／**特点**／当前想法／当前状态／**联系方式**（对象：{电话, 微信, QQ}。**「电话」必须给** —— 凡是跟主角有实质关系的角色（父母／兄弟姐妹／子女／配偶／同学／同事／对手／朋友）都要有一个手机号，11 位，格式按年代和身份给（2000 年前后可以用「139xxxx」这种，或座机「0513-8xxxxxx」；现代一律 13x/15x/18x 开头）。**「微信」「QQ」先留空**，等正文里明确出现了「加了微信」「QQ 多少」才补）／**私密物品**（数组，可空：{名称, 藏处, 来历}，如「用完一半的润唇膏／笔袋夹层／去年生日同学送的」；**只写她藏起来、不想让人看见的东西**，不超过 3 件）／**自察**（数组，可空：{时刻, 部位, 感觉}，如「昨晚睡前／小腹／摸到一小块硬的」；**只写她自己私下留意到的身体变化**，不超过 2 条）／**与主角关系**（她是谁：父亲／母亲／妹妹／室友…，不是「父子」这种关系性质）。**和主角真的没关系就留空** —— 只是同学的父母、只见过一面的路人，这个字段留空就行；「是谁的谁」这种说明写进「特点」，**不要写「无（沈清越的父亲）」**，那会让他在关系图上长出一条假线／好感度／信任度／穿着。标签与特点用短词（三五个字，数组或顿号分隔都行，如 ["勤快","嘴碎"]）。**「出生地」写籍贯或老家**（如「北京东城」「江南苏州」），不是现在住的地方；按他的年龄、身份、口音合理给一个，别留空。',
       '- **表性格／里性格／性格写成一句话**（顿号连起来也算一句，如「娇憨灵动、软糯甜美、依恋顺从」），**不要写成数组** —— 只有「标签」「特点」「疾病与伤病」这类才是短词数组。',
       '- **疾病与伤病是数组**（主角和角色都要写）：按角色的年龄／职业／生活方式给常见的那些小毛病，每条只写「程度 + 病名」，6~10 字（如 ["轻度腰肌劳损","中度脂肪肝"]）；不要写成因、来历、症状（不要写「因常年伏案签署文件偶有轻微颈椎劳损」）。年轻健康的角色留空数组，不要写「无」「健康」。已有角色身体出问题时也按同样格式补进去。',
@@ -7047,7 +7050,7 @@ async function settleSystemPrompt(s, gameId, body, phoneBridge) {
       '  · 凭运气：可以，但要让人看得出这是运气（对手失误、场地帮忙、别人放了水），而不是他本来就该赢。',
       '  · 什么都不凭：那就是写崩了，改掉。',
       refSection,
-    ].join('\n')) + '\n\n' + BASIC_DATA_RULES + '\n\n' + NPC_PROFILE_GENERATION_RULES + '\n待核对普通衣着角色：' + JSON.stringify(wardrobeTasks(s).map((n) => ({ 姓名: n.姓名, 部位: BASIC_WEAR_KEYS })));
+    ].join('\n')) + '\n\n' + BASIC_DATA_RULES + '\n\n' + NPC_PROFILE_GENERATION_RULES.replace(NARRATIVE_RULES, '') + '\n待核对普通衣着角色：' + JSON.stringify(wardrobeTasks(s).map((n) => ({ 姓名: n.姓名, 部位: BASIC_WEAR_KEYS })));
   }
 
   /**
@@ -7973,7 +7976,7 @@ if (微博新条.length) {
       try {
         const msgs = [
           { role: 'system', content: await settleSystemPrompt(s, gid, sp.body, phoneBridge) + (cpFrame.enabled ? '\n' + CP_RULES + cpContext(s, cpFrame.facts) : '') + (s.simulation?.enabled ? '\n' + promptText('simulation',SIMULATION_RULES) + (genericPlan ? genericPlan.context : genericHost.context(s)) : '') },
-          { role: 'user', content: '本轮正文：\n' + sp.body + (phoneBridge.settlement?'\n\n'+phoneBridge.settlement:'') },
+          { role: 'user', content: '本轮玩家输入（区分设定更正与角色言行）：\n' + String(sendText || '') + '\n\n本轮正文：\n' + sp.body + (phoneBridge.settlement?'\n\n'+phoneBridge.settlement:'') },
         ];
       // 结算也量一下：这次调用的输入量一直是黑盒，而它每轮都跑一次。
       // 正文那次 sys 八万字，要是结算也差不多，那才是真正在烧钱的地方。
@@ -8323,6 +8326,7 @@ if (微博新条.length) {
     const 句数 = Math.max(2, Number(so && so.段句数) || 10);
     return [
       '你是剧情记录员。把给的正文按**时间顺序**整合成一份连贯、精炼、可长期留存的记录。',
+      NARRATIVE_RULES,
       '规则：',
           // 上一版这条写得太松，模型把「一幕」理解成「一个时间点」，
           // 同一个人一个上午被拆成清晨/07:30/08:00/中午四段，字数翻倍。

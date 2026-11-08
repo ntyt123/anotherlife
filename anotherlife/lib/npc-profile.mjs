@@ -1,4 +1,5 @@
 import {CHARACTER_VOICE_RULES,cleanCharacterText} from './character-voice.mjs';
+import {NARRATIVE_RULES}from'./narrative-rules.mjs';
 import {APPEARANCE_RULES} from './appearance.mjs';
 import{assertSafeValue}from'./runtime-core.mjs';
 const own=(o,k)=>!!o&&Object.prototype.hasOwnProperty.call(o,k),obj=v=>!!v&&typeof v==='object'&&!Array.isArray(v),arr=v=>Array.isArray(v)?v:[],copy=v=>JSON.parse(JSON.stringify(v));
@@ -16,11 +17,11 @@ export const NPC_PROFILE_RULES=[
  '新建NPC、开局人物盘点、指定资料核对中的每个人都必须有这三项，不因未出场、年龄小或不是主角而省略普通档案。按已确认的身份、年代、关系和已有描述设计合理的人物；这是明确的普通角色生成任务，不受“正文没写就留空”的泛化限制。',
  '表性格写对外稳定的相处方式，里性格写内在价值排序、顾虑和决策倾向，各用有内容的一至两句话。表里可以一致，不强迫所有人都有伪装或反差，不把哭泣、生气、恐惧等当前情绪永久写成性格。不要只交一个标签词。',
  '背景按已确认的经历与关系写普通成长或相识脉络；职业与工作履历仅写明确来源，不为凑句数编造就业、接单或转行。真人只保留可确认公开经历及明示剧情关系，不将剧情关系扩写成真实履历；不捏造重大创伤、财富来源、秘密关系、违法经历或现实人物的私生活。未成年角色只写年龄相符的普通性格、成长和家庭生活，不生成成人私密内容。',
- '已有非空固定资料与用户设定优先，核对只补缺项，不重写现有人设。日常结算只在新建/缺项时填写；确有重大长期变化需写固定资料变更依据，不能凭一次冲突或一句台词洗掉性格。',
+ '已有非空固定资料默认保留；最新明确设定更正优先于冲突的旧推断。核对补全任务仍只补缺项，不擅自重写现有人设。日常结算只在新建/缺项时填写；重大长期变化或玩家明确更正可以更新对应固定资料，须写固定资料变更依据说明来源和所改事实，不能凭一次冲突或一句角色台词洗掉性格。',
  '维护补全通过complete_records的profiles数组提交，每个目标姓名必须准确对应；字段不合格或漏人不算完成。只返回普通固定资料，不动年龄生日、身份关系、金钱资产、身体、穿着、气味、手机或主线。服装任务另用chars，不能以一类完成代替另一类。',
  '结构示例：{"profiles":[{"姓名":"示例人物","表性格":"待人平和有礼，交流时会先听完对方的意思","里性格":"重视承诺与个人边界，遇到分歧倾向先弄清事实","背景":"在普通家庭生活中逐渐形成重视约定的习惯。后来与主角在日常往来中相识，相处时习惯把重要约定记下来，也逐渐形成有事提前沟通的习惯。"}]}。示例只示结构，不让所有角色同一种性格。',
-].join('\n')+"\n"+CHARACTER_VOICE_RULES+"\n"+OCCUPATION_RULES;
-export const NPC_PROFILE_GENERATION_RULES=NPC_PROFILE_RULES.split("\n").slice(0,5).join("\n")+"\n"+CHARACTER_VOICE_RULES+"\n"+APPEARANCE_RULES+"\n"+OCCUPATION_RULES;
+].join('\n')+"\n"+CHARACTER_VOICE_RULES+"\n"+OCCUPATION_RULES+"\n"+NARRATIVE_RULES;
+export const NPC_PROFILE_GENERATION_RULES=NPC_PROFILE_RULES.split("\n").slice(0,5).join("\n")+"\n"+CHARACTER_VOICE_RULES+"\n"+APPEARANCE_RULES+"\n"+OCCUPATION_RULES+"\n"+NARRATIVE_RULES;
 export function npcProfileTool(base,tasks){if(!tasks.length)return base;const tool=copy(base),properties={姓名:{type:'string'},...NPC_PROFILE_SCHEMA};tool.parameters.properties.profiles={type:'array',minItems:tasks.length,maxItems:tasks.length,items:{anyOf:tasks.map(t=>({type:'object',properties:{...properties,姓名:{type:'string',enum:[t.姓名]}},required:['姓名',...t.缺项],additionalProperties:false}))}};tool.parameters.required=[...new Set([...(tool.parameters.required||[]),'profiles'])];tool.description='按任务分别提交普通服装chars、固定人物资料profiles及明确允许的资产；不能漏人、改已有固定人设或动账务私密数据。';return tool}
 function fieldProblem(k,v){const t=profileText(v);if(!t)return k+'为空或占位';if(/资料(?:尚未提供|不足|缺失|待补|不详)|(?:背景|性格).*(?:尚未提供|未提供|未提及|未知|待补齐|暂无)/.test(t))return k+'不能用缺资料说明占位';if(k!=='背景'&&/^(?:现在|目前|本轮|此刻|刚刚|正在)/.test(t))return k+'不能用当前情绪代替';return''}
 export function inspectNpcProfiles(s,tasks,raw){const out={update:[],completed:[],missing:[],shape:{returned:0,accepted:0}},rows=[];try{assertSafeValue(raw);for(const k of['profiles','chars','npcs','角色'])for(const n of arr(raw?.[k]))if(obj(n)&&NPC_PROFILE_FIELDS.some(f=>aliases[f].some(a=>own(n,a))||obj(n.性格)))rows.push(n)}catch{out.missing=tasks.map(t=>({...t,why:'固定资料返回值格式不正确'}));return out}out.shape.returned=rows.length;
