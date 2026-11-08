@@ -1,3 +1,4 @@
+import {careerBusinessRepresented} from './management-assets.mjs';
 import {VIRTUAL_ASSET_GENERATION_RULES,virtualAssetItemSchema,seedOwnershipAsset} from './virtual-asset-details.mjs';
 import {assetOwnerNames,mergeDuplicateAssets,mergeSimilarCareers,mergeHomes,mergeSameSkills,mergeDuplicateRights,sameAssetEntity,assetLabel} from './asset-identity.mjs';
 import {REAL_ASSET_DETAIL_GENERATION_RULES,realAssetItemSchema,seedCareerAsset} from './asset-details.mjs';
@@ -101,7 +102,7 @@ export function seedInitialAssets(state) {
   for (const c of career) {
     const nm = label(c);
     if (!nm || !/公司|企业|工作室/.test(nm) || !/所有者|创办人|创始人|老板|拥有者/.test(String(c.职务 || ''))) continue;
-    if (!state.实体资产.some((x) => sameAssetEntity(x,{名称:nm,产权人:String(state.protagonist.姓名||'')},主体名))) state.实体资产.push(seedCareerAsset(c,String(state.protagonist.姓名 || '')));
+    if (!state.实体资产.some((x) => sameAssetEntity(x,{名称:nm,产权人:String(state.protagonist.姓名||'')},主体名)) && !careerBusinessRepresented(state.实体资产,c,state.protagonist.姓名)) state.实体资产.push(seedCareerAsset(c,String(state.protagonist.姓名 || '')));
     const 同名权益=state.虚拟资产.find((x) => sameAssetEntity({名称:String(x.权利标的||x.名称||''),产权人:String(x.归属||x.产权人||'')}, {名称:nm,产权人:String(state.protagonist.姓名||'')}, 主体名));
     if (!同名权益) state.虚拟资产.push(seedOwnershipAsset(c,String(state.protagonist.姓名 || '')));
     else for (const k of ['持股比例','主角所占股份']) if ((同名权益[k]==null||同名权益[k]==='') && c[k]!=null && c[k]!=='') 同名权益[k]=c[k];
