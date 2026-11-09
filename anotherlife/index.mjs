@@ -1,3 +1,4 @@
+import { PHONE_EVENTS_SCHEMA, STORY_PHONE_RULES, planStoryPhone, applyStoryPhoneDiff, rollbackStoryPhoneDiff, deletedStoryPhoneIds } from './lib/story-phone.mjs';
 import { WRITING_GUIDE_PRIORITY, writingGuideMeta } from './lib/writing-contract.mjs';
 import { NARRATIVE_RULES } from './lib/narrative-rules.mjs';
 import {castParseTool,decodeCastResult,CAST_PARSE_RULES} from './lib/cast-protocol.mjs';
@@ -1319,6 +1320,7 @@ async function activeWritingSkill() {
       if (!d || !isSafePath(d.path)) continue;
       if (d.path[0] === 'protagonist' && (['cpState','cpEpoch','是否艺人'].includes(d.path[1]) || (d.path.length === 1 && d.to && ['cpState','cpEpoch'].some(k => Object.hasOwn(d.to,k))))) continue;
       try { assertSafeValue(d.to); } catch (e) { continue; }
+      if (applyStoryPhoneDiff(s, d)) continue;
       // 顶层白名单。模型偶尔把路径写成 [身体] 而不是 [protagonist, 身体]，
       // 那样会在存档根上凭空多一个键，界面读不到，等于这条更新静默丢了。
       // 这里直接挡掉并记一笔，好过留一堆垃圾键。
@@ -4803,6 +4805,7 @@ function guessSockStrength(txt, scent, seed) {
     for (let i = (diffs || []).length - 1; i >= 0; i--) {
       const d = diffs[i];
       if (!d || !isSafePath(d.path)) continue;
+      if (rollbackStoryPhoneDiff(s, d)) continue;
       if (d._had === false) {
         delByPath(s, d.path);
         if (Array.isArray(d._missing) && d._missing.length) delByPath(s, d._missing);
@@ -4999,6 +5002,7 @@ const SETTLE_TOOL = {
       虚拟资产: { type: 'array', items: { type: 'object', additionalProperties: true } },
       simulationUpdates: SIMULATION_UPDATE_SCHEMA,
       cpUpdates: CP_SCHEMA,
+      phoneEvents: PHONE_EVENTS_SCHEMA,
       skills_items: { type: 'object', additionalProperties: true },
       world: { type: 'object', description: '世界观字段级变化，键是字段名、值是新的值', additionalProperties: true },
       protagonist: { type: 'object', description: '主角字段级变化', additionalProperties: true },
@@ -5035,6 +5039,7 @@ const STORY_SUBMIT_TOOL = {
     type: 'object',
     properties: {
       think: { type: 'string', description: '导演笔记：按系统提示里那七节逐项写' },
+      phoneEvents: PHONE_EVENTS_SCHEMA,
       game_content: { type: 'string', description: '这一轮可读的完整叙事。篇幅参考本轮要求，不为凑数扩展未经要求的阶段；心理、修辞与节拍按当前文风。制作备注、勘误、选项和变量不写入正文。' },
     summary: { type: 'string', description: '本轮小结，严格三段式，总共 200~300 字：\n· 时间：游戏内日期 + 时段（如「2010年9月30日 傍晚至夜间」）\n· 地点：具体到房间或街道（如「东棉花胡同39号东楼302宿舍」）\n· 发生的事：谁做了什么、说了什么关键的话、结果如何（150~220 字，带具体名词：人名、剧组名、地名、数字，不要写「发生了一些事」这种空话）' },
       options: { type: 'array', items: { type: 'string' }, description: '行动选项，每条一行带路线标签' },
@@ -6636,6 +6641,7 @@ let aiPickFail = '';
       '。本轮明确篇幅要求优先；不要沿用历史某轮的字数命令。细节密度、心理和概述随当前文风与本轮范围安排，不设自然段配额，不为凑字数制造新事件或强制结束场景。正文不会因写短自动重发。'
     );
     head.push('');
+    head.push(STORY_PHONE_RULES);
     head.push(OPTION_RULES);
     head.push('');
     head.push(UI_RULES);
@@ -6730,6 +6736,7 @@ async function settleSystemPrompt(s, gameId, body, phoneBridge) {
     return ([
       ...jbHead,
       '你是人生模拟器的后台变量结算器。依据本轮正文、输入里已发生的手机交流事实和当前变量快照，产出这一轮全部变量变化与一句话小总结。',
+      STORY_PHONE_RULES,
       NARRATIVE_RULES,
       // 星途开关放最前面。放中间（第 52 条左右、25k 字里）实测模型根本扫不到：
       // think 里连「开关」两个字都没出现过，演艺字段一条没写。
@@ -7804,6 +7811,7 @@ if (微博新条.length) {
     }
     if (r && r.stopped && !String(r.text || '').trim() && !(r.toolCalls || []).length) throw new Error('已停止生成');
     let sp = splitStory(r.text);
+    let storyPhoneEvents = [];
     // 工具通道：正文在 submit_story 的参数里，不在 r.text。
     // 优先工具正文；缺失时兼容同次可见文本，不额外重试。
     {
@@ -7813,6 +7821,7 @@ if (微博新条.length) {
         let a = {};
         try { a = parseToolArgs(调用.args) || {}; } catch (e) { a = {}; }
         if (a.think) sp.think = stripNoteTags(a.think);
+        if (Array.isArray(a.phoneEvents)) storyPhoneEvents = a.phoneEvents;
         // 模型有时把「导演笔记」和「行动选项」一起塞进正文参数 —— 这里一并切走。
         // （只管工具参数里多出来的那份；a.think / a.options 是独立参数，各走各的）
         if (a.game_content) {
@@ -7876,6 +7885,7 @@ if (微博新条.length) {
     const cpTextVersion = randomUUID();
     const cpFrame = await prepareCPFrame(s, gid, seq, sp.body, 微博待发, true);
     let cpSubmitted = null, cpSettlementOK = false;
+    let settledPhoneEvents = [];
     let diffs = [];
     let summary = '';
     let settleOptions = [];
@@ -7922,6 +7932,7 @@ if (微博新条.length) {
         let sj = pickToolCall(settleRes) || parseJsonLoose(settleBody);
         if (sj) {
           const originalSettlement = sj;
+          if (!isTruncated(settleRes?.finish) && Array.isArray(sj.phoneEvents)) settledPhoneEvents = sj.phoneEvents;
           cpSubmitted = cpResponseSources(settleRes, sj);
           cpSettlementOK = !/length|max.?tokens|truncat/i.test(JSON.stringify(settleRes?.finish || ''));
           const diagnostics = [];
@@ -8064,6 +8075,11 @@ if (微博新条.length) {
       }
     }
 
+    if (!r.stopped && !cutStory && !(opts.shouldStop && opts.shouldStop())) {
+      const incoming = planStoryPhone(s, { body: sp.body, events: [...storyPhoneEvents, ...settledPhoneEvents], seq, time: String(s.world?.当前日期时间 || '') });
+      applyDiffs(s, incoming.diffs); diffs.push(...incoming.diffs); dataWarnings.push(...incoming.issues);
+      if (incoming.diffs.length || incoming.issues.length) await turnLog('[正文手机] seq=' + seq + ' threads=' + incoming.diffs.length + ' messages=' + incoming.diffs.reduce((n,d)=>n+d.to.length,0) + ' issues=' + incoming.issues.length);
+    }
     if (genericPlan && !cutStory && !(opts.shouldStop && opts.shouldStop())) {
       for (const outcome of genericHost.commitActions(s, genericPlan, diffs, seq)) if (outcome.status === 'blocked') dataWarnings.push({ step:'经营', why:outcome.why+'，该项未执行' });
     }
@@ -10962,6 +10978,18 @@ const HUMAN_MSG = [
     return { ok: true };
   });
 
+  reg('syncStoryPhone', async ({ gameId, seq }) => {
+    const s = await loadState(gameId), number = Number(seq);
+    const entry = Number.isFinite(number) && (s.transcript || []).find(t => t.role === 'assistant' && Number(t.seq) === number);
+    if (!entry) throw new Error('没有这段正文');
+    const result = planStoryPhone(s, { body: entry.body, seq: entry.seq, skipIds: deletedStoryPhoneIds(s, entry) });
+    applyDiffs(s, result.diffs);
+    if (result.diffs.length) entry.diffs = [...(entry.diffs || []), ...result.diffs];
+    if (result.issues.length) entry.issues = [...(entry.issues || []), ...result.issues];
+    if (result.diffs.length || result.issues.length) await saveState(s);
+    return Object.assign(await withKeyStatus(s), { storyPhoneSync: { seq: entry.seq, added: result.diffs.reduce((n,d)=>n+d.to.length,0), issues: result.issues } });
+  });
+
   reg('phoneThreads', async ({ gameId, 平台 }) => {
     const s = await loadState(gameId);
     const p = phonePlatform(平台 || 'sms');
@@ -12388,6 +12416,13 @@ reg('rebuildSummaries', async ({ gameId }) => {
       );
     }
     if (cpRecalcFrame.enabled && /length|max.?tokens|truncat/i.test(JSON.stringify(res2?.finish || ''))) throw new Error('CP重算未完成，旧结果保留');
+    const deletedPhone = deletedStoryPhoneIds(s, latest);
+    const repairPhone = targetDiffs => {
+      if (res2?.stopped || isTruncated(res2?.finish)) return;
+      const value = planStoryPhone(s, { body: latest.body, events: sj.phoneEvents || [], seq: latest.seq, time: String(s.world?.当前日期时间 || ''), skipIds: deletedPhone });
+      applyDiffs(s, value.diffs); targetDiffs.push(...value.diffs);
+      if (value.issues.length) latest.issues = [...(latest.issues || []), ...value.issues];
+    };
     const oldCPState = s.protagonist.cpState ? JSON.parse(JSON.stringify(s.protagonist.cpState)) : undefined;
     const oldCPDiffs = (latest.diffs || []).filter(d=>d.by==='cp').map(d=>JSON.parse(JSON.stringify(d)));
     let cpRecalcAudit = null;
@@ -12418,6 +12453,7 @@ reg('rebuildSummaries', async ({ gameId }) => {
       applyDiffs(s, repaired);
       tickSockScent(s, latest.body).forEach(d => repaired.push(d));
       const cpResult = recalculateCP(); repaired.push(...cpResult.diffs); diagnostics.push(...cpResult.issues);
+      repairPhone(repaired);
       latest.diffs = (latest.diffs || []).concat(repaired);
       latest.summary = String(safe.summary || latest.summary || '');
       latest.options = pickOptions(safe.options, latest.options);
@@ -12439,6 +12475,7 @@ reg('rebuildSummaries', async ({ gameId }) => {
     latest.summary = String(sj.summary || '');
     latest.options = pickOptions(sj.options, latest.options);
     applyDiffs(s, diffs);
+    repairPhone(diffs);
     const fanRejected = diagnostics.some(d=>d.path?.[0]==='粉丝动态');
     if (Object.hasOwn(compatibility.update,'粉丝动态') && !fanRejected) {
       diffs.push(...applyFanDeltas(s, compatibility.update.粉丝动态, Number(s.story?.sockTick)));

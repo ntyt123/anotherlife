@@ -10032,6 +10032,12 @@ const applyBirth = (text) => setProtagMany({ 生日: text });
                   { className: 'sim-acts-inline' },
                   h('span', { className: 'sim-tok', title: '这一轮正文的字数（不含空白）' }, Array.from(String(t.body || '').replace(/\s/gu, '')).length + ' 字'),
                   h('span', { className: 'sim-tok', title: '按字数估算的 token 数，仅供参考' }, estTokens(t.body) + 'T'),
+                  t.role === 'assistant' && /^:::sms[^\S\r\n]*\r?\n[\s\S]*?^:::[^\S\r\n]*$/m.test(String(t.body || ''))
+                    ? h('button', { className: 'sim-ibtn', disabled: busy, title: '同步这段短信到手机，不重新生成', onClick: () => run((async () => {
+                        const host = await call('ping', {}, gameId);
+                        if (!String(host?.registeredNames || '').split(',').some(n => n === 'sync-story-phone' || n.endsWith('/sync-story-phone'))) throw new Error('请完整重启 DSH，再同步这段短信');
+                        return await call('syncStoryPhone', { seq: t.seq }, gameId);
+                      })()) }, '📩') : null,
                   h('button', { className: 'sim-ibtn', title: '编辑这段文字', onClick: () => startEdit(t) }, '✏️'),
                   t.role === 'user'
                     ? h('button', { className: 'sim-ibtn', title: '重发：删掉这一轮及之后的所有轮，用同样的话重新生成', onClick: () => regenTurn(t) }, '➤')

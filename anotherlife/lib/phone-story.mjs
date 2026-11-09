@@ -1,3 +1,4 @@
+import { isStoryPhoneMessage } from './story-phone.mjs';
 import { buildFeedStoryBridge } from './feed-story.mjs';
 import{createHash}from'node:crypto';
 import{phoneCharacterContext}from'./phone-context.mjs';
@@ -28,11 +29,11 @@ export function buildPhoneStoryBridge(state,{seq=Number(state?.story?.current_me
       const base={id,方向:m.方向,说话人:who,类型:evidence.类型,内容:content,轮次:evidence.轮次,时间:evidence.时间};const repeatedHash=hash(base),count=repeated.get(repeatedHash)||0;repeated.set(repeatedHash,count+1);
       const uid=text(m.id),ordinal=ids.get(uid)||0;ids.set(uid,ordinal+1);
       const key=hash([id,uid?[uid,ordinal]:[repeatedHash,count]]),digest=hash(evidence);
-      records.push({key,hash:digest,evidence,platform:info.platform,thread:id,index:i,round:evidence.轮次??-1,stamp:stamp(m.时间),revised:covered.has(key)&&covered.get(key)!==digest});
+      records.push({key,hash:digest,evidence,platform:info.platform,thread:id,index:i,round:evidence.轮次??-1,stamp:stamp(m.时间),revised:covered.has(key)&&covered.get(key)!==digest||(m.来源==='正文'&&!isStoryPhoneMessage(m)),storyKnown:isStoryPhoneMessage(m)&&list(state?.transcript).some(t=>t?.role==='assistant'&&Number(t.seq)===Number(m.来源轮次))});
     }
   }
   records.sort((a,b)=>a.round-b.round||a.stamp-b.stamp||a.thread.localeCompare(b.thread)||a.index-b.index);
-  const pending=records.filter(r=>covered.get(r.key)!==r.hash),previous=records.filter(r=>covered.get(r.key)===r.hash),remembered=[];let used=0;
+  const pending=records.filter(r=>!r.storyKnown&&covered.get(r.key)!==r.hash),previous=records.filter(r=>r.storyKnown||covered.get(r.key)===r.hash),remembered=[];let used=0;
   for(let i=previous.length-1;i>=0&&remembered.length<oldLimit;i--){const n=JSON.stringify(previous[i].evidence).length;if(used+n>oldChars)break;used+=n;remembered.unshift(previous[i].evidence)}
   const actors=new Set();for(const r of pending){if(r.evidence.说话人&&r.evidence.说话人!==me)actors.add(r.evidence.说话人);for(const n of r.evidence.可见成员)if(n!==me)actors.add(n);if(!r.evidence.群聊)actors.add(r.evidence.会话)}
   const people=list(state?.npcs).filter(n=>actors.has(text(n?.姓名))).map(n=>phoneCharacterContext(state,n,n.姓名));
