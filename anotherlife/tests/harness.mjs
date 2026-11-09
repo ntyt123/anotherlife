@@ -74,7 +74,7 @@ export async function createHarness({ stream, readFailure, writeFailure, fetchIm
     if (filename === path.join(pluginRoot, 'index.mjs')) {
       const end = source.lastIndexOf('\n}');
       if (end < 0) throw new Error('找不到 apply 结束位置');
-      source = source.slice(0, end) + '\n  ctx.__audit = { storySystemPrompt, settleSystemPrompt, summaryRules, settleToDiffs, settleSnapshot, completeBasicData, COMPLETION_TOOL, defaultState, loadState, saveState, readJson, writeJson, statePath, backupPath, splitStory, applyDiffs, rollbackDiffs, truncateFrom, runTurn, callMainModel, callStoryModel, callSlot, SETTLE_TOOL, STORY_SUBMIT_TOOL, toolModeOf, settleMonthly, migrateScentText, recentRounds, configIsBlank, markAppearances, setByPath, getByPath, avatarToFile, appendLog, tickSockScent, tickUnderScent, tickBodyTraces, weiboCachePath, 处理微博回复, 取待发评论, RUNNING };' + source.slice(end);
+      source = source.slice(0, end) + '\n  ctx.__audit = { storySystemPrompt, settleSystemPrompt, summaryRules, settleToDiffs, settleSnapshot, completeBasicData, COMPLETION_TOOL, defaultState, loadState, saveState, readJson, writeJson, statePath, backupPath, splitStory, applyDiffs, rollbackDiffs, truncateFrom, runTurn, callMainModel, callStoryModel, callSlot, SETTLE_TOOL, STORY_SUBMIT_TOOL, toolModeOf, settleMonthly, migrateScentText, recentRounds, configIsBlank, markAppearances, setByPath, getByPath, avatarToFile, appendLog, tickSockScent, tickUnderScent, tickBodyTraces, weiboCachePath, 处理微博回复, 取待发评论, RUNNING, loadPrompts, CONTEXT_BY_GAME };' + source.slice(end);
     }
     const mod = new vm.SourceTextModule(source, { context, identifier: id, initializeImportMeta(meta) { meta.url = id; } });
     modules.set(id, mod); return mod;
