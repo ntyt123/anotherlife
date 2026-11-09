@@ -1,4 +1,5 @@
-import { PHONE_EVENTS_SCHEMA, STORY_PHONE_RULES, planStoryPhone, applyStoryPhoneDiff, rollbackStoryPhoneDiff, deletedStoryPhoneIds } from './lib/story-phone.mjs';
+import { resolveSmsPeer, smsThreadId, smsThreadName, smsDisplayMessages } from './lib/phone-identity.mjs';
+import { PHONE_EVENTS_SCHEMA, STORY_PHONE_RULES, planStoryPhone, applyStoryPhoneDiff, rollbackStoryPhoneDiff, deletedStoryPhoneIds, previewStoryPhone, storyPhoneBodyHash } from './lib/story-phone.mjs';
 import { WRITING_GUIDE_PRIORITY, writingGuideMeta } from './lib/writing-contract.mjs';
 import { NARRATIVE_RULES } from './lib/narrative-rules.mjs';
 import {castParseTool,decodeCastResult,CAST_PARSE_RULES} from './lib/cast-protocol.mjs';
@@ -165,7 +166,7 @@ export function apply(ctx) {
   const revisions = new Map();
   const requestContext = new AsyncLocalStorage();
   const transactions = createAuxiliaryTransactions({ readJson, writeJson, statePath, readExtras: readBundleExtras, writeExtras: writeBundleExtras, warn: (message) => turnLog(message) });
-  const readonlyHandles = new Set(['ping', 'getState', 'turnProgress', 'stopGenerate', 'replyChunk', 'releaseReply', 'mainModel', 'modelChoices', 'modelsOf', 'readLogs', 'stateInfo', 'reasoningOptions', 'cardName']);
+  const readonlyHandles = new Set(['ping', 'getState', 'turnProgress', 'stopGenerate', 'replyChunk', 'releaseReply', 'mainModel', 'modelChoices', 'modelsOf', 'readLogs', 'stateInfo', 'reasoningOptions', 'cardName', 'previewStoryPhone']);
   const sharedHandles = new Set(['writingStyleDelete', 'saveWritingPrefs', 'saveJailbreak', 'savePerson', 'saveWritingSkill', 'applyPreset', 'saveOracleAgent', 'setKey', 'setSkin', 'saveConfig', 'saveReasoning', 'saveTokens', 'listPresets', 'savePreset', 'deletePreset', 'setRepoDir', 'gitStatus', 'checkUpdate', 'pullUpdate', 'commitPush', 'cloneRepo', 'galleryList', 'galleryGet', 'galleryAdd', 'galleryRename', 'galleryRemove']);
   ctx.effect(() => () => replies.clear());
 
@@ -7811,7 +7812,7 @@ if (微博新条.length) {
     }
     if (r && r.stopped && !String(r.text || '').trim() && !(r.toolCalls || []).length) throw new Error('已停止生成');
     let sp = splitStory(r.text);
-    let storyPhoneEvents = [];
+    let storyPhoneEvents = [], savedPhoneEvents = [];
     // 工具通道：正文在 submit_story 的参数里，不在 r.text。
     // 优先工具正文；缺失时兼容同次可见文本，不额外重试。
     {
@@ -8078,6 +8079,7 @@ if (微博新条.length) {
     if (!r.stopped && !cutStory && !(opts.shouldStop && opts.shouldStop())) {
       const incoming = planStoryPhone(s, { body: sp.body, events: [...storyPhoneEvents, ...settledPhoneEvents], seq, time: String(s.world?.当前日期时间 || '') });
       applyDiffs(s, incoming.diffs); diffs.push(...incoming.diffs); dataWarnings.push(...incoming.issues);
+      savedPhoneEvents = incoming.events;
       if (incoming.diffs.length || incoming.issues.length) await turnLog('[正文手机] seq=' + seq + ' threads=' + incoming.diffs.length + ' messages=' + incoming.diffs.reduce((n,d)=>n+d.to.length,0) + ' issues=' + incoming.issues.length);
     }
     if (genericPlan && !cutStory && !(opts.shouldStop && opts.shouldStop())) {
@@ -8128,6 +8130,7 @@ if (微博新条.length) {
       role: 'assistant',
       ...(genericPlan ? { simulationTurnComplete: !cutStory && !(opts.shouldStop && opts.shouldStop()), simulationActionResults: genericPlan.outcomes || [], simulationConsumedActionIds: genericPlan.consumedIds || [] } : {}),
       textVersion: cpTextVersion,
+      phoneEvents: savedPhoneEvents, phoneEventsBodyHash: storyPhoneBodyHash(sp.body),
       think: sp.think,
       body: sp.body,
       summary,
@@ -10682,11 +10685,13 @@ const HUMAN_MSG = [
    * 传进来的是已 loadState 的 s，改完由调用方 saveState。
    */
   async function doPhoneSend(s, tid, 玩家说的话, { historySnapshot } = {}) {
-    const { 类型, 对象: 名字 } = parseThreadId(tid);
+    if (String(tid).startsWith('sms:')) tid = smsThreadId(s, tid);
+    const { 类型, 对象: 原对象 } = parseThreadId(tid);
+    const 名字 = 类型 === 'sms' ? smsThreadName(s, tid) : 原对象;
     // 线程 id 里的对象以「群:」开头就是群聊：wechat:群:204宿舍
     const 群名 = parseGroupThread(名字);
     const isGroup = !!群名;
-    const npc = isGroup ? null : npcByPhone(s, 名字);
+    const npc = isGroup ? null : 类型 === 'sms' ? resolveSmsPeer(s, tid)?.npc : npcByPhone(s, 名字);
     if (!isGroup && !npc) throw new Error('没有这个角色：' + 名字);
     const platform = phonePlatform(String(tid).split(':')[0]);
     const group = isGroup ? findPhoneGroup(s, platform, 群名) : null;
@@ -10793,6 +10798,7 @@ const HUMAN_MSG = [
       });
     });
 
+    if (类型 === 'sms' && npc?.actorId) for (const m of cur) if (!m.peerActorId) m.peerActorId = npc.actorId;
     s.手机.线程[tid] = cur;
     delete s.手机.草稿[tid];
     if (!isGroup) applyPhoneFacts(s, npc, 名字, facts);   // 群聊没有单一对象，事实不落到某个人身上
@@ -10954,7 +10960,7 @@ const HUMAN_MSG = [
       const platforms = book ? ['sms','wechat','qq'].filter(key => isPhoneContact(s,n,key)) : isPhoneContact(s,n,p) ? [p] : [];
       if (!platforms.length) return [];
       const preferred = book ? 'sms' : p, c = phoneContactRecord(s,n,preferred);
-      const messages = s.手机?.线程?.[preferred + ':' + c.姓名] || [];
+      const messages = s.手机?.线程?.[preferred === 'sms' ? smsThreadId(s,c.姓名) : preferred + ':' + c.姓名] || [];
       return [{ ...c, ...(book ? {scope:'addressBook',platforms} : {}), 最近:messages.length ? messages[messages.length-1].内容 : '', 条数:messages.length }];
     }).sort((a,b) => a.姓名.localeCompare(b.姓名,'zh-Hans-CN'));
     return {ok:true,平台:p,...(book ? {scope:'addressBook'} : {}),contacts:list,时间:phoneNow(s)};
@@ -10970,7 +10976,8 @@ const HUMAN_MSG = [
   /** 把某个线程标为已读：记住「读到这里」，而不是记个布尔 */
   reg('phoneMarkRead', async ({ gameId, threadId }) => {
     const s = await loadState(gameId);
-    const tid = String(threadId || '').trim();
+    const rawTid = String(threadId || '').trim();
+    const tid = rawTid.startsWith('sms:') ? smsThreadId(s, rawTid) : rawTid;
     if (!tid) return { ok: false };
     s.手机.已读 = Object.assign({}, s.手机.已读 || {});
     s.手机.已读[tid] = (Array.isArray(s.手机.线程[tid]) ? s.手机.线程[tid].length : 0);
@@ -10978,16 +10985,37 @@ const HUMAN_MSG = [
     return { ok: true };
   });
 
-  reg('syncStoryPhone', async ({ gameId, seq }) => {
-    const s = await loadState(gameId), number = Number(seq);
-    const entry = Number.isFinite(number) && (s.transcript || []).find(t => t.role === 'assistant' && Number(t.seq) === number);
+  reg('previewStoryPhone', async ({ gameId, seq }) => {
+    const s = await loadState(gameId), entry = (s.transcript || []).find(t=>t.role==='assistant' && Number(t.seq)===Number(seq));
     if (!entry) throw new Error('没有这段正文');
-    const result = planStoryPhone(s, { body: entry.body, seq: entry.seq, skipIds: deletedStoryPhoneIds(s, entry) });
-    applyDiffs(s, result.diffs);
-    if (result.diffs.length) entry.diffs = [...(entry.diffs || []), ...result.diffs];
-    if (result.issues.length) entry.issues = [...(entry.issues || []), ...result.issues];
-    if (result.diffs.length || result.issues.length) await saveState(s);
-    return Object.assign(await withKeyStatus(s), { storyPhoneSync: { seq: entry.seq, added: result.diffs.reduce((n,d)=>n+d.to.length,0), issues: result.issues } });
+    return Object.assign({ ok:true }, previewStoryPhone(s,entry));
+  });
+  reg('syncStoryPhone', async ({ gameId, seq, events, bodyHash, textVersion }) => {
+    const s = await loadState(gameId), entry = (s.transcript || []).find(t=>t.role==='assistant' && Number(t.seq)===Number(seq));
+    if (!entry) throw new Error('没有这段正文');
+    if (bodyHash && bodyHash!==storyPhoneBodyHash(entry.body) || textVersion && textVersion!==entry.textVersion) throw new Error('正文已更新，请重新打开短信核对');
+    const preview=previewStoryPhone(s,entry), validSaved=entry.phoneEventsBodyHash && entry.phoneEventsBodyHash!==preview.bodyHash ? [] : entry.phoneEvents || [];
+    let selected=validSaved;
+    if(events!==undefined){
+      assertSafeValue(events);if(!Array.isArray(events))throw new Error('短信核对结果不是数组');
+      const submitted=[],seen=new Set();
+      for(const e of events){const i=Number(e?.cardIndex),card=preview.cards.find(c=>c.cardIndex===i);if(!Number.isInteger(i)||!card||seen.has(i))throw new Error('短信卡序号无效或重复');seen.add(i);
+        const kind=e.kind || 'occurred';if(!['occurred','reference','planned','alreadyRecorded'].includes(kind))throw new Error('短信状态无效');
+        if(kind==='occurred'&&(typeof e.sender!=='string'||!e.sender.trim()||typeof e.recipient!=='string'||!e.recipient.trim()))throw new Error('请明确短信收发双方');
+        submitted.push({platform:'sms',cardIndex:i,kind,sender:typeof e.sender==='string'?e.sender.trim():'',recipient:typeof e.recipient==='string'?e.recipient.trim():'',content:card.content,time:card.time});
+      }
+      selected=[...validSaved,...submitted];
+    }
+    const result=planStoryPhone(s,{body:entry.body,events:selected,seq:entry.seq,skipIds:deletedStoryPhoneIds(s,entry)});
+    if(result.needsReview)return Object.assign(await withKeyStatus(s),{storyPhoneSync:{seq:entry.seq,added:0,corrected:0,needsReview:true,preview}});
+    applyDiffs(s,result.diffs);
+    if(result.diffs.length)entry.diffs=[...(entry.diffs || []),...result.diffs];
+    entry.issues=[...(entry.issues || []).filter(i=>i.code!=='phone-direction'),...result.issues];
+    const changed=JSON.stringify(entry.phoneEvents || [])!==JSON.stringify(result.events) || entry.phoneEventsBodyHash!==preview.bodyHash;
+    entry.phoneEvents=result.events;entry.phoneEventsBodyHash=preview.bodyHash;
+    if(events!==undefined)entry.phoneEventsConfirmed=true;
+    if(result.diffs.length||changed||result.issues.length)await saveState(s);
+    return Object.assign(await withKeyStatus(s),{storyPhoneSync:{seq:entry.seq,added:result.diffs.filter(d=>d._storyPhone.version===1).reduce((n,d)=>n+d.to.length,0),corrected:result.diffs.filter(d=>d._storyPhone.version===2).reduce((n,d)=>n+d.to.length,0),needsReview:false,issues:result.issues}});
   });
 
   reg('phoneThreads', async ({ gameId, 平台 }) => {
@@ -10998,27 +11026,29 @@ const HUMAN_MSG = [
 
   reg('phoneThread', async ({ gameId, threadId }) => {
     const s = await loadState(gameId);
-    const tid = String(threadId || '').trim();
+    const rawTid = String(threadId || '').trim();
+    const tid = rawTid.startsWith('sms:') ? smsThreadId(s, rawTid) : rawTid;
     if (!tid) throw new Error('没指明线程');
     const arr = Array.isArray(s.手机.线程[tid]) ? s.手机.线程[tid] : [];
     const hist = Array.isArray(s.手机.线程历史[tid]) ? s.手机.线程历史[tid] : [];
-    return { ok: true, threadId: tid, messages: arr, canUndo: hist.length > 0, 时间: phoneNow(s) };
+    return { ok: true, threadId: tid, 姓名: tid.startsWith('sms:') ? smsThreadName(s,tid) : parseThreadId(tid).对象, messages: smsDisplayMessages(s,tid,arr), canUndo: hist.length > 0, 时间: phoneNow(s) };
   });
 
   /** 单个联系人的详情（含年代能力：有没有微信/微博） */
   reg('phoneContact', async ({ gameId, name }) => {
     const s = await loadState(gameId);
     const 名字 = String(name || '').trim();
-    const npc = npcByPhone(s, 名字);
+    const npc = resolveSmsPeer(s, 名字)?.npc || npcByPhone(s, 名字);
     if (!npc) throw new Error('没有这个角色');
     const c = phoneOf(npc);
     const 年 = Number((String((s.world && s.world['当前日期时间']) || '').match(/(\d{4})/) || [])[1] || 0);
-    return { ok: true, 姓名: 名字, 电话: c.电话, 微信: c.微信, QQ: c.QQ, 有微信: 年 >= 2011, 有微博: 年 >= 2009, 年 };
+    return { ok: true, 姓名: String(npc.姓名 || npc.名字 || 名字), 电话: c.电话, 微信: c.微信, QQ: c.QQ, 有微信: 年 >= 2011, 有微博: 年 >= 2009, 年 };
   });
 
   reg('phoneSend', async ({ gameId, threadId, text }) => {
     const s = await loadState(gameId);
-    const tid = String(threadId || '').trim();
+    const rawTid = String(threadId || '').trim();
+    const tid = rawTid.startsWith('sms:') ? smsThreadId(s, rawTid) : rawTid;
     if (!tid) throw new Error('没指明线程');
     const 说了 = String(text || '').trim();
     if (!说了) throw new Error('内容是空的');
@@ -11037,14 +11067,15 @@ const HUMAN_MSG = [
    */
   reg('phoneDeleteThread', async ({ gameId, threadId }) => {
     const s=await loadState(gameId);
-    const result=deletePhoneThread(s,threadId);
+    const result=deletePhoneThread(s,String(threadId || '').startsWith('sms:')?smsThreadId(s,threadId):threadId);
     await saveState(s);
     return{ok:true,...result};
   });
 
   reg('phoneDelete', async ({ gameId, threadId, msgId }) => {
     const s = await loadState(gameId);
-    const tid = String(threadId || '').trim();
+    const rawTid = String(threadId || '').trim();
+    const tid = rawTid.startsWith('sms:') ? smsThreadId(s, rawTid) : rawTid;
     const arr = Array.isArray(s.手机.线程[tid]) ? s.手机.线程[tid] : [];
     const next = arr.filter((m) => String(m.id) !== String(msgId));
     if (next.length === arr.length) throw new Error('没找到那条消息');
@@ -11056,7 +11087,8 @@ const HUMAN_MSG = [
   /** 重新生成：把她发来的那条删掉，用你之前那句话重问一次 */
   reg('phoneRegen', async ({ gameId, threadId, msgId }) => {
     const s = await loadState(gameId);
-    const tid = String(threadId || '').trim();
+    const rawTid = String(threadId || '').trim();
+    const tid = rawTid.startsWith('sms:') ? smsThreadId(s, rawTid) : rawTid;
     const arr = Array.isArray(s.手机.线程[tid]) ? s.手机.线程[tid] : [];
     const i = arr.findIndex((m) => String(m.id) === String(msgId));
     if (i < 0) throw new Error('没找到那条消息');
@@ -11079,7 +11111,8 @@ const HUMAN_MSG = [
    */
   reg('phoneResend', async ({ gameId, threadId, msgId }) => {
     const s = await loadState(gameId);
-    const tid = String(threadId || '').trim();
+    const rawTid = String(threadId || '').trim();
+    const tid = rawTid.startsWith('sms:') ? smsThreadId(s, rawTid) : rawTid;
     const arr = Array.isArray(s.手机.线程[tid]) ? s.手机.线程[tid] : [];
     const i = arr.findIndex((m) => String(m.id) === String(msgId));
     if (i < 0) throw new Error('没找到那条消息');
@@ -11096,7 +11129,8 @@ const HUMAN_MSG = [
 
   reg('phoneUndo', async ({ gameId, threadId }) => {
     const s = await loadState(gameId);
-    const tid = String(threadId || '').trim();
+    const rawTid = String(threadId || '').trim();
+    const tid = rawTid.startsWith('sms:') ? smsThreadId(s, rawTid) : rawTid;
     const hist = Array.isArray(s.手机.线程历史[tid]) ? s.手机.线程历史[tid] : [];
     if (!hist.length) throw new Error('没有可回退的');
     s.手机.线程[tid] = hist.pop();
@@ -11107,7 +11141,8 @@ const HUMAN_MSG = [
   /** 草稿 */
   reg('phoneDraft', async ({ gameId, threadId, text }) => {
     const s = await loadState(gameId);
-    const tid = String(threadId || '').trim();
+    const rawTid = String(threadId || '').trim();
+    const tid = rawTid.startsWith('sms:') ? smsThreadId(s, rawTid) : rawTid;
     if (!tid) throw new Error('没指明线程');
     const t = String(text == null ? '' : text);
     if (t.trim()) s.手机.草稿[tid] = t.slice(0, 500);
@@ -12419,8 +12454,9 @@ reg('rebuildSummaries', async ({ gameId }) => {
     const deletedPhone = deletedStoryPhoneIds(s, latest);
     const repairPhone = targetDiffs => {
       if (res2?.stopped || isTruncated(res2?.finish)) return;
-      const value = planStoryPhone(s, { body: latest.body, events: sj.phoneEvents || [], seq: latest.seq, time: String(s.world?.当前日期时间 || ''), skipIds: deletedPhone });
+      const value = planStoryPhone(s, { body: latest.body, events: latest.phoneEventsConfirmed ? latest.phoneEvents || [] : [...(latest.phoneEvents || []),...(Array.isArray(sj.phoneEvents)?sj.phoneEvents:[])], seq: latest.seq, time: String(s.world?.当前日期时间 || ''), skipIds: deletedPhone });
       applyDiffs(s, value.diffs); targetDiffs.push(...value.diffs);
+      latest.phoneEvents=value.events; latest.phoneEventsBodyHash=storyPhoneBodyHash(latest.body);
       if (value.issues.length) latest.issues = [...(latest.issues || []), ...value.issues];
     };
     const oldCPState = s.protagonist.cpState ? JSON.parse(JSON.stringify(s.protagonist.cpState)) : undefined;

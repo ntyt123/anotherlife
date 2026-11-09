@@ -2191,8 +2191,19 @@ const WARN_FALLBACK = {
         }
         /** 短信：iOS 风格（灰底、蓝色发出气泡、居中号码/时间） */
         /** 短信：按「号码/联系人/标题」分段；正文|内容|其它行都算消息气泡（模型怎么写都能认） */
-        function uiSms(raw) {
-          const segs = chatSegments(raw, ["号码", "联系人", "标题", "账号"]);
+        function uiSms(raw, context) {
+          const fields = {}; let inContent = false;
+          const cleaned = String(raw || '').split(/\r?\n/).filter(line => {
+            if(inContent)return true;
+            const m=line.match(/^\s*([^|]+)\|(.*)$/); if(!m)return true;
+            if(m[1].trim()==='内容'){inContent=true;return true;}
+            if(['发件人','发送者','收件人','方向','状态'].includes(m[1].trim())){fields[m[1].trim()]=m[2].trim();return false;}return true;
+          }).join('\n');
+          const event=context?.event, sender=event?.sender || fields.发件人 || fields.发送者 || '', recipient=event?.recipient || fields.收件人 || '';
+          const outgoing=sender ? [context?.protagonist,'主角','我','自己'].filter(Boolean).includes(sender) : ['out','发送','发出'].includes(fields.方向);
+          const literal=cleaned.match(/^内容\|([\s\S]*)$/m);
+          const header=literal?cleaned.slice(0,literal.index):cleaned;
+          const segs = literal ? [{title:header.match(/^(?:号码|联系人|标题|账号)\|([^\n]*)/m)?.[1]?.trim() || '',time:header.match(/^时间\|([^\n]*)/m)?.[1]?.trim() || '',msgs:[[sender || '',literal[1].trim()]]}] : chatSegments(cleaned, ["号码", "联系人", "标题", "账号"]);
           return h(
             'div',
             { className: 'sim-chat-stack' },
@@ -2204,14 +2215,14 @@ const WARN_FALLBACK = {
                   'div',
                   { className: 'sim-sms-top' },
                   h('span', { className: 'sim-sms-back' }, '‹ 信息'),
-                  h('span', { className: 'sim-sms-title' }, sg.title || '短信')
+                  h('span', { className: 'sim-sms-title' }, sender && recipient ? sender + ' → ' + recipient : sg.title || '短信')
                 ),
                 h(
                   'div',
                   { className: 'sim-sms-body' },
                   sg.time ? h('div', { className: 'sim-sms-ts' }, sg.time) : null,
                   sg.msgs.map((m, i) =>
-                    h('div', { className: 'sim-sms-row' + (/^(我|自己|主角)$/.test(m[0]) ? ' me' : ''), key: i }, h('span', { className: 'sim-sms-bub' }, m[1]))
+                    h('div', { className: 'sim-sms-row' + ((sender || fields.方向 ? outgoing : /^(我|自己|主角)$/.test(m[0])) ? ' me' : ''), key: i }, h('span', { className: 'sim-sms-bub' }, m[1]))
                   )
                 )
               )
@@ -2655,7 +2666,7 @@ const WARN_FALLBACK = {
                     notes.length ? h('div', { className: 'sim-call-note' }, notes.map((m) => m[1]).join('\n')) : null
                   );
                 }
-                function UiCard(kind, raw, av) {
+                function UiCard(kind, raw, av, smsContext) {
           if (kind === 'wechat') return uiWechat(raw, av);
           if (kind === 'pyq') return uiPyq(raw);
           if (kind === 'xhs' || kind === 'douyin') return uiXhs(raw);
@@ -2665,7 +2676,7 @@ const WARN_FALLBACK = {
           if (kind === 'banner') return uiBanner(raw);
           if (kind === 'call') return uiCall(raw);
           if (kind === 'qq') return uiQQ(raw, av);
-          if (kind === 'sms') return uiSms(raw);
+          if (kind === 'sms') return uiSms(raw, smsContext);
           if (kind === 'weibo') return uiWeibo(raw);
           if (kind === 'hotsearch') return uiHotsearch(raw);
           if (['schedule', 'list', 'bill', 'rank', 'report', 'ledger', 'manual', 'script', 'board'].indexOf(kind) >= 0) return uiList(raw, kind);
@@ -2825,7 +2836,8 @@ const WARN_FALLBACK = {
           return parts;
         }
 
-        function renderBody(text, av, names, onName) {
+        function renderBody(text, av, names, onName, phoneContext) {
+          let smsIndex = 0;
           const src = String(text == null ? '' : text);
           const lines = src.split(/\r?\n/);
           const FENCE = /^[ \t]*[:：]{3}[ \t]*([A-Za-z_]*)[ \t]*$/;
@@ -2864,7 +2876,7 @@ const WARN_FALLBACK = {
                 }
                 const bodyLines = endAt < 0 ? lines.slice(bodyFrom) : lines.slice(bodyFrom, endAt);
                 flushText();
-                out.push(h('div', { className: 'sim-ui-wrap', key: 'u' + out.length }, UiCard(kind, bodyLines.join('\n'), av)));
+                out.push(h('div', { className: 'sim-ui-wrap', key: 'u' + out.length }, UiCard(kind, bodyLines.join('\n'), av, kind === 'sms' ? {protagonist:phoneContext?.protagonist,event:((index)=>(phoneContext?.events || []).find(e=>e.cardIndex!==undefined&&Number(e.cardIndex)===index))(smsIndex++)} : undefined)));
                 i = endAt < 0 ? lines.length : endAt;
                 continue;
               }
@@ -5065,7 +5077,17 @@ function createWritingStyleViews(React, { downloadFile } = {}) {
         const phoneBookRestartNote = '请重启 DSH 后重新打开联系人。';
         const phoneContacts = phoneContactCache[phoneView === 'addressbook' ? String(gameId) + ':addressBook' : phoneCacheKey] || null;
         const phoneGroups = phoneGroupCache[phoneCacheKey] || [];
-        const phoneThreadList = phoneThreadCache[phoneCacheKey] || [];
+        function phoneLabel(value) {
+          const raw=String(value || '').replace(/^sms:/,''),people=state?.npcs || [];
+          if(people.some(n=>(n.姓名 || n.名字)===raw))return raw;
+          const messages=state?.手机?.线程?.['sms:'+raw];
+          const bound=[...new Set((Array.isArray(messages)?messages:[]).map(m=>m.peerActorId).filter(Boolean))];
+          if(bound.length===1)return people.find(n=>n.actorId===bound[0])?.姓名 || raw;
+          const key=v=>{v=String(v || '').trim();return /^[+\d\s()（）-]+$/.test(v)&&v.replace(/\D/g,'').length>=7?v.replace(/[\s()（）-]/g,''):v;};
+          const found=people.filter(n=>key(n.联系方式?.电话)&&key(n.联系方式.电话)===key(raw));
+          return found.length===1?found[0].姓名 || found[0].名字:raw;
+        }
+        const phoneThreadList = (phoneThreadCache[phoneCacheKey] || []).map(r=>String(r.threadId).startsWith('sms:')?{...r,姓名:phoneLabel(r.threadId)}:r);
         function setPhoneApp2(value) {
           const p=value==='sms'?'':String(value||'');
           if(!['','wechat','qq'].includes(p))return;
@@ -5226,6 +5248,8 @@ function createWritingStyleViews(React, { downloadFile } = {}) {
               if (s && s.resolve) s.resolve(!!ok);
           };
           // 带输入框的版本（原名 window.prompt，同样因为原生模态会丢焦点）
+          const [smsReview, setSmsReview] = React.useState(null);
+          const smsReviewGameRef = React.useRef(String(gameId)); smsReviewGameRef.current = String(gameId);
           const [promptState, setPromptState] = React.useState(null); // { text, value, resolve }
           const inputAsk = React.useCallback(
               (text, def) =>
@@ -5728,6 +5752,27 @@ function createWritingStyleViews(React, { downloadFile } = {}) {
           }, [tab, gameId]);
 
 
+          function openStoryPhone(t) {
+            const gid=String(gameId);
+            return run((async()=>{
+              const host=await call('ping',{},gid),names=String(host?.registeredNames || '').split(',');
+              if(!['sync-story-phone','preview-story-phone'].every(api=>names.some(n=>n===api||n.endsWith('/'+api))))throw new Error('请完整重启 DSH，再核对这段短信');
+              const preview=await call('previewStoryPhone',{seq:t.seq},gid);
+              if(smsReviewGameRef.current!==gid)return null;
+              if(preview.needsReview){setSmsReview({...preview,gid,rows:preview.cards.map(c=>({...c}))});return null;}
+              const result=await call('syncStoryPhone',{seq:t.seq,bodyHash:preview.bodyHash,textVersion:preview.textVersion},gid);
+              return smsReviewGameRef.current===gid?result:null;
+            })());
+          }
+          function saveStoryPhoneReview() {
+            const draft=smsReview;if(!draft||draft.gid!==String(gameId))return Promise.resolve();
+            const events=draft.rows.map(r=>({cardIndex:r.cardIndex,kind:r.direction==='skip'?'reference':'occurred',sender:r.direction==='skip'?'':r.direction==='out'?draft.protagonist:r.peer,recipient:r.direction==='skip'?'':r.direction==='in'?draft.protagonist:r.peer}));
+            return run((async()=>{const result=await call('syncStoryPhone',{seq:draft.seq,bodyHash:draft.bodyHash,textVersion:draft.textVersion,events},draft.gid);
+              if(smsReviewGameRef.current!==draft.gid)return null;
+              if(result.storyPhoneSync?.needsReview)throw new Error('请核对每条短信的收发身份');
+              setSmsReview(old=>old?.gid===draft.gid&&old?.bodyHash===draft.bodyHash?null:old);return result;
+            })());
+          }
           function requestStop() {
             if (stopRequestRef.current) return;
             stopRequestRef.current = true; setStopping(true); setErr('');
@@ -6660,7 +6705,7 @@ function createWritingStyleViews(React, { downloadFile } = {}) {
             if (phoneView === 'addcontact') return '添加联系人';
             if (phoneView === 'addressbook') return '联系人';
             if (phoneView === 'contacts') return phoneApp2 ? '通讯录' : '联系人';
-            if (phoneView === 'thread') return phoneWho || '短信';
+            if (phoneView === 'thread') return (phoneAppScopeRef.current==='sms'?phoneLabel(phoneWho):phoneWho) || '短信';
             if (phoneView === 'person' && phonePerson) return String(phonePerson.姓名 || '联系人');
             if (phoneView === 'threads') return phoneApp2 === 'qq' ? 'QQ' : phoneApp2 === 'wechat' ? '微信' : '短信';
             if (phoneView === 'groups') return '群聊';
@@ -7512,7 +7557,7 @@ function phoneDoComment(id) {
                 return h('div', { key: 'g-' + m.id },
                   显时间 ? h('div', { className: 'sim-wx-ts' }, phoneClock(m.时间)) : null,
                   h('div', { className: 'sim-wx-row' + (me ? ' me' : ''), key: m.id },
-                    uiFace(me ? '我' : (m.谁 || phoneWho), 'sim-wx-av' + (me ? ' me' : ''), av, me),
+                    uiFace(me ? '我' : (phoneAppScopeRef.current==='sms'?phoneLabel(m.谁 || phoneWho):(m.谁 || phoneWho)), 'sim-wx-av' + (me ? ' me' : ''), av, me),
                     h('div', { className: 'sim-wx-col' },
                       (!me && 是群 && m.谁) ? h('span', { className: 'sim-wx-who' }, String(m.谁)) : null,
                       h('div', { className: 'sim-wx-bub' + (m.类型 === 'image' ? ' is-image' : '') },
@@ -10032,12 +10077,8 @@ const applyBirth = (text) => setProtagMany({ 生日: text });
                   { className: 'sim-acts-inline' },
                   h('span', { className: 'sim-tok', title: '这一轮正文的字数（不含空白）' }, Array.from(String(t.body || '').replace(/\s/gu, '')).length + ' 字'),
                   h('span', { className: 'sim-tok', title: '按字数估算的 token 数，仅供参考' }, estTokens(t.body) + 'T'),
-                  t.role === 'assistant' && /^:::sms[^\S\r\n]*\r?\n[\s\S]*?^:::[^\S\r\n]*$/m.test(String(t.body || ''))
-                    ? h('button', { className: 'sim-ibtn', disabled: busy, title: '同步这段短信到手机，不重新生成', onClick: () => run((async () => {
-                        const host = await call('ping', {}, gameId);
-                        if (!String(host?.registeredNames || '').split(',').some(n => n === 'sync-story-phone' || n.endsWith('/sync-story-phone'))) throw new Error('请完整重启 DSH，再同步这段短信');
-                        return await call('syncStoryPhone', { seq: t.seq }, gameId);
-                      })()) }, '📩') : null,
+                  t.role === 'assistant' && /^:::sms[^\S\r\n]*\r?\n[\s\S]*?^:::[^\S\r\n]*$/mi.test(String(t.body || ''))
+                    ? h('button', {className:'sim-ibtn',disabled:busy,title:'同步这段短信到手机，不重新生成',onClick:()=>openStoryPhone(t)},'📩') : null,
                   h('button', { className: 'sim-ibtn', title: '编辑这段文字', onClick: () => startEdit(t) }, '✏️'),
                   t.role === 'user'
                     ? h('button', { className: 'sim-ibtn', title: '重发：删掉这一轮及之后的所有轮，用同样的话重新生成', onClick: () => regenTurn(t) }, '➤')
@@ -10083,7 +10124,7 @@ const applyBirth = (text) => setProtagMany({ 生日: text });
                       )
                     )
                   : null,
-                h('div', { className: 'sim-body-text' }, editing ? null : renderBody(t.body, av, bodyNames, openByName)),
+                h('div', { className: 'sim-body-text' }, editing ? null : renderBody(t.body, av, bodyNames, openByName, {events:t.phoneEvents || [],protagonist:state.protagonist?.姓名})),
                 // 这一轮出过的问题：不折叠、直接列在正文下面。
                 // 进度条上的黄灯一刷新就没了，玩家事后回来看不出哪轮出过事。
                 t.issues && t.issues.length
@@ -14986,6 +15027,19 @@ sysMeta ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, sysMeta) 
                                   )
                                 )
                               : null,
+            smsReview && smsReview.gid===String(gameId) ? h('div',{className:'sim-mask',style:{zIndex:97},onClick:()=>{if(!busy)setSmsReview(null);}},
+              h('div',{className:'sim-modal sim-ask',role:'dialog','aria-modal':true,'aria-label':'核对短信收发',onClick:e=>e.stopPropagation()},
+                h('div',{className:'sim-modal-b',style:{maxHeight:'76vh',overflowY:'auto'}},
+                  h('h3',null,'核对短信收发'),h('p',null,'方向相对于'+smsReview.protagonist+'。只校正身份，保留原文和时间，不调用模型。'),
+                  smsReview.rows.map((row,index)=>h('div',{key:row.cardIndex,'data-sms-card':row.cardIndex,style:{borderTop:'1px solid var(--sim-bd)',padding:'12px 0'}},
+                    h('div',{style:{whiteSpace:'pre-wrap',marginBottom:8}},row.time+'\n'+row.content),
+                    h('label',null,'对方 ',h('select',{'aria-label':'短信'+(index+1)+'对方',value:row.peer,disabled:busy||row.direction==='skip',onChange:e=>setSmsReview(v=>({...v,rows:v.rows.map((r,i)=>i===index?{...r,peer:e.target.value}:r)}))},
+                      h('option',{value:''},'选择对方'),[...new Set([...smsReview.contacts.map(n=>n.name),row.peer].filter(Boolean))].map(name=>h('option',{key:name,value:name},name)))),
+                    h('label',{style:{marginLeft:10}},'方向 ',h('select',{'aria-label':'短信'+(index+1)+'方向',value:row.direction,disabled:busy,onChange:e=>setSmsReview(v=>({...v,rows:v.rows.map((r,i)=>i===index?{...r,direction:e.target.value}:r)}))},
+                      h('option',{value:''},'选择方向'),h('option',{value:'out'},smsReview.protagonist+'发出'),h('option',{value:'in'},'对方发来'),h('option',{value:'skip'},'不属于主角通讯')))
+                  ))
+                ),h('div',{className:'sim-modal-f'},h(Btn,{disabled:busy,onClick:()=>setSmsReview(null)},'取消'),h(Btn,{primary:true,disabled:busy||smsReview.rows.some(r=>!r.direction||r.direction!=='skip'&&!r.peer),onClick:saveStoryPhoneReview},'确认同步'))
+              )) : null,
             h(AvatarModal, {
               cfg: avatarEdit,
   listGallery: () => call('galleryList', {}, gameId),

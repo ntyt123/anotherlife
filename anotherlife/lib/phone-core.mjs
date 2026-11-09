@@ -1,3 +1,4 @@
+import { smsThreadName } from './phone-identity.mjs';
 const own = (x, key) => !!x && Object.prototype.hasOwnProperty.call(x, key);
 export function phonePlatform(raw = 'sms') {
   const value = String(raw || 'sms').trim();
@@ -115,7 +116,7 @@ export function listPhoneThreads(state, platform) {
     if (!tid.startsWith(p + ':') || !Array.isArray(arr) || !arr.length) continue;
     const group = tid.startsWith(p + ':群:');
     const last = arr.at(-1);
-    out.push({ threadId: tid, 是否群: group, 姓名: tid.slice((p + (group ? ':群:' : ':')).length), 最后: String(last.内容 || (last.类型 === 'image' ? '[图片]' : '')), 时间: String(last.时间 || ''), 方向: String(last.方向 || ''), 条数: arr.length, 未读: arr.length > Number(phone.已读?.[tid] || 0) && last.方向 === 'in' });
+    out.push({ threadId: tid, 是否群: group, 姓名: p === 'sms' ? smsThreadName(state,tid) : tid.slice((p + (group ? ':群:' : ':')).length), 最后: String(last.内容 || (last.类型 === 'image' ? '[图片]' : '')), 时间: String(last.时间 || ''), 方向: String(last.方向 || ''), 条数: arr.length, 未读: arr.length > Number(phone.已读?.[tid] || 0) && last.方向 === 'in' });
   }
   for (const g of listPhoneGroups(state, p)) {
     const tid=p+':群:'+g.群名;

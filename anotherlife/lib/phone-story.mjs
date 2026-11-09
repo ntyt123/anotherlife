@@ -1,3 +1,4 @@
+import { smsEvidence } from './phone-identity.mjs';
 import { isStoryPhoneMessage } from './story-phone.mjs';
 import { buildFeedStoryBridge } from './feed-story.mjs';
 import{createHash}from'node:crypto';
@@ -29,7 +30,7 @@ export function buildPhoneStoryBridge(state,{seq=Number(state?.story?.current_me
       const base={id,方向:m.方向,说话人:who,类型:evidence.类型,内容:content,轮次:evidence.轮次,时间:evidence.时间};const repeatedHash=hash(base),count=repeated.get(repeatedHash)||0;repeated.set(repeatedHash,count+1);
       const uid=text(m.id),ordinal=ids.get(uid)||0;ids.set(uid,ordinal+1);
       const key=hash([id,uid?[uid,ordinal]:[repeatedHash,count]]),digest=hash(evidence);
-      records.push({key,hash:digest,evidence,platform:info.platform,thread:id,index:i,round:evidence.轮次??-1,stamp:stamp(m.时间),revised:covered.has(key)&&covered.get(key)!==digest||(m.来源==='正文'&&!isStoryPhoneMessage(m)),storyKnown:isStoryPhoneMessage(m)&&list(state?.transcript).some(t=>t?.role==='assistant'&&Number(t.seq)===Number(m.来源轮次))});
+      records.push({key,hash:digest,evidence:smsEvidence(state,id,evidence),platform:info.platform,thread:id,index:i,round:evidence.轮次??-1,stamp:stamp(m.时间),revised:covered.has(key)&&covered.get(key)!==digest||(m.来源==='正文'&&!isStoryPhoneMessage(m)),storyKnown:isStoryPhoneMessage(m)&&list(state?.transcript).some(t=>t?.role==='assistant'&&Number(t.seq)===Number(m.来源轮次))});
     }
   }
   records.sort((a,b)=>a.round-b.round||a.stamp-b.stamp||a.thread.localeCompare(b.thread)||a.index-b.index);
