@@ -1,3 +1,4 @@
+import { storyLengthInstruction, neutralizeLegacyWordPlaceholder } from './lib/story-length.mjs';
 import { resolveSmsPeer, smsThreadId, smsThreadName, smsDisplayMessages } from './lib/phone-identity.mjs';
 import { PHONE_EVENTS_SCHEMA, STORY_PHONE_RULES, planStoryPhone, applyStoryPhoneDiff, rollbackStoryPhoneDiff, deletedStoryPhoneIds, previewStoryPhone, storyPhoneBodyHash } from './lib/story-phone.mjs';
 import { WRITING_GUIDE_PRIORITY, writingGuideMeta } from './lib/writing-contract.mjs';
@@ -384,7 +385,7 @@ const WEAR_KEYS = ['头部', '上衣', '内衣', '内裤', '下衣', '袜子', '
         retrieveMax: 24,
         // 给正文附带最近几轮原文。0 = 跟着总结频率走（总结每 N 轮一次，原文就接最近 N 轮）。
         recentRounds: 0,
-        // 正文长度：下限是硬要求（写不够就算不合格），上限 0 表示不设上限
+        // 正文篇幅：双0不指定；仅最小为约数，仅最大为上限，均非0为区间。
         bodyMinWords: 1000,
         bodyMaxWords: 0,
         // 角色列表：没标「重要」、且超过这么多轮没露面的，收进「档案」折叠区（不删）
@@ -5054,7 +5055,8 @@ const STORY_SUBMIT_TOOL = {
  * 玩家在这一轮输入里点名要的字数（「20000字」「两万字」「写到 12000 字」）。
  * 认不到返回 0，就按设置里的下限走；范围限制在 200~50000，避免误写一个大数把一轮烧爆。
  */
-function wordTargetOf(text) {
+// 仅供现有长文输出容量估算，不用于生成篇幅要求。
+function storyWordBudgetHintOf(text) {
   const t = String(text == null ? '' : text);
   const wan = t.match(/(\d{1,2}(?:\.\d+)?)\s*万\s*字/);
   const afterWord = t.match(/(?:字数|篇幅)[^0-9]{0,8}(\d{3,6})/);
@@ -5072,14 +5074,14 @@ function wordTargetOf(text) {
   return Math.min(Math.floor(n), 50000);
 }
 
-function fillPersona(text, s, wordTarget) {
+function fillPersona(text, s) {
   const person = String((s && s.config && s.config.person) || '3');
   const name = String((s && s.protagonist && s.protagonist.姓名) || '').trim();
   const 性别 = String((s && s.protagonist && s.protagonist.性别) || '');
   const 人称 = person === '1' ? '第一人称' : person === '2' ? '第二人称' : '第三人称';
   const 人物 = person === '1' ? '我' : person === '2' ? '你' : (name || (/女/.test(性别) ? '她' : '他'));
-  const 字数 = wordTarget || Math.max(200, Math.floor(Number(s && s.config && s.config.bodyMinWords) || 1000));
-  return String(text == null ? '' : text).replaceAll('{{人称}}', 人称).replaceAll('{{视角人物}}', 人物).replaceAll('{{字数}}', String(字数));
+
+  return neutralizeLegacyWordPlaceholder(text).replaceAll('{{人称}}', 人称).replaceAll('{{视角人物}}', 人物);
 }
 
 function toolModeOf(s) {
@@ -6494,7 +6496,7 @@ let aiPickFail = '';
 
   async function storySystemPrompt(s, input, opts) {
     opts = opts || {};
-    const wordTarget = wordTargetOf(input);
+    const lengthInstruction = storyLengthInstruction(s.config, input);
     const phoneBridge=opts.phoneBridge||buildPhoneStoryBridge(s);
     const ctxText = await buildStoryContext(s, input, { all: !!opts.all });
     // 记录「这一轮到底注入了什么」，供界面回显
@@ -6636,11 +6638,7 @@ let aiPickFail = '';
         head.push(作者调整);
       }
     head.push('');
-    head.push(
-      '【正文长度】本轮篇幅参考：' + (wordTarget || Math.max(200, Math.floor(Number(s.config && s.config.bodyMinWords) || 1000))) + '字以上' +
-      (Number(s.config && s.config.bodyMaxWords) > 0 ? '，设置中的' + Number(s.config.bodyMaxWords) + '字仅作参考，不是截断上限' : '') +
-      '。本轮明确篇幅要求优先；不要沿用历史某轮的字数命令。细节密度、心理和概述随当前文风与本轮范围安排，不设自然段配额，不为凑字数制造新事件或强制结束场景。正文不会因写短自动重发。'
-    );
+
     head.push('');
     head.push(STORY_PHONE_RULES);
     head.push(OPTION_RULES);
@@ -6656,7 +6654,7 @@ let aiPickFail = '';
     }
     const prepared = applyBlockOverrides(head.join('\n'));
     const assembled = guideSlot ? prepared.replace(guideSlot, () => skill.body) : prepared;
-    return fillPersona(assembled, { ...s, config: { ...s.config, person } }, wordTarget);
+    return fillPersona(assembled, { ...s, config: { ...s.config, person } }) + (lengthInstruction ? '\n\n' + lengthInstruction : '');
   }
 
   /**
@@ -7796,11 +7794,11 @@ if (微博新条.length) {
     );
     await turnLog('[writing-contract] ' + JSON.stringify(lastContext && lastContext.writing || { guide: { id: '', source: 'none', chars: 0, sha256: '' }, overrides: [], version: 1 }));
     await turnLog('[inject] 正文 sys=' + String(sys || '').length + ' user=' + String(userContent || '').length + ' 其中历史=' + String(recent || '').length + ' 合计=' + (String(sys || '').length + String(userContent || '').length));
-    const wordTarget = opts.all ? 0 : wordTargetOf(sendText);
+    const wordBudgetHint = opts.all ? 0 : storyWordBudgetHintOf(sendText);
     const baseMaxTokens = tokOf(s, 'story');
-    const storyMaxTokens = wordTarget ? Math.max(baseMaxTokens, Math.min(65536, Math.ceil(wordTarget * 1.8))) : baseMaxTokens;
-    if (wordTarget) {
-      await turnLog('[正文] 本轮字数按玩家输入调整：' + Math.max(200, Math.floor(Number(s.config && s.config.bodyMinWords) || 1000)) + ' → ' + wordTarget + '；tokens ' + baseMaxTokens + ' → ' + storyMaxTokens);
+    const storyMaxTokens = wordBudgetHint ? Math.max(baseMaxTokens, Math.min(65536, Math.ceil(wordBudgetHint * 1.8))) : baseMaxTokens;
+    if (wordBudgetHint) {
+      await turnLog('[正文] 玩家篇幅要求保留原话，设定页字数不注入；输出容量 tokens ' + baseMaxTokens + ' → ' + storyMaxTokens);
     }
     const storyOpts = { temperature: storyTempOf(s), maxTokens: storyMaxTokens, onChunk, firstChunkMs: 420000, idleMs: 600000, purpose: opts.all ? '开场' : '正文', shouldStop: opts.shouldStop };
 
@@ -8138,7 +8136,7 @@ if (微博新条.length) {
     const warningsByStep = new Map();
     for (const warning of dataWarnings) warningsByStep.set(warning.step, [...new Set([...(warningsByStep.get(warning.step) || []), warning.why])]);
     for (const [step, reasons] of warningsByStep) markWarn(gid, step, reasons.join('；'));
-    const 正文下限 = wordTarget || Math.max(200, Math.floor(Number(s.config && s.config.bodyMinWords) || 1000));
+
     const 正文字数 = Array.from(String(sp.body || '').replace(/\s/gu, '')).length;
     const 笔记字数 = Array.from(String(sp.think || '').replace(/\s/gu, '')).length;
     await turnLog('[正文] 叙述正文 ' + 正文字数 + ' 字（不含导演笔记与选项），导演笔记 ' + 笔记字数 + ' 字，选项 ' + (Array.isArray(sp.options) ? sp.options.length : 0) + ' 条');

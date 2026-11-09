@@ -1,107 +1,24 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHarness} from './harness.mjs';
-
-const reply = () => (async function* () {
-  yield {type: 'text-delta', index: 0, text: '门开了。\n\n他站在门口。'};
-  yield {type: 'finish', reason: {kind: 'stop'}};
-})();
-
-async function rig({min = 4000, tokens = 8000} = {}) {
-  const e = await createHarness({stream: () => reply()});
-  const s = e.api.defaultState();
-  s.gameId = 'test';
-  s.phase = 'play';
-  s.simulation = {enabled: false};
-  s.protagonist.姓名 = '样本主角';
-  s.npcs = [];
-  s.world.当前日期时间 = '2026年11月1日 10:00';
-  s.config.body = {provider: 'test', model: 'test'};
-  s.config.bodyMinWords = min;
-  s.config.tokens = {story: tokens};
-  s.config.settle = {model: ''};
-  s.config.toolMode = false;
-  s.story.current_message_index = 1;
-  s.story.dataCompletion = {wardrobes: {[JSON.stringify(['protagonist', '样本主角'])]: true}, attempted: {}};
-  s.transcript = [{seq: 0, role: 'assistant', body: '普通开局。', diffs: [], issues: [], options: []}];
-  e.seed('test', s);
-  return e;
-}
-
-const bodyRequest = (e) => e.requests.find((r) => String(r.system || '').includes('【正文长度】'));
-const run = (e, input) => e.call('generateStory', {gameId: 'test', input});
-
-test('没有字数要求时按设置走', async () => {
-  const e = await rig();
-  try {
-    await run(e, '他推门进来。');
-    const r = bodyRequest(e);
-    assert.ok(r);
-    assert.match(String(r.system), /不少于 4000 字/);
-    assert.equal(r.maxTokens, 8000);
-    assert.match(String(r.system), /「写足」不等于「走完」/);
-    assert.match(String(r.system), /这个下限只看当前设置/);
-    assert.match(String(r.system), /只对那一轮有效/);
-    assert.equal(String(r.system).includes('点名要长篇'), false);
-  } finally {
-    e.cleanup();
-  }
-});
-
-test('输入写了 20000 字就按 20000，并抬高 token 上限', async () => {
-  const e = await rig();
-  try {
-    await run(e, '本次输出字数大于20000，无需描写另一个人。');
-    const r = bodyRequest(e);
-    assert.ok(r);
-    assert.match(String(r.system), /不少于 20000 字/);
-    assert.equal(r.maxTokens, 36000);
-    assert.match(String(r.system), /点名要长篇/);
-    assert.equal(String(r.system).includes('「写足」不等于「走完」'), false);
-  } finally {
-    e.cleanup();
-  }
-});
-
-test('中文「两万字」同样识别', async () => {
-  const e = await rig();
-  try {
-    await run(e, '这一轮写两万字，把这一天写完。');
-    assert.match(String(bodyRequest(e).system), /不少于 20000 字/);
-  } finally {
-    e.cleanup();
-  }
-});
-
-test('超过上限按 50000 封顶，低于 200 不触发', async () => {
-  const e = await rig();
-  try {
-    await run(e, '这次写 999999 字。');
-    assert.match(String(bodyRequest(e).system), /不少于 50000 字/);
-  } finally {
-    e.cleanup();
-  }
-  const e2 = await rig();
-  try {
-    await run(e2, '写 100 字就够了。');
-    assert.match(String(bodyRequest(e2).system), /不少于 4000 字/);
-  } finally {
-    e2.cleanup();
-  }
-});
-
-test('覆盖只作用于当轮，下一轮回到设置值', async () => {
-  const e = await rig();
-  try {
-    await run(e, '本次输出字数大于20000。');
-    const first = bodyRequest(e);
-    assert.match(String(first.system), /不少于 20000 字/);
-    e.requests.length = 0;
-    await run(e, '继续。');
-    const second = bodyRequest(e);
-    assert.match(String(second.system), /不少于 4000 字/);
-    assert.equal(second.maxTokens, 8000);
-  } finally {
-    e.cleanup();
-  }
-});
+import {loadClient} from './client-harness.mjs';
+import {storyLengthInstruction,hasStoryLengthRequest,neutralizeLegacyWordPlaceholder} from '../lib/story-length.mjs';
+const reply=()=>(async function*(){yield{type:'text-delta',index:0,text:'门开了。\n\n他站在门口。'};yield{type:'finish',reason:{kind:'stop'}};})();
+async function rig({min=1234,max=4321,tokens=8000}={}){const e=await createHarness({stream:()=>reply()}),s=e.api.defaultState();s.gameId='test';s.phase='play';s.simulation={enabled:false};s.protagonist.姓名='样本主角';s.npcs=[];s.world.当前日期时间='2026年11月1日 10:00';Object.assign(s.config,{body:{provider:'test',model:'test'},bodyMinWords:min,bodyMaxWords:max,tokens:{story:tokens},settle:{model:''},toolMode:false});s.story.current_message_index=1;s.story.dataCompletion={wardrobes:{[JSON.stringify(['protagonist','样本主角'])]:true},attempted:{}};s.transcript=[{seq:0,role:'assistant',body:'普通开局。',diffs:[],issues:[],options:[]}];e.seed('test',s);return e;}
+const run=(e,input)=>e.call('generateStory',{gameId:'test',input});
+const bodyRequests=e=>e.requests.filter(r=>String(r.system||'').includes('【输出格式】'));
+const request=e=>bodyRequests(e)[0];
+for(const[min,max,expected]of [[0,0,''],[2000,0,'【正文长度】本轮正文按2000字左右输出。'],[0,5000,'【正文长度】本轮正文不得大于5000字。'],[2000,5000,'【正文长度】本轮正文输出2000到5000字之间。']])test(`四种设置组合 ${min}/${max} 原样表达`,()=>assert.equal(storyLengthInstruction({bodyMinWords:min,bodyMaxWords:max},'继续。'),expected));
+test('当前要求不提取数字或比较关系，仅交给模型理解',()=>{for(const input of['本轮2000字左右。','本次不得超过100字。','1800—2200字。','写两万字。','这轮不限字数。','这次正文短一点。','多写一点。','少写两段。']){const text=storyLengthInstruction({bodyMinWords:1234,bodyMaxWords:4321},input);assert.match(text,/依据玩家本轮输入/);assert.doesNotMatch(text,/1234|4321|2000|20000|2200|100字/);}});
+test('普通剧情中的一点或说话不会误当全篇幅要求',()=>{for(const input of['这次靠近一点。','回复她：离我远一点。','他有2000元。'])assert.equal(hasStoryLengthRequest(input),false);});
+test('旧模板占位不再插入数字或残留相反下限',()=>{const text=neutralizeLegacyWordPlaceholder('2) game_content——叙事正文。参考本轮{{字数}}字的篇幅要求；密度随文风，不设截断上限。\n字数：每轮不少于{{字数}}字。');assert.doesNotMatch(text,/\{\{字数\}\}|不少于|不设截断上限/);assert.match(text,/game_content/);assert.match(text,/密度随文风/);assert.equal(neutralizeLegacyWordPlaceholder('手填：每轮2000字左右。'),'手填：每轮2000字左右。');});
+for(const[min,max,pattern]of [[0,0,null],[1234,0,/1234字左右/],[0,4321,/不得大于4321字/],[1234,4321,/1234到4321字之间/]])test(`真实生成请求使用 ${min}/${max}，短文不自动重发`,async()=>{const e=await rig({min,max});try{await run(e,'他推门进来。');const r=request(e);assert.ok(r);const sys=String(r.system);if(pattern)assert.match(sys,pattern);else assert.doesNotMatch(sys,/【正文长度】|\{\{字数\}\}|本轮1000字|本轮200字/);assert.doesNotMatch(sys,/字以上|仅作参考，不是截断上限|不设截断上限/);assert.equal(bodyRequests(e).length,1);assert.equal(r.maxTokens,8000);}finally{e.cleanup();}});
+test('真实请求保持玩家原话，不注入设置数字，不在系统里改写目标',async()=>{const e=await rig();try{const input='本轮正文控制在一千到两千字之间，不要超过两千字。';await run(e,input);const r=request(e);assert.ok(r);assert.match(String(r.system),/依据玩家本轮输入/);assert.doesNotMatch(String(r.system),/1234|4321/);assert.ok(JSON.stringify(r.messages).includes(input));}finally{e.cleanup();}});
+test('100字也覆盖设定，不再回落到200字门槛',async()=>{const e=await rig();try{await run(e,'写100字就够了。');assert.match(String(request(e).system),/依据玩家本轮输入/);assert.doesNotMatch(String(request(e).system),/1234|4321|100字以上/);}finally{e.cleanup();}});
+test('长文只沿用原预算扩容，不把容量估计注入系统篇幅指令',async()=>{const e=await rig();try{await run(e,'本次输出字数大于20000。');assert.equal(request(e).maxTokens,36000);assert.doesNotMatch(String(request(e).system),/1234|4321|20000字以上|不少于.*20000/);assert.match(String(request(e).system),/依据玩家本轮输入/);}finally{e.cleanup();}});
+test('覆盖只作用于当前输入，下一轮恢复设定而非沿用旧指令',async()=>{const e=await rig({min:4000,max:0});try{await run(e,'本次输出字数大于20000。');assert.match(String(request(e).system),/依据玩家本轮输入/);e.requests.length=0;await run(e,'继续。');assert.match(String(request(e).system),/4000字左右/);assert.equal(request(e).maxTokens,8000);}finally{e.cleanup();}});
+test('保存重载双零后预览也不注入默认数字',async()=>{const e=await rig();try{await e.call('saveConfig',{gameId:'test',config:{bodyMinWords:0,bodyMaxWords:0}});const s=await e.call('getState',{gameId:'test'});assert.equal(s.config.bodyMinWords,0);assert.equal(s.config.bodyMaxWords,0);const p=await e.call('previewSystemPrompt',{gameId:'test',input:'继续。'});assert.doesNotMatch(JSON.stringify(p),/【正文长度】|\{\{字数\}\}/);}finally{e.cleanup();}});
+test('预览含玩家要求时也省略设置数字',async()=>{const e=await rig();try{const p=await e.call('previewSystemPrompt',{gameId:'test',input:'本轮300字以内。'});assert.match(JSON.stringify(p),/依据玩家本轮输入/);assert.doesNotMatch(JSON.stringify(p),/1234|4321/);}finally{e.cleanup();}});
+const walk=(n,p)=>Array.isArray(n)?n.flatMap(x=>walk(x,p)):n&&typeof n==='object'?[...(p(n)?[n]:[]),...walk(n.kids||[],p)]:[];
+const viewText=n=>Array.isArray(n)?n.map(viewText).join(''):n&&typeof n==='object'?viewText(n.kids||[]):String(n??'');
+test('设置页最小字数输入0实际经saveConfig保存为0',async()=>{const e=await rig({min:4000,max:0});try{const c=loadClient(async(full,args)=>e.call(full.slice(full.lastIndexOf('/')+1).replace(/-([a-z])/g,(_,x)=>x.toUpperCase()),args));c.render().functions.initLoaded(e.getState('test'));c.render().functions.openGenericTab('settings');let tree=c.render().tree;const findField=t=>walk(t,n=>/^最[小少]字数/.test(String(n.props?.label||'')))[0];let field=findField(tree);if(!field){const head=walk(tree,n=>typeof n.props?.onClick==='function'&&viewText(n).includes('正文输出')).sort((a,b)=>viewText(a).length-viewText(b).length)[0];if(head){head.props.onClick({stopPropagation(){}});tree=c.render().tree;field=findField(tree);}}if(field)field.props.onChange('0');else{const row=walk(tree,n=>n.props?.className==='sim-field'&&/^最[小少]字数/.test(viewText(n)))[0];assert.ok(row,'必须找到真正最小字数输入');const input=walk(row,n=>n.type==='input'&&typeof n.props?.onChange==='function')[0];assert.ok(input);input.props.onChange({target:{value:'0'}});}for(let i=0;i<30&&e.getState('test').config.bodyMinWords!==0;i++)await new Promise(resolve=>setImmediate(resolve));assert.equal(e.getState('test').config.bodyMinWords,0);assert.equal(c.render().functions.getOpeningDraft().config.bodyMinWords,0);}finally{e.cleanup();}});

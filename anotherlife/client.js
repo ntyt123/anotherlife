@@ -13825,22 +13825,23 @@ function thinkDrifted(t) {
             group(
               'body',
               '正文输出',
-              '不少于 ' + (Number(dcfg.bodyMinWords) || 1000) + ' 字 · ' + (Number(dcfg.bodyMaxWords) > (Number(dcfg.bodyMinWords) || 1000) ? '最多 ' + dcfg.bodyMaxWords : '不限'),
+              (function(){const min=Math.max(0,Math.floor(Number(dcfg.bodyMinWords)||0)),max=Math.max(0,Math.floor(Number(dcfg.bodyMaxWords)||0));return min?(max?min+'～'+max+'字':min+'字左右'):(max?'不得大于'+max+'字':'不指定字数');})(),
               h('div', { className: 'sim-card' },
                 h('div', { style: { fontWeight: 600, marginBottom: 8 } }, '每轮字数'),
+                h('div', { className: 'sim-hint' }, '双0不指定；仅最小为左右；仅最大为上限；两项都有为区间。玩家本轮篇幅要求优先。'),
                 h('div', { className: 'sim-grid' },
                   h(Field, {
-                    label: '最少字数',
+                    label: '最小字数（0=不指定）',
                     value: dcfg.bodyMinWords,
                     onChange: (v) => {
                       const c = Object.assign({}, dcfg);
-                      c.bodyMinWords = Math.max(200, Math.min(20000, Math.floor(Number(v) || 1000)));
+                      c.bodyMinWords = Math.max(0, Math.min(20000, Math.floor(Number(v) || 0)));
                       upd({ config: c });
                       run(call('saveConfig', { config: c }, gameId));
                     },
                   }),
                   h(Field, {
-                    label: '最多字数（0=不限）',
+                    label: '最大字数（0=不设上限）',
                     value: dcfg.bodyMaxWords,
                     onChange: (v) => {
                       const c = Object.assign({}, dcfg);
