@@ -7,7 +7,7 @@ export const pluginRoot = path.dirname(path.dirname(fileURLToPath(import.meta.ur
 export const clone = (value) => JSON.parse(JSON.stringify(value));
 
 // 实际模块在隔离 VM 中运行；存档和日志只写入 Map，外部进程一律拒绝。
-export async function createHarness({ stream, readFailure, writeFailure, fetchImpl, maxTimerMs = Infinity } = {}) {
+export async function createHarness({ stream, readFailure, writeFailure, fetchImpl, maxTimerMs = Infinity, card = null } = {}) {
   const files = new Map(), writes = [], handles = new Map(), disposers = [];
   const normalize = (value) => String(value && value.targetKey || value).replace(/\\/g, '/');
   const missing = () => Object.assign(new Error('ENOENT: 文件不存在'), { code: 'ENOENT' });
@@ -85,7 +85,7 @@ export async function createHarness({ stream, readFailure, writeFailure, fetchIm
   await host.evaluate();
   const ctx = {
     get: (key) => ({ fs: fsService, llm, agentDefaultModel: { currentSelection: () => ({ provider: 'test', model: 'test-model' }) }, credentials: { resolve: async () => ({ value: 'test-key' }), describe: async () => ({ available: true }) } })[key],
-    tavern: { apiVersion: 2, handle: (name, handler) => { if (handles.has(name)) throw new Error('重复注册：' + name); handles.set(name, handler); }, getCard: async () => null },
+    tavern: { apiVersion: 2, handle: (name, handler) => { if (handles.has(name)) throw new Error('重复注册：' + name); handles.set(name, handler); }, getCard: async () => card },
     logger: { info() {}, warn() {}, error() {} },
     on() {}, effect(fn) { const dispose = fn(); if (typeof dispose === 'function') disposers.push(dispose); },
   };

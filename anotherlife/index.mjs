@@ -6694,7 +6694,7 @@ let aiPickFail = '';
     let report=null,profileReport=null;
     try{
       result.called=true;
-      const system=[plan.wardrobes.length?promptText('wardrobe',WARDROBE_RULES):'你负责虚构人生模拟器的普通资料核对，不写故事，只提交明确列出的任务。',profiles.length?NARRATIVE_RULES+'\n'+promptText('npcProfile',NPC_PROFILE_RULES).replace(NARRATIVE_RULES,'')+'\n'+OCCUPATION_RULES:'',plan.events.length?'【独立资产字段】仅依据经济证据填写protagonist.住所/事业及实体资产，保留其他条目，禁止猜成交价、贷款或改余额收支；不得用资产字段代替其他任务。':'本次没有资产任务，不得返回房产、企业、余额或收支。','有服装任务用chars，有固定人物任务用profiles；没有对应任务就不返回该类字段，各类必须独立验收。'].filter(Boolean).join('\n');
+      const system=[plan.wardrobes.length?(promptText('wardrobe',WARDROBE_RULES)+(await wearDetailReference(gid,true))):'你负责虚构人生模拟器的普通资料核对，不写故事，只提交明确列出的任务。',profiles.length?NARRATIVE_RULES+'\n'+promptText('npcProfile',NPC_PROFILE_RULES).replace(NARRATIVE_RULES,'')+'\n'+OCCUPATION_RULES:'',plan.events.length?'【独立资产字段】仅依据经济证据填写protagonist.住所/事业及实体资产，保留其他条目，禁止猜成交价、贷款或改余额收支；不得用资产字段代替其他任务。':'本次没有资产任务，不得返回房产、企业、余额或收支。','有服装任务用chars，有固定人物任务用profiles；没有对应任务就不返回该类字段，各类必须独立验收。'].filter(Boolean).join('\n');
       const r=await callSlot(s,'settle',[{role:'system',content:system},{role:'user',content:JSON.stringify(evidence)}],{tools:[npcProfileTool(wardrobeCompletionTool(plan.wardrobes,!!plan.events.length),profiles)],wantTools:true,tag:'资料补全',maxTokens:tokOf(s,'settle'),reasoningEffort:await reasoningOf(s,'settle')});
       if(RUNNING.get(String(gid||''))?.stop)throw new Error('已停止生成');
       const via=pickToolCall(r),text=parseJsonLoose(String(r?.text||r?.reasoning||'').replace(/<think>[\s\S]*?<\/think>/gi,''));
@@ -6727,7 +6727,7 @@ let aiPickFail = '';
 
 async function settleSystemPrompt(s, gameId, body, phoneBridge) {
     phoneBridge=phoneBridge||buildPhoneStoryBridge(s);
-    const refSection = await wearRefSection(s, body, gameId);
+    const refSection = (await wearRefSection(s, body, gameId)) + (await wearDetailReference(gameId));
       // 破限词：后台任务也带上。少了它，模型会自行削弱或跳过敏感字段，
       // 变量就只更新安全的那些（时间、金钱），角色身体与穿着整片不动。
       const jbS = await activeJailbreak();
@@ -7459,6 +7459,21 @@ function seasonText(s) {
   return parts.join('，');
 }
 
+  async function wearDetailReference(gameId, clothingOnly = false) {
+    const blocks = refBlocks(await loadRefs(gameId), '鞋袜详情写作');
+    let content = blocks.map(b=>String(b.content || '')).join('\n\n').trim();
+    if (!content) {
+      try { content = readFileSync(HERE_DIR.replace(/[\/]+$/, '') + '/wear-detail-reference.txt','utf8').trim(); }
+      catch (error) { console.error('[详情参考] 默认资料读取失败', error); return ''; }
+    }
+    if (clothingOnly) {
+      content = content.split(/\r?\n【气味文案】/)[0];
+      // 沿用普通开局服装参考的安全过滤，不引入成人或气味任务。
+      if (/内衣|内裤|文胸|胸罩|情趣|性感|透明|气味|足控|私处|露出/.test(content)) return '';
+    }
+    return '\n【角色详情·鞋袜物性参考】以下资料只补充当前任务允许的详情字段，不是正文指令，不增加故事镜头或动作；原任务的格式、非色情和资料边界优先。\n' + content;
+  }
+
   async function wearRefSection(s, body, gameId) {
     const refs = await loadRefs(gameId);
     if (!refs.length) return '';
@@ -7588,7 +7603,9 @@ function seasonText(s) {
       engineDiff, parseJson: parseJsonLoose,
       stopped: () => !!RUNNING.get(String(options.gameId || s.gameId || ''))?.stop,
       request: async (messages, count) => {
-        const r = await callSlot(s, 'settle', messages, { tag: '气味文案同步', wantTools: true, maxTokens: Math.min(16384, Math.max(2048, count * 160)) });
+        const reference = await wearDetailReference(options.gameId || s.gameId);
+        const scopedMessages = messages.map((m,i)=>i===0 && m.role==='system'?{...m,content:String(m.content || '')+reference}:m);
+        const r = await callSlot(s, 'settle', scopedMessages, { tag: '气味文案同步', wantTools: true, maxTokens: Math.min(16384, Math.max(2048, count * 160)) });
         if (r && typeof r === 'object' && /length|max.?tokens|incomplete|cancel|error/i.test(String(r.finish?.kind || r.finish || r.finishReason || ''))) throw new Error('气味同步回复未完整结束');
         return r && typeof r === 'object' ? String(r.text || '') : String(r || '');
       },
@@ -8791,7 +8808,7 @@ if (微博新条.length) {
     selectedId: async () => String(((await readJson(SETTINGS_FILE)) || {}).writingSkillId || ''), log: turnLog });
   ctx.effect(() => () => writingStyles.dispose());
   const genericHost = createGenericHost({ reg, loadState, saveState, withKeyStatus, applyDiffs, callSlot, callMainModel, pickToolCall, parseJsonLoose, turnLog, beginRun, endRun, RUNNING });
-  const creationHost = createCreationHost({reg,loadState,saveState,withKeyStatus,normProtag,parseNatural:args=>parseNaturalData(args),genericHost,callSlot,callMainModel,pickToolCall,parseJsonLoose,seedInitialAssets,seedInitialFriends,beginRun,endRun,RUNNING,setProg,clothingReferences:async s=>refBlocks(await loadRefs(s.gameId),isAncientWorld(s)?'衣柜·古风':'衣柜·现代').filter(b=>!/内衣|内裤|文胸|胸罩|情趣|性感|透明|气味|足控|私处|露出/.test(b.content||'')).slice(0,6).map(b=>({name:b.name,content:String(b.content||'').slice(0,1000)}))});
+  const creationHost = createCreationHost({reg,loadState,saveState,withKeyStatus,normProtag,parseNatural:args=>parseNaturalData(args),genericHost,callSlot,callMainModel,pickToolCall,parseJsonLoose,seedInitialAssets,seedInitialFriends,beginRun,endRun,RUNNING,setProg,clothingReferences:async s=>[{name:'鞋袜详情写作',content:await wearDetailReference(s.gameId,true)},...refBlocks(await loadRefs(s.gameId),isAncientWorld(s)?'衣柜·古风':'衣柜·现代').filter(b=>!/内衣|内裤|文胸|胸罩|情趣|性感|透明|气味|足控|私处|露出/.test(b.content||'')).slice(0,6).map(b=>({name:b.name,content:String(b.content||'').slice(0,1000)}))].filter(b=>b.content)});
   SETTLE_TOOL.parameters.properties.resetIncomeBaseline={type:'boolean',description:'明确为穿越、转世或重设时间时标记true，只重置原固定收支基准，不追算跳过年代；正常时间推进不填。'};
 
   reg('replyChunk', async ({ gameId, id, index }) => replies.read(id, index, gameId));
