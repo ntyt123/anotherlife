@@ -4950,6 +4950,9 @@ function guessSockStrength(txt, scent, seed) {
     return k === 'length' || k === 'max-tokens' || k === 'maxtokens' || k === 'max_tokens' || k === 'truncated';
   }
 
+  function finishJson(finish) {
+    try { return JSON.stringify(finish == null ? null : finish).slice(0, 900); } catch (e) { return String(finish); }
+  }
   function describeFinish(finish) {
     if (!finish || String(finish.kind || '') !== 'error') return '';
     const f = finish.failure || {};
@@ -5484,9 +5487,10 @@ function pickToolCall(r) {
     const reasoning = joinMap(reasonings);
     if (!text && !reasoning && !callList.length && !images.length && !(finish && finish.kind === 'stopped')) {
       const why = describeFinish(finish);
-      await apiLog('[' + tag + '] ' + who + ' → 失败：' + (why || '没有返回内容（chunk 类型：' + Object.keys(seen).join(',') + '）'), t0);
-      if (why) throw new Error('主模型没有返回正文：' + why);
-      throw new Error('主模型没有返回内容（chunk 类型：' + Object.keys(seen).join(',') + '）');
+      const detail = '（模型 ' + who + '；finish=' + finishJson(finish) + '；收到 text ' + String(text || '').length + ' 字 / reasoning ' + String(reasoning || '').length + ' 字 / 工具 ' + callList.length + ' 个 / 图片 ' + images.length + '；chunk=' + (Object.keys(seen).join(',') || '无') + '；耗时 ' + ((Date.now() - t0) / 1000).toFixed(1) + 's）';
+      await apiLog('[' + tag + '] ' + who + ' → 失败：' + (why || '没有返回内容（chunk 类型：' + Object.keys(seen).join(',') + '）') + detail, t0);
+      if (why) throw new Error('主模型没有返回正文：' + why + detail);
+      throw new Error('主模型没有返回内容' + detail);
     }
     const cut = isTruncated(finish);
     await apiLog('[' + tag + '] ' + who + ' → ' + text.length + ' 字' + (cut ? '（被 maxTokens 截断，只拿到了这些）' : '') + (callList && callList.length ? '（工具 ' + callList.length + ' 次）' : ''), t0);
