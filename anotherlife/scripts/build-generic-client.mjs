@@ -11,7 +11,7 @@ const start=source.indexOf(begin),finish=source.indexOf(end,start);
 const factory=fs.readFileSync(path.join(root,'lib/generic-client.js'),'utf8').replace('export function createGenericViews','function createGenericViews');
 const starters=fs.readFileSync(path.join(root,'lib/opening-presets.js'),'utf8').replace('export const OPENING_PRESETS','const OPENING_PRESETS');
 const checklist=fs.readFileSync(path.join(root,'lib/creation-checklist.mjs'),'utf8').replace(/^export /gm,'');
-const block=begin+'\n'+normalize(starters)+'\n'+normalize(checklist)+'\n'+normalize(factory)+'\n      const { GenericPanel, GenericPending, withActorIds } = createGenericViews(React);\n      ';
+const block=begin+'\n'+normalize(starters)+'\n'+normalize(checklist)+'\n'+normalize(factory)+'\n      const { GenericPanel, GenericPending, WorldNewsNotice, withActorIds } = createGenericViews(React);\n      ';
 if(process.argv.includes('--check')){
   if(normalize(source.slice(start,finish))!==block)throw new Error('内嵌通用界面与工厂源码不一致，请运行 npm run build:generic');
   console.log('通用界面工厂与内嵌源码一致');

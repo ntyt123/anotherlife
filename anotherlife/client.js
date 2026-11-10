@@ -4351,10 +4351,53 @@ function createGenericViews(React) {
   const check=(label,value,onChange)=>h('label',{style:{display:'inline-flex',gap:6,margin:'8px 18px 8px 0'}},h('input',{type:'checkbox',checked:!!value,onChange:e=>onChange(e.target.checked)}),label);
   const tabs=(names,current,set)=>h('div',{className:'sim-acts',style:{display:'flex',gap:6,flexWrap:'wrap',marginBottom:14}},names.map(([id,name])=>h('button',{key:id,className:'sim-btn'+(current===id?' primary':''),onClick:()=>set(id)},name)));
   const empty=message=>h('div',{className:'sim-hint'},message);
+  const NEWSPAPER_CSS = `
+.sim-world-news{margin:0 0 14px;border:1px solid var(--sim-bd,#ded3c2);border-radius:9px;background:var(--sim-bg2,#fffaf0);color:var(--sim-t,#302d29);overflow:hidden}
+.sim-world-news>summary{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 14px;list-style:none;cursor:pointer;font-size:var(--sim-fs-3,14px);line-height:1.5}
+.sim-world-news>summary::-webkit-details-marker{display:none}.sim-world-news>summary::marker{content:''}
+.sim-world-news>summary:focus-visible{outline:2px solid var(--sim-accent,#8b3a2e);outline-offset:-3px}
+.sim-world-news>summary strong{font-weight:650}.sim-world-news-round{font-size:var(--sim-fs-2,12px);opacity:.65}
+.sim-world-news-toggle{margin-left:auto;font-size:var(--sim-fs-2,12px);color:var(--sim-accent,#8b3a2e)}.sim-world-news-toggle::after{content:'展开报纸 ▾'}.sim-world-news[open] .sim-world-news-toggle::after{content:'收起报纸 ▴'}
+.sim-world-news-paper{padding:20px 24px 24px;border-top:1px solid var(--sim-bd,#ded3c2);font-family:'Noto Serif SC','Songti SC','SimSun',serif;line-height:1.85;overflow-wrap:anywhere}
+.sim-world-news-masthead{text-align:center;padding:0 0 15px;margin-bottom:20px;border-bottom:3px double var(--sim-bd,#b7a68e)}
+.sim-world-news-kicker{font-size:var(--sim-fs-1,11px);letter-spacing:.35em;opacity:.65}.sim-world-news-masthead h2{margin:4px 0 6px;font-size:var(--sim-fs-7,28px);font-weight:750;letter-spacing:.3em;line-height:1.4}
+.sim-world-news-masthead p{margin:0;text-indent:0;font-size:var(--sim-fs-2,12px);opacity:.7}
+.sim-world-news-columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px;align-items:start}.sim-world-news-column{min-width:0}.sim-world-news-column+section{border-left:1px solid var(--sim-bd,#ded3c2);padding-left:24px}
+.sim-world-news-column h3{margin:0 0 12px;padding:0 0 7px;border-bottom:1px solid var(--sim-bd,#ded3c2);font-size:var(--sim-fs-5,18px);letter-spacing:.15em}
+.sim-world-news-column ol{list-style:none;margin:0;padding:0}.sim-world-news-column li{padding:10px 0;border-bottom:1px solid var(--sim-bd,#e9e1d5)}.sim-world-news-column li:first-child{padding-top:0}.sim-world-news-column li:last-child{padding-bottom:0;border-bottom:0}
+.sim-world-news-column time{display:block;margin-bottom:3px;font-size:var(--sim-fs-2,12px);opacity:.7}.sim-world-news-column p{margin:0;text-indent:0;font-size:var(--sim-fs-3,14px);white-space:pre-wrap}.sim-world-news-empty{opacity:.65}
+@media(max-width:650px){.sim-world-news-paper{padding:15px}.sim-world-news-columns{grid-template-columns:1fr;gap:20px}.sim-world-news-column+section{border-left:0;border-top:1px solid var(--sim-bd,#ded3c2);padding:16px 0 0}.sim-world-news-masthead h2{font-size:var(--sim-fs-6,24px)}}
+`;
+  function worldNewsItems(state) {
+    const sim=state?.simulation||{}, profile=sim.profile||{};
+    const key=JSON.stringify([state.world?.['世界观类型']||'',state.world?.['时代与年份']||'',profile.id||'',profile.description||'']);
+    return list(sim.news?.items).filter(item=>item&&(!item.worldKey||item.worldKey===key)&&(!item.sourceTextVersion||list(state.transcript).some(entry=>entry.role==='assistant'&&Number(entry.seq)===Number(item.sourceSeq)&&entry.textVersion===item.sourceTextVersion)));
+  }
+  const cleanNewsDisplayText=value=>String(value||'').split(/(?<=[。！？；])/u).filter(part=>!/(未经(?:独立)?核实|未经证实|尚未证实|没有证据|并无证据|此消息不构成)/u.test(part)).join('').replace(/^[，,。\s]+/u,'');
+  // 纯展示，不产生刷新请求，也不把旧版本/旧世界的新闻猜成本轮更新。
+  function WorldNewsNotice({state,entry}) {
+    if(!state?.simulation?.enabled||entry?.role!=='assistant')return null;
+    const latest=list(state.transcript).filter(item=>item.role==='assistant').at(-1);
+    if(!latest||Number(entry.seq)!==Number(latest.seq)||entry.textVersion!==latest.textVersion)return null;
+    const news=state.simulation.news||{}, available=worldNewsItems(state);
+    const sourceSeq=news.lastSuccessSeq??available.find(item=>item.sourceSeq!=null)?.sourceSeq;
+    if(sourceSeq==null||!Number.isFinite(Number(sourceSeq))||Number(sourceSeq)!==Number(entry.seq))return null;
+    const items=available.filter(item=>(item.sourceSeq==null||Number(item.sourceSeq)===Number(entry.seq))&&text(item.time).trim()&&cleanNewsDisplayText(item.content));
+    if(!items.length)return null;
+    const editionKey=JSON.stringify([state.gameId||'',entry.seq,entry.textVersion||'',news.basis||'',items.map(item=>[item.id||'',item.time,item.content])]);
+    const column=(kind,label)=>{
+      const entries=items.filter(item=>item.kind===kind);
+      return h('section',{className:'sim-world-news-column','aria-label':label},h('h3',null,label),entries.length?h('ol',null,entries.map((item,index)=>h('li',{key:(item.id||'news')+':'+index},h('time',null,text(item.time)),h('p',null,cleanNewsDisplayText(item.content))))):h('p',{className:'sim-world-news-empty'},kind==='event'?'没有大事记录。':'没有传闻记录。'));
+    };
+    return h('details',{key:editionKey,className:'sim-world-news','data-news-seq':Number(entry.seq)},
+      h('summary',{'aria-label':'展开或收起本轮世界动态'},h('strong',null,'世界动态已更新'),h('span',{className:'sim-world-news-round'},'第'+Number(entry.seq)+'轮'),h('span',{className:'sim-world-news-toggle','aria-hidden':true})),
+      h('style',null,NEWSPAPER_CSS),
+      h('article',{className:'sim-world-news-paper','aria-label':'世界动态报纸'},h('header',{className:'sim-world-news-masthead'},h('span',{className:'sim-world-news-kicker'},'本期纪事'),h('h2',null,'世界动态'),h('p',null,['第'+Number(entry.seq)+'轮',text(state.world?.['当前日期时间'])].filter(Boolean).join(' · '))),h('div',{className:'sim-world-news-columns'},column('event','大事'),column('rumor','传闻'))));
+  }
+
   function GenericPanel({state,mode,onCall,onStage,onSettingsChange,sourceText='',actorId='player'}) {
     const sim=state?.simulation||{},settings=sim.settings||{},profile=sim.profile||{},system=sim.boundSystem||{},management=sim.management||{},units=list(management.units),news=sim.news||{};
-    const newsKey=JSON.stringify([state.world?.['世界观类型']||'',state.world?.['时代与年份']||'',profile.id||'',profile.description||'']);
-    const newsItems=list(news.items).filter(x=>(!x.worldKey||x.worldKey===newsKey)&&(!x.sourceTextVersion||list(state.transcript).some(t=>t.role==='assistant'&&Number(t.seq)===Number(x.sourceSeq)&&t.textVersion===x.sourceTextVersion)));
+    const newsItems=worldNewsItems(state);
     const [section,setSection]=React.useState('overview'),[unitId,setUnitId]=React.useState(units[0]?.id||''),[period,setPeriod]=React.useState(''),[request,setRequest]=React.useState(''),[selected,setSelected]=React.useState([]),[preview,setPreview]=React.useState(null),[busy,setBusy]=React.useState(false),[error,setError]=React.useState(''),[chat,setChat]=React.useState(''),[itemEdit,setItemEdit]=React.useState(null),[notice,setNotice]=React.useState(''),[prompts,setPrompts]=React.useState(null),[busyP,setBusyP]=React.useState(false);
     const [formState,setForm]=React.useState(()=>formValues(sim));
 
@@ -4410,9 +4453,9 @@ function createGenericViews(React) {
       content=entries.some(x=>values[x.key]!==undefined)?card('补充资料',entries.map(x=>row(x.label,values[x.key]))):null;
     } else if(mode==='world'){
       const 分类=section==='event'?'event':'rumor',条目=newsItems.filter(x=>x.kind===分类),传闻数=newsItems.filter(x=>x.kind==='rumor').length,大事数=newsItems.filter(x=>x.kind==='event').length;
-      const 净=t=>String(t||'').split(/(?<=[。！？；])/u).filter(x=>!/(未经(?:独立)?核实|未经证实|尚未证实|没有证据|并无证据|此消息不构成)/u.test(x)).join('').replace(/^[，,。\s]+/u,'');
+      const 净=cleanNewsDisplayText;
       content=h('div',{className:'sim-news-shell'},h('style',null,NEWS_CSS),
-        h('div',{className:'sim-news-head'},h('div',null,h('h2',null,'世界动态'),newsItems.length?h('span',{className:'sim-news-meta'},'最近更新 · 第'+Number(news.lastSuccessSeq??news.lastSuccessTurn??0)+'轮'):h('span',{className:'sim-news-meta'},'还没有记录')),h('button',{className:'sim-btn',type:'button',disabled:busy,onClick:()=>command('simulationRefresh',{kind:'news'})},'刷新')),
+        h('div',{className:'sim-news-head'},h('div',null,h('h2',null,'世界动态'),newsItems.length?h('span',{className:'sim-news-meta'},'最近更新于第'+Number(news.lastSuccessSeq??news.lastSuccessTurn??0)+'轮 · '+(settings.worldNewsEnabled===false?'自动更新已关闭':'每'+(Number(settings.worldNewsInterval)||3)+'轮更新')):h('span',{className:'sim-news-meta'},'还没有记录')),h('button',{className:'sim-btn',type:'button',disabled:busy,onClick:()=>command('simulationRefresh',{kind:'news'})},'刷新')),
         news.error?h('div',{className:'sim-news-alert',role:'alert'},news.error):null,
         h('div',{className:'sim-news-tabs'},[['rumor','传闻',传闻数],['event','大事',大事数]].map(([v,label,n])=>h('button',{key:v,type:'button',className:'sim-news-tab'+(分类===v?' active':''),onClick:()=>setSection(v)},label+(n?' · '+n:'')))),
         (条目.filter(x=>净(x.content)).length?h('ol',{className:'sim-news-list'},条目.filter(x=>净(x.content)).map((x,i)=>h('li',{className:'sim-news-item',key:x.id||i},h('span',{className:'sim-news-idx'},String(i+1)),h('p',null,h('strong',null,text(x.time)),净(x.content)?'，'+净(x.content):'')))):empty(分类==='event'?'没有大事记录。':'没有传闻记录。'))
@@ -4461,10 +4504,10 @@ function createGenericViews(React) {
     return h('div',null,h('div',{className:'sim-acts',style:{display:'flex',flexWrap:'wrap',gap:6,padding:'6px 0'}},list(actions).map(action=>h('span',{key:action.id,style:{display:'inline-flex'}},button(action.label||'经营操作',()=>open(action),busy),h('button',{className:'sim-btn mini',disabled:busy,title:'移除待办',onClick:()=>onChange(actions.filter(x=>x.id!==action.id))},'×'))),button('清空待办',()=>onChange([]),busy)),editing?h('div',{role:'dialog','aria-modal':true,style:{position:'fixed',inset:0,zIndex:100001,display:'grid',placeItems:'center',padding:20,background:'rgba(0,0,0,.35)'}},h('div',{style:{background:'Canvas',color:'CanvasText',width:'min(600px,95vw)',padding:18,borderRadius:12}},h('h3',null,'编辑下一轮需求'),area('需求',draft,setDraft),button('取消',()=>setEditing(null)),button('保存',()=>{onChange(actions.map(x=>x.id===editing.id?{...x,type:'request',text:draft,label:draft}:x));setEditing(null);},busy||!draft.trim()))):null);
   }
   function withActorIds(npcs){const used=new Set(['player']);return list(npcs).map(n=>{const id=typeof n.actorId==='string'&&/^[A-Za-z0-9_.:-]{1,160}$/.test(n.actorId)&&!used.has(n.actorId)?n.actorId:'actor:'+uid('draft');used.add(id);return n.actorId===id?n:{...n,actorId:id};});}
-  return {GenericPanel,GenericPending,withActorIds};
+  return {GenericPanel,GenericPending,WorldNewsNotice,withActorIds};
 }
 
-      const { GenericPanel, GenericPending, withActorIds } = createGenericViews(React);
+      const { GenericPanel, GenericPending, WorldNewsNotice, withActorIds } = createGenericViews(React);
       // GENERIC_VIEWS_END
 
       // WRITING_STYLE_VIEWS_BEGIN
@@ -10089,6 +10132,7 @@ const applyBirth = (text) => setProtagMany({ 生日: text });
               h(
                 'div',
                 { className: 'sim-msg-body' },
+                t.role === 'assistant' ? WorldNewsNotice({ state, entry: t }) : null,
                 editing
                   ? h(
                       'div',
