@@ -1,4 +1,4 @@
-import { storyLengthInstruction, neutralizeLegacyWordPlaceholder } from './lib/story-length.mjs';
+import { storyLengthInstruction, storyLengthUserLine, neutralizeLegacyWordPlaceholder } from './lib/story-length.mjs';
 import { resolveSmsPeer, smsThreadId, smsThreadName, smsDisplayMessages } from './lib/phone-identity.mjs';
 import { PHONE_EVENTS_SCHEMA, STORY_PHONE_RULES, planStoryPhone, applyStoryPhoneDiff, rollbackStoryPhoneDiff, deletedStoryPhoneIds, previewStoryPhone, storyPhoneBodyHash } from './lib/story-phone.mjs';
 import { WRITING_GUIDE_PRIORITY, writingGuideMeta } from './lib/writing-contract.mjs';
@@ -7793,6 +7793,8 @@ if (微博新条.length) {
       '[inject] 分块 ' + 块量.join(' ')
     );
     await turnLog('[writing-contract] ' + JSON.stringify(lastContext && lastContext.writing || { guide: { id: '', source: 'none', chars: 0, sha256: '' }, overrides: [], version: 1 }));
+    const lengthLine = storyLengthUserLine(s.config, opts.all ? '' : sendText);
+    if (lengthLine) userContent += '\n\n' + lengthLine;
     await turnLog('[inject] 正文 sys=' + String(sys || '').length + ' user=' + String(userContent || '').length + ' 其中历史=' + String(recent || '').length + ' 合计=' + (String(sys || '').length + String(userContent || '').length));
     const wordBudgetHint = opts.all ? 0 : storyWordBudgetHintOf(sendText);
     const baseMaxTokens = tokOf(s, 'story');

@@ -20,6 +20,17 @@ export function storyLengthInstruction(config = {}, input = '') {
   }
   return min ? `【正文长度】本轮正文按${min}字左右输出。` : `【正文长度】本轮正文不得大于${max}字。`;
 }
+// 以 user 角色下发当轮篇幅：实测同样一句放 user 比只放 system 更容易被模型执行。
+export function storyLengthUserLine(config = {}, input = '') {
+  if (hasStoryLengthRequest(input)) return '本轮正文篇幅按上面玩家自己提出的要求执行，不要套用设置里的字数。';
+  const min = count(config.bodyMinWords), max = count(config.bodyMaxWords);
+  if (!min && !max) return '';
+  if (min && max) {
+    if (min > max) throw new Error('最小字数不能大于最大字数，请调整正文输出设置');
+    return `本轮正文字数应控制在${min}到${max}字之间。`;
+  }
+  return min ? `本轮正文字数应控制在${min}字左右。` : `本轮正文字数不得超过${max}字。`;
+}
 // 兼容已保存的旧输出模板：不再从占位符注入第二套数字或相反的下限。
 // 只处理含该程序占位符的行；作者直接手填的具体数字不删改。
 export function neutralizeLegacyWordPlaceholder(value) {
