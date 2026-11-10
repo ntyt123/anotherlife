@@ -39,7 +39,7 @@ test('旧存档缺依据首次出场同步；未出场角色不额外请求或�
 });
 test('请求不含旧正文、人物名、年龄、剧情及其他角色数据', async () => {
   const s = make(); s.npcs[0].穿着.袜子.气味 = '旧文秘密标记'; s.npcs[0].隐私 = '不该外传';
-  const r = await sync(s, options(s)); const payload = JSON.stringify(r.calls[0]); assert.doesNotMatch(payload, /旧文秘密标记|成年甲|不该外传|取资料/); assert.match(payload, /非色情/);
+  const r = await sync(s, options(s)); const payload = JSON.stringify(r.calls[0]); assert.doesNotMatch(payload, /旧文秘密标记|成年甲|不该外传|取资料/); assert.match(payload, /不要中性化|允许直白的露骨用词/); assert.doesNotMatch(payload, /非色情|不做性癖化描写|不要描写身体隐私/);
 });
 test('未成年、年龄未知、矛盾年龄、男性均不进入新同步请求', async () => {
   const variants = [{ 年龄: 17 }, { 年龄: '' }, { 年龄: 30, 生日: '2010-11-06' }, { 年龄: 17, 生日: '1990-01-01' }, { 性别: '男' }];
@@ -76,7 +76,7 @@ const reply = text => (async function* () { yield { type: 'text-delta', index: 0
 async function hostRig({ failure = false, truncated = false, scene = '成年甲把资料放在桌上。' } = {}) {
   const e = await createHarness({ stream: request => {
     const sys = request.system || '';
-    if (String(sys).includes('衣物清洁状态记录助手')) { const text = failure ? '未返回资料' : good([{ role: 'system', content: request.system }, { role: 'user', content: requestText(request) }]); return truncated ? (async function* () { yield { type: 'text-delta', index: 0, text }; yield { type: 'finish', reason: { kind: 'length' } }; })() : reply(text); }
+    if (String(sys).includes('衣物气味的记录与描写者')) { const text = failure ? '未返回资料' : good([{ role: 'system', content: request.system }, { role: 'user', content: requestText(request) }]); return truncated ? (async function* () { yield { type: 'text-delta', index: 0, text }; yield { type: 'finish', reason: { kind: 'length' } }; })() : reply(text); }
     if ((request.tools || []).some(t => t.name === 'game')) return reply(scene);
     return reply(JSON.stringify({ world: { 当前日期时间: '2026年11月6日 20:00' }, summary: '资料已放好。' }));
   } });
@@ -87,7 +87,7 @@ async function hostRig({ failure = false, truncated = false, scene = '成年甲�
 const requestText = r => { const content = r.messages.find(m => m.role === 'user').content; return typeof content === 'string' ? content : content.map(x => x.text || '').join(''); };
 const walk = (n, out = []) => { if (Array.isArray(n)) n.forEach(x => walk(x, out)); else if (n && typeof n === 'object') { out.push(n); walk(n.kids || [], out); } return out; };
 const words = n => typeof n === 'string' || typeof n === 'number' ? String(n) : Array.isArray(n) ? n.map(words).join('') : n && typeof n === 'object' ? words(n.kids || []) : '';
-const syncCalls = e => e.requests.filter(r => String(r.system).includes('衣物清洁状态记录助手'));
+const syncCalls = e => e.requests.filter(r => String(r.system).includes('衣物气味的记录与描写者'));
 test('实际runTurn在两处引擎之后发最终数值，并把文案和元数据纳入本轮diff', async () => {
   const { e } = await hostRig(); try { await e.call('generateStory', { gameId: 'test', input: '继续整理资料' }); const s = e.getState('test'); assert.equal(syncCalls(e).length, 1);
     const items = JSON.parse(requestText(syncCalls(e)[0])).items; for (const item of items) { const slot = s.npcs[0].穿着[item.clothingType]; assert.equal(item.strength, slot.气味强度); assert.equal(item.hours, slot.穿着小时); assert.equal(slot._scentTextSync.strength, slot.气味强度); }
