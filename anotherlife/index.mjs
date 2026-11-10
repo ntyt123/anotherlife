@@ -1,4 +1,4 @@
-import { storyLengthInstruction, storyLengthUserLine, neutralizeLegacyWordPlaceholder } from './lib/story-length.mjs';
+import { storyLengthInstruction, storyLengthUserLine, storyLengthSubmitTool, neutralizeLegacyWordPlaceholder } from './lib/story-length.mjs';
 import { resolveSmsPeer, smsThreadId, smsThreadName, smsDisplayMessages } from './lib/phone-identity.mjs';
 import { PHONE_EVENTS_SCHEMA, STORY_PHONE_RULES, planStoryPhone, applyStoryPhoneDiff, rollbackStoryPhoneDiff, deletedStoryPhoneIds, previewStoryPhone, storyPhoneBodyHash } from './lib/story-phone.mjs';
 import { WRITING_GUIDE_PRIORITY, writingGuideMeta } from './lib/writing-contract.mjs';
@@ -7814,12 +7814,13 @@ if (微博新条.length) {
     // 正文走工具调用（备用通道）：把内容塞进 submit_story 的参数里，而不是 message.content。
     // 检索工具和这个通道冲突（两边都靠 toolCalls 传东西），所以开启时只挂 submit_story。
     const 正文走工具 = toolModeOf(s);
+    await turnLog('[正文篇幅] ' + JSON.stringify({ channel: 正文走工具 ? 'game.game_content' : 'text', requirement: lengthLine || '未设' }));
     let r;
     if (正文走工具) {
       await turnLog('[正文·工具] 走工具通道：game');
       r = await callMainModel(
         [{ role: 'system', content: sys }, { role: 'user', content: userContent }],
-        Object.assign({}, storyOpts, { tools: [STORY_SUBMIT_TOOL], wantTools: true })
+        Object.assign({}, storyOpts, { tools: [storyLengthSubmitTool(STORY_SUBMIT_TOOL, s.config, opts.all ? '' : sendText)], wantTools: true })
       );
     } else {
       await turnLog('[正文·普通兼容] 按现有配置单次请求普通正文');

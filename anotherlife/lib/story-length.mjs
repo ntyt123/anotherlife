@@ -2,6 +2,10 @@ const count = value => {
   const n = Number(value);
   return Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0;
 };
+const BODY_COUNT_SCOPE = '字数只计算正文（含标点、不计空白），不包含导演笔记、小结、行动选项和结构化事件。';
+function totalLengthNote(max) {
+  return `所有场景、旁白和对白合计不得超过${max}字，不是每段或每场各自的额度。${BODY_COUNT_SCOPE}请先安排全篇篇幅，提交前压缩冗余。`;
+}
 // 只识别是否涉及篇幅，不提取数字、不解释上下限。原输入仍原样交给模型。
 export function hasStoryLengthRequest(input) {
   const text = String(input ?? '').normalize('NFKC');
@@ -16,20 +20,41 @@ export function storyLengthInstruction(config = {}, input = '') {
   if (!min && !max) return '';
   if (min && max) {
     if (min > max) throw new Error('最小字数不能大于最大字数，请调整正文输出设置');
-    return `【正文长度】本轮正文输出${min}到${max}字之间。`;
+    return `【正文长度】本轮正文输出${min}到${max}字之间。${totalLengthNote(max)}`;
   }
-  return min ? `【正文长度】本轮正文按${min}字左右输出。` : `【正文长度】本轮正文不得大于${max}字。`;
+  return min ? `【正文长度】本轮正文按${min}字左右输出。${BODY_COUNT_SCOPE}` : `【正文长度】本轮正文不得大于${max}字。${totalLengthNote(max)}`;
 }
-// 以 user 角色下发当轮篇幅：实测同样一句放 user 比只放 system 更容易被模型执行。
+// 在用户消息末尾保留当轮有效篇幅；这只验证传递位置，不代表模型必然遵守。
 export function storyLengthUserLine(config = {}, input = '') {
   if (hasStoryLengthRequest(input)) return '本轮正文篇幅按上面玩家自己提出的要求执行，不要套用设置里的字数。';
   const min = count(config.bodyMinWords), max = count(config.bodyMaxWords);
   if (!min && !max) return '';
   if (min && max) {
     if (min > max) throw new Error('最小字数不能大于最大字数，请调整正文输出设置');
-    return `本轮正文字数应控制在${min}到${max}字之间。`;
+    return `本轮正文字数应控制在${min}到${max}字之间。${totalLengthNote(max)}`;
   }
-  return min ? `本轮正文字数应控制在${min}字左右。` : `本轮正文字数不得超过${max}字。`;
+  return min ? `本轮正文字数应控制在${min}字左右。${BODY_COUNT_SCOPE}` : `本轮正文字数不得超过${max}字。${totalLengthNote(max)}`;
+}
+// 每次复制需要改动的层级，不能把本轮设置写进共享工具、污染其他轮次或其他游戏。
+export function storyLengthSubmitTool(tool, config = {}, input = '') {
+  const instruction = storyLengthUserLine(config, input);
+  if (!instruction) return tool;
+  const field = tool?.parameters?.properties?.game_content;
+  if (!field) throw new Error('正文提交工具缺少 game_content 字段');
+  return {
+    ...tool,
+    parameters: {
+      ...tool.parameters,
+      properties: {
+        ...tool.parameters.properties,
+        game_content: {
+          ...field,
+          description: `【本轮正文篇幅】${instruction}
+${String(field.description || '').replace('篇幅参考本轮要求，', '')}`
+        }
+      }
+    }
+  };
 }
 // 兼容已保存的旧输出模板：不再从占位符注入第二套数字或相反的下限。
 // 只处理含该程序占位符的行；作者直接手填的具体数字不删改。
