@@ -4,10 +4,10 @@ import { createHarness, clone } from './harness.mjs';
 import { isAdultTextSyncActor } from '../lib/scent-text-sync.mjs';
 const stream = text => (async function* () { yield { type: 'text-delta', index: 0, text }; yield { type: 'finish', reason: { kind: 'stop' } }; })();
 const userText = r => { const c = r.messages.find(m => m.role === 'user').content; return typeof c === 'string' ? c : c.map(x => x.text || '').join(''); };
-const requests = e => e.requests.filter(r => String(r.system).includes('衣物清洁状态记录助手'));
+const requests = e => e.requests.filter(r => String(r.system).includes('衣物气味的记录与描写者'));
 async function fixture({ failure = false, ai = true, age = 30, birthday = '', parts = ['袜子'], badWear = false } = {}) {
   const e = await createHarness({ stream: r => {
-    if (String(r.system).includes('衣物清洁状态记录助手')) {
+    if (String(r.system).includes('衣物气味的记录与描写者')) {
       if (failure) return stream('无效回复');
       return stream(JSON.stringify({ items: JSON.parse(userText(r)).items.map(x => ({ id: x.id, text: `棉料上的汗味已经明显，累计穿着${x.hours}小时，布料清洁度需要留意。` })) }));
     }
