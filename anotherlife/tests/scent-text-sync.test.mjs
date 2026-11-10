@@ -127,3 +127,5 @@ test('主流程删轮同时回退文案和同步来源元数据', async () => {
     assert.equal(after.npcs[0].穿着.袜子.气味, original.npcs[0].穿着.袜子.气味); assert.equal(after.npcs[0].穿着.袜子._scentTextSync, undefined);
   } finally { e.cleanup(); }
 });
+
+test('每条放宽到40至90字后，同步请求预算随之放大',async()=>{const s0=make();s0.npcs[0].穿着.内裤={物品:'棉质内裤',材质:'棉',气味:'旧的普通衣物记录。',气味强度:50,穿着小时:20};s0.npcs[0].穿着.上衣={物品:'棉质上衣',材质:'棉',气味:'旧的普通衣物记录。',气味强度:50,穿着小时:20};let captured=null;await synchronizeScentText(s0,options(s0),{engineDiff:diff,request:async(messages,count)=>{captured=count;return good(messages);}});assert.equal(captured,3);const budget=Math.min(32768,Math.max(4096,3*320));assert.ok(budget>=4096);assert.ok(12*320<=32768);});

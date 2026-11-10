@@ -7603,7 +7603,7 @@ function seasonText(s) {
       request: async (messages, count) => {
         const reference = await wearDetailReference(options.gameId || s.gameId);
         const scopedMessages = messages.map((m,i)=>i===0 && m.role==='system'?{...m,content:String(m.content || '')+reference}:m);
-        const r = await callSlot(s, 'settle', scopedMessages, { tag: '气味文案同步', wantTools: true, maxTokens: Math.min(16384, Math.max(2048, count * 160)) });
+        const r = await callSlot(s, 'settle', scopedMessages, { tag: '气味文案同步', wantTools: true, maxTokens: Math.min(32768, Math.max(4096, count * 320)) });
         if (r && typeof r === 'object' && /length|max.?tokens|incomplete|cancel|error/i.test(String(r.finish?.kind || r.finish || r.finishReason || ''))) throw new Error('气味同步回复未完整结束');
         return r && typeof r === 'object' ? String(r.text || '') : String(r || '');
       },
