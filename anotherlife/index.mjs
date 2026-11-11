@@ -28,6 +28,7 @@ import {createCreationHost,worldCreationTool,creationWorldResult,normalizeCreati
 import { createWritingStyleHost } from './lib/writing-style-host.mjs';
 import { reasoningFor, normalizeReasoning, modelRequestOptions } from './lib/model-options.mjs';
 import { cpEnabled, cpWeiboFacts, cpContext, CP_RULES, CP_SCHEMA, cpSettlementTool, collectCPResults, applyCPUpdates } from './lib/cp-core.mjs';
+import { intimacyEnabled, intimacyFrame, INTIMACY_RULES, intimacyContext, intimacySettlementTool, intimacyPayload, applyIntimacyEvents } from './lib/intimacy-core.mjs';
 import { STYLE_PREFIX } from './lib/writing-style-core.mjs';
 import { captureScentTextState, synchronizeScentText, isAdultTextSyncActor } from './lib/scent-text-sync.mjs';
 import {initPromptStore,registerPromptDefaults,applyBlockOverrides,promptText,promptBlock,promptOverride,loadPrompts,PROMPT_FILE_NAME} from './lib/prompt-overrides.mjs';
@@ -294,7 +295,7 @@ const WEAR_KEYS = ['头部', '上衣', '内衣', '内裤', '下衣', '袜子', '
    * 表性格／里性格／当前想法以前也在这里，那是分错了：它们是核心人设，
    * 正文模型不知道主角什么性格，写出来的人就不像。现在照常注入。
    */
-  const PANEL_ONLY = ['标签', 'cpState', 'cpEpoch'];
+  const PANEL_ONLY = ['标签', 'cpState', 'cpEpoch', 'intimacyHistory'];
   /** 实体资产里代表楼层列表的字段名（会被拆成逐层条目） */
   const FLOOR_KEYS = ['每一层的设施', '楼层', '各层设施', '各层'];
 
@@ -1323,7 +1324,7 @@ async function activeWritingSkill() {
   function applyDiffs(s, diffs) {
     for (const d of diffs || []) {
       if (!d || !isSafePath(d.path)) continue;
-      if (d.path[0] === 'protagonist' && (['cpState','cpEpoch','是否艺人'].includes(d.path[1]) || (d.path.length === 1 && d.to && ['cpState','cpEpoch'].some(k => Object.hasOwn(d.to,k))))) continue;
+      if (d.path[0] === 'protagonist' && (['cpState','cpEpoch','是否艺人','intimacyHistory'].includes(d.path[1]) || (d.path.length === 1 && d.to && ['cpState','cpEpoch','intimacyHistory'].some(k => Object.hasOwn(d.to,k))))) continue;
       try { assertSafeValue(d.to); } catch (e) { continue; }
       if (applyStoryPhoneDiff(s, d)) continue;
       // 顶层白名单。模型偶尔把路径写成 [身体] 而不是 [protagonist, 身体]，
@@ -6747,6 +6748,7 @@ async function settleSystemPrompt(s, gameId, body, phoneBridge) {
       STORY_PHONE_RULES,
       NARRATIVE_RULES,
       CURRENT_LOCATION_RULES,
+      intimacyEnabled(s) ? INTIMACY_RULES + intimacyContext(s, body) : '',
       // 星途开关放最前面。放中间（第 52 条左右、25k 字里）实测模型根本扫不到：
       // think 里连「开关」两个字都没出现过，演艺字段一条没写。
       ((s && s.protagonist && s.protagonist.是否艺人 === true)
@@ -7032,7 +7034,7 @@ async function settleSystemPrompt(s, gameId, body, phoneBridge) {
       const box = sj[root];
       if (!box || typeof box !== 'object' || Array.isArray(box)) return;
       Object.keys(box).forEach((k) => {
-        if (root === 'protagonist' && ['cpState','cpEpoch','是否艺人'].includes(k)) return;
+        if (root === 'protagonist' && ['cpState','cpEpoch','是否艺人','intimacyHistory'].includes(k)) return;
         if (s.simulation?.enabled && (k === '技能' )) return;
         if (k.startsWith('_')) { diagnostics.push({ kind: 'invalid-update', path: [root, k], why: '不允许修改内部状态', ...rejectedUpdateDetail({path:[root,k],to:originalUpdate?.[root]?.[k]}) }); return; }
         const cur = (s[root] || {})[k];
@@ -7912,6 +7914,8 @@ if (微博新条.length) {
     const profileBeforeNames=new Set((s.npcs||[]).map(n=>n.姓名));
     const dataWarnings = [], settlementDiagnostics = [];
     const cpTextVersion = randomUUID();
+    const intimacyStartFrame = intimacyFrame(s);
+    const intimacyAtStart = intimacyStartFrame.enabled;
     const cpFrame = await prepareCPFrame(s, gid, seq, sp.body, 微博待发, true);
     let cpSubmitted = null, cpSettlementOK = false;
     let settledPhoneEvents = [];
@@ -7940,7 +7944,7 @@ if (微博新条.length) {
         const settleRes = await callSlot(s, 'settle', msgs, {
           maxTokens: tokOf(s, 'settle'),
           tag: '结算',
-          tools: [cpSettlementTool(SETTLE_TOOL, cpFrame.enabled)],
+          tools: [intimacySettlementTool(cpSettlementTool(SETTLE_TOOL, cpFrame.enabled), s)],
           wantTools: true,
             // 思考强度：模型会先在自己的 reasoning 通道里把角色逐个过一遍，
             // 不占工具参数那点输出空间（正文只有几十字时尤其明显）
@@ -8143,6 +8147,15 @@ if (微博新条.length) {
           await turnLog('[CP结算] gameId='+gid+' seq='+seq+' provided='+submission.provided+' candidates='+submission.candidates+' events='+(Array.isArray(submission.payload)?submission.payload.length:0)+' diffs='+result.diffs.length+' issues='+(submission.issues.length+result.issues.length));
         }
       } catch (e) { dataWarnings.push({step:'CP',why:'CP结算未保存，旧数据保留：'+String(e.message || e)}); }
+    }
+    if (intimacyAtStart && cpSettlementOK && !cutStory && !(opts.shouldStop && opts.shouldStop())) {
+      const submission = intimacyPayload(cpSubmitted);
+      if (submission.issues.length) dataWarnings.push(...submission.issues);
+      else if (submission.provided) {
+        const result = applyIntimacyEvents(s, submission.payload, { seq, textVersion: cpTextVersion, enabledAtStart: intimacyAtStart, frame: intimacyStartFrame });
+        diffs.push(...result.diffs); dataWarnings.push(...result.issues);
+      } else if (s.protagonist.intimacyHistory) dataWarnings.push({step:'性经验',why:'本轮未交事件结果，原账本保留'});
+      await turnLog('[性经验] seq='+seq+' provided='+submission.provided+' events='+submission.payload.length);
     }
     const finalOptions = pickOptions(sp.options, settleOptions);
     if (finalOptions.length !== ROUTE_NAMES.length) dataWarnings.push({ step: '选项', why: '行动选项不完整' });
@@ -12449,8 +12462,15 @@ reg('rebuildSummaries', async ({ gameId }) => {
     const cpPending = s.transcript.find(t=>t.role==='user'&&t.seq===latest.seq)?.weiboActions || [];
     const cpRecalcFrame = await prepareCPFrame(cpPreview, gameId, latest.seq, latest.body, cpPending);
     const cpRecalcContext = cpRecalcFrame.enabled ? '\n' + CP_RULES + cpContext(cpPreview, cpRecalcFrame.facts) + '\n本次CP局势给的是待重算基准；同一正文/微博事件不能再次叠加。' : '';
+    const intimacyPreview = JSON.parse(JSON.stringify(s));
+    rollbackDiffs(intimacyPreview, (latest.diffs || []).filter(d=>d.by==='intimacy'));
+    const intimacyPromptState = {...s, protagonist:{...s.protagonist}};
+    if (intimacyPreview.protagonist.intimacyHistory === undefined) delete intimacyPromptState.protagonist.intimacyHistory;
+    else intimacyPromptState.protagonist.intimacyHistory = intimacyPreview.protagonist.intimacyHistory;
+    const intimacyRecalcFrame = intimacyFrame(s);
+    const intimacyRecalcEnabled = intimacyRecalcFrame.enabled;
     const msgs = [
-      { role: 'system', content: await settleSystemPrompt(s, gameId, latest.body) + cpRecalcContext + (s.simulation?.enabled ? '\n' + promptText('simulation',SIMULATION_RULES) + genericHost.context(s) + '\n本次仅重核叙事资料，已确认经营、资金、经验和奖励记录保持不变；不得重报数值事件。' : '') },
+      { role: 'system', content: await settleSystemPrompt(intimacyPromptState, gameId, latest.body) + cpRecalcContext + (s.simulation?.enabled ? '\n' + promptText('simulation',SIMULATION_RULES) + genericHost.context(s) + '\n本次仅重核叙事资料，已确认经营、资金、经验和奖励记录保持不变；不得重报数值事件。' : '') },
       { role: 'user', content: '本轮正文：\n' + latest.body + '\n\n' +
         '【这是重新结算】上一轮的变量结算没成功，所以「当前状态变量」还停在**这一轮之前**的样子 —— ' +
         '那里面写的 舆论／粉丝动态／当前状态／当前想法／穿着 都是旧值。' +
@@ -12460,7 +12480,7 @@ reg('rebuildSummaries', async ({ gameId }) => {
     const res2 = await callSlot(s, 'settle', msgs, {
       maxTokens: tokOf(s, 'settle'),
       tag: '重算结算',
-      tools: [cpSettlementTool(SETTLE_TOOL, cpRecalcFrame.enabled)],
+      tools: [intimacySettlementTool(cpSettlementTool(SETTLE_TOOL, cpRecalcFrame.enabled), intimacyPromptState)],
       wantTools: true,
         reasoningEffort: await reasoningOf(s, 'settle'),
     });
@@ -12486,6 +12506,20 @@ reg('rebuildSummaries', async ({ gameId }) => {
       applyDiffs(s, value.diffs); targetDiffs.push(...value.diffs);
       latest.phoneEvents=value.events; latest.phoneEventsBodyHash=storyPhoneBodyHash(latest.body);
       if (value.issues.length) latest.issues = [...(latest.issues || []), ...value.issues];
+    };
+    const oldIntimacy = s.protagonist.intimacyHistory === undefined ? undefined : JSON.parse(JSON.stringify(s.protagonist.intimacyHistory));
+    const oldIntimacyDiffs = (latest.diffs || []).filter(d=>d.by==='intimacy').map(d=>JSON.parse(JSON.stringify(d)));
+    const recalculateIntimacy = rolledBack => {
+      if (!intimacyRecalcEnabled && oldIntimacy === undefined) return {diffs:[],issues:[]};
+      if(Array.isArray(latest.issues)) latest.issues=latest.issues.filter(i=>i.step!=='性经验');
+      const submission = intimacyPayload(cpResponseSources(res2, sj));
+      const keep = why => { if(oldIntimacy===undefined)delete s.protagonist.intimacyHistory;else s.protagonist.intimacyHistory=JSON.parse(JSON.stringify(oldIntimacy)); return {diffs:rolledBack?oldIntimacyDiffs:[],issues:oldIntimacy!==undefined||submission.provided?[{step:'性经验',why}]:[]}; };
+      if(res2?.stopped || isTruncated(res2?.finish) || !submission.provided || submission.issues.length) return keep('重算事件结果不完整或冲突，原账及回滚记录保留');
+      if(!rolledBack)rollbackDiffs(s,oldIntimacyDiffs);
+      const result=applyIntimacyEvents(s,submission.payload,{seq:latest.seq,textVersion:latest.textVersion||'',enabledAtStart:intimacyRecalcEnabled,frame:intimacyRecalcFrame});
+      if(!result.accepted)return keep(result.issues.map(i=>i.why).join('；')||'成年资料不明确，原账保留');
+      if(!rolledBack)latest.diffs=(latest.diffs||[]).filter(d=>d.by!=='intimacy');
+      return result;
     };
     const oldCPState = s.protagonist.cpState ? JSON.parse(JSON.stringify(s.protagonist.cpState)) : undefined;
     const oldCPDiffs = (latest.diffs || []).filter(d=>d.by==='cp').map(d=>JSON.parse(JSON.stringify(d)));
@@ -12517,6 +12551,7 @@ reg('rebuildSummaries', async ({ gameId }) => {
       applyDiffs(s, repaired);
       tickSockScent(s, latest.body).forEach(d => repaired.push(d));
       const cpResult = recalculateCP(); repaired.push(...cpResult.diffs); diagnostics.push(...cpResult.issues);
+      const intimacyResult = recalculateIntimacy(false); repaired.push(...intimacyResult.diffs); diagnostics.push(...intimacyResult.issues);
       repairPhone(repaired);
       latest.diffs = (latest.diffs || []).concat(repaired);
       latest.summary = String(safe.summary || latest.summary || '');
@@ -12555,6 +12590,7 @@ reg('rebuildSummaries', async ({ gameId }) => {
     // 这时 dh 通常是 0（时间没动），所以它只补值、不累加。
     tickSockScent(s, latest.body).forEach((d) => diffs.push(d));
     const cpResult = recalculateCP(); diffs.push(...cpResult.diffs); diagnostics.push(...cpResult.issues);
+    const intimacyResult = recalculateIntimacy(true); diffs.push(...intimacyResult.diffs); diagnostics.push(...intimacyResult.issues);
     refreshRecalculatedIssues(s,latest,{before:beforeRecalculation,diagnostics});
     await turnLog('[重算结算] gameId='+gameId+' seq='+latest.seq+' mode=变量重算 accepted='+diffs.length+' rejected='+diagnostics.length + ' cp=' + JSON.stringify(cpRecalcAudit));
     setProg(gameId, 'save', '写回存档');

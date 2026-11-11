@@ -9,7 +9,7 @@ const pathRoots={主角:'protagonist',玩家:'protagonist',世界:'world',世界
 const boxes={主角:'protagonist',玩家:'protagonist',世界:'world',世界状态:'world'};
 const lists={角色:'chars',人物:'chars',npcs:'chars',NPC:'chars',人物关系:'relationships',关系:'relationships',rels:'relationships'};
 const standard=new Set(['world','protagonist','chars','relationships','other','diffs','实体资产','虚拟资产','skills_items']);
-const metadata=new Set(['phoneEvents','summary','options','simulationUpdates','cpUpdates','CP动态','CP更新','粉丝动态','resetIncomeBaseline','固定资料变更依据','think','reasoning','analysis','检查清单','思考','导演笔记']);
+const metadata=new Set(['intimacyEvents','phoneEvents','summary','options','simulationUpdates','cpUpdates','CP动态','CP更新','粉丝动态','resetIncomeBaseline','固定资料变更依据','think','reasoning','analysis','检查清单','思考','导演笔记']);
 const internal=new Set(['config','story','transcript','simulation','phone','gameId','phase']);
 const decoded=v=>{if(typeof v!=='string'||!/^\s*[\[{]/.test(v))return v;try{const out=JSON.parse(v);assertSafeValue(out);return out;}catch{return v;}};
 function location(s,key){if(daily.has(key))return ['protagonist',key];const field=worldLocationField(key),p=own(s.protagonist,key)||own(s.protagonist,field),w=own(s.world,field);if(field==='当前地点'&&!p)return ['world',field];return p!==w?[p?'protagonist':'world',p?(own(s.protagonist,key)?key:field):field]:null;}
@@ -57,7 +57,7 @@ export function normalizeSettlementUpdate(state,raw,diagnostics=[]){
         else warn(eventPath,original,'粉丝动态缺少事件新值，未累计');
         continue;
       }
-      const row=obj(original)?{...original,path:pathOf(state,original.path)}:original;append(source,row,original);
+      const row=obj(original)?{...original,path:pathOf(state,original.path)}:original;if(Array.isArray(row?.path)&&row.path.length===1&&row.path[0]==='intimacyEvents')continue;append(source,row,original);
     }
   }
   for(const root of ['world','protagonist'])if(own(raw,root)){const value=decoded(raw[root]);if(obj(value))update[root]={...value};else{warn([root],raw[root],'字段容器无法识别为对象，未应用');delete update[root];}}
