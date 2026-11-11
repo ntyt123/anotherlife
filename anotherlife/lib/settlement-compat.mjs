@@ -2,6 +2,8 @@ import {assertSafeValue} from './runtime-core.mjs';
 import {rejectedUpdateDetail} from './data-integrity.mjs';
 const own=(o,k)=>!!o&&Object.prototype.hasOwnProperty.call(o,k),obj=v=>!!v&&typeof v==='object'&&!Array.isArray(v),copy=v=>JSON.parse(JSON.stringify(v)),same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
 export const COMPAT_DAILY_FIELDS=['疾病与伤病','婚姻状况','配偶','子女','私人关系','隐患','收支','债务','凭证','事业','住所','交通'];
+const currentLocationAliases={current_location:'当前地点',currentLocation:'当前地点',当前位置:'当前地点'};
+const worldLocationField=key=>own(currentLocationAliases,key)?currentLocationAliases[key]:key;
 const daily=new Set([...COMPAT_DAILY_FIELDS,'物品']);
 const pathRoots={主角:'protagonist',玩家:'protagonist',世界:'world',世界状态:'world',角色:'npcs',人物:'npcs',chars:'npcs',NPC:'npcs',人物关系:'relationships',关系:'relationships',rels:'relationships'};
 const boxes={主角:'protagonist',玩家:'protagonist',世界:'world',世界状态:'world'};
@@ -10,7 +12,7 @@ const standard=new Set(['world','protagonist','chars','relationships','other','d
 const metadata=new Set(['phoneEvents','summary','options','simulationUpdates','cpUpdates','CP动态','CP更新','粉丝动态','resetIncomeBaseline','固定资料变更依据','think','reasoning','analysis','检查清单','思考','导演笔记']);
 const internal=new Set(['config','story','transcript','simulation','phone','gameId','phase']);
 const decoded=v=>{if(typeof v!=='string'||!/^\s*[\[{]/.test(v))return v;try{const out=JSON.parse(v);assertSafeValue(out);return out;}catch{return v;}};
-function location(s,key){if(daily.has(key))return ['protagonist',key];const p=own(s.protagonist,key),w=own(s.world,key);return p!==w?[p?'protagonist':'world',key]:null;}
+function location(s,key){if(daily.has(key))return ['protagonist',key];const field=worldLocationField(key),p=own(s.protagonist,key)||own(s.protagonist,field),w=own(s.world,field);if(field==='当前地点'&&!p)return ['world',field];return p!==w?[p?'protagonist':'world',p?(own(s.protagonist,key)?key:field):field]:null;}
 function pathOf(s,value){
   let p=value;
   if(typeof p==='string'){
@@ -23,6 +25,7 @@ function pathOf(s,value){
   if(!Array.isArray(p)||!p.length)return p;
   p=p.slice();if(own(pathRoots,p[0]))p[0]=pathRoots[p[0]];
   else if(typeof p[0]==='string'){const root=location(s,p[0]);if(root)p=[...root,...p.slice(1)];}
+  if(p[0]==='world'&&p.length>1)p[1]=worldLocationField(p[1]);
   return p;
 }
 const homeName=v=>String(v?.名称||v?.名字||v?.name||'').trim(),homeId=v=>String(v?.id||v?.房屋编号||'').trim(),homeAddress=v=>String(v?.位置||v?.地址||v?.address||'').trim();
@@ -66,9 +69,13 @@ export function normalizeSettlementUpdate(state,raw,diagnostics=[]){
       append('other',{path:[root,field],value},{path:originalPath,value});delete box[field];
     }else box[field]=value;
   };
+  if(obj(update.world))for(const[field,value]of Object.entries(update.world)){
+    const canonical=worldLocationField(field);if(canonical===field)continue;
+    delete update.world[field];put('world',canonical,value,['world',field]);
+  }
   for(const[k,value]of Object.entries(raw)){
     if(standard.has(k)||metadata.has(k))continue;
-    if(own(boxes,k)){const root=boxes[k],box=decoded(value);if(!obj(box)){warn([k],value,'字段容器无法识别为对象，未应用');delete update[k];continue;}for(const[field,v]of Object.entries(box))put(root,field,v,[k,field]);delete update[k];continue;}
+    if(own(boxes,k)){const root=boxes[k],box=decoded(value);if(!obj(box)){warn([k],value,'字段容器无法识别为对象，未应用');delete update[k];continue;}for(const[field,v]of Object.entries(box))put(root,root==='world'?worldLocationField(field):field,v,[k,field]);delete update[k];continue;}
     if(own(lists,k)){const target=lists[k],parsed=decoded(value),rows=Array.isArray(parsed)?parsed:obj(parsed)?[parsed]:null;if(!rows)warn([k],value,'字段容器无法识别为人物或关系列表，未应用');else{const accepted=rows.flatMap((row,i)=>{if(!obj(row)){warn([k,i],row,'列表条目无法识别为人物或关系对象，未应用');return[];}const actors=Array.isArray(state.npcs)?state.npcs.filter(n=>row.actorId&&n.actorId===row.actorId):[];const name=String((target==='relationships'?row.对象:'')||row.姓名||row.名字||row.name||(actors.length===1?actors[0].姓名:'')||'').trim();if(!name){warn([k,i],row,'人物或关系条目无法确定姓名，未应用');return[];}return[{...row,[target==='chars'?'姓名':'对象']:name}];});update[target]=[...(Array.isArray(update[target])?update[target]:[]),...accepted];}delete update[k];continue;}
     if(internal.has(k)||k.startsWith('_')){warn([k],value,'不允许修改内部状态');delete update[k];continue;}
     const target=location(state,k);

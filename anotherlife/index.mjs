@@ -173,11 +173,14 @@ export function apply(ctx) {
 
   // ────────────────────────────── 常量与空模板 ──────────────────────────────
 
+  const CURRENT_LOCATION_RULES = "【当前地点】world.起始地点只记录开局场所，不代表本轮仍在原地；world.当前地点记录本轮正文结束时镜头实际所在的位置。每轮检查：已经移动或切镜，或当前地点为空而正文明确落点时，按已发生的结尾场景更新当前地点；仍在原处就保留。计划、目的地和回忆中提及的地方不等于已经到达，不要照抄起始地点、住所或列出所有途经地点。旧档缺少当前地点时结合最近剧情继续，不要让人物因此回到开局场所。地点粒度以正文能确定的信息为准，不杜撰街道门牌。";
+
   const EMPTY_WORLD = () => ({
     世界观类型: '',
     时代与年份: '',
     当前日期时间: '',
     起始地点: '',
+    当前地点: '',
     权力结构: '',
     货币与经济: '',
     阶层与身份: '',
@@ -5009,7 +5012,7 @@ const SETTLE_TOOL = {
       cpUpdates: CP_SCHEMA,
       phoneEvents: PHONE_EVENTS_SCHEMA,
       skills_items: { type: 'object', additionalProperties: true },
-      world: { type: 'object', description: '世界观字段级变化，键是字段名、值是新的值', additionalProperties: true },
+      world: { type: 'object', description: '世界状态字段级变化。移动或切镜后的落点写当前地点，起始地点只记录开局。', properties: { 当前地点: { type: 'string', description: '本轮正文结束时实际场景的位置，按已发生的结尾落点填写，不写计划目的地或所有途经地点。' } }, additionalProperties: true },
       protagonist: { type: 'object', description: '主角字段级变化', additionalProperties: true },
       chars: {
         type: 'array',
@@ -5182,6 +5185,7 @@ const 英文键映射 = {
   era: '时代与年份',
   current_datetime: '当前日期时间',
   start_location: '起始地点',
+  current_location: '当前地点',
   power_structure: '权力结构',
   currency_economy: '货币与经济',
   class_identity: '阶层与身份',
@@ -6044,7 +6048,7 @@ let aiPickFail = '';
       '只输出 JSON，形如：{"ids":["p.姓名","as.0"]}。**第一行就先写这一行 JSON**，之后再想别的（或者干脆不想）—— 你的思考一旦写长了就会把这一行挤掉，整轮上下文就废了。不要逐条分析候选，扫一遍凭直觉挑。',
       '规则：',
       '1) 宁缺毋滥：只选与本轮输入或最近剧情直接相关的条目，最多 ' + maxN + ' 条。',
-      '2) 时间与地点必选：若候选里有 w.当前日期时间、w.起始地点，除非明显无关，都要选上。',
+      '2) 时间与地点必选：若候选里有 w.当前日期时间、w.当前地点、w.起始地点，除非明显无关，都要选上。',
       '3) 若候选里有 p.妊娠状态，必须选上。',
       '4) 粒度要细：地址类条目会拆成「基础信息」与「某层」两个 id，只选玩家真正去/提到的那些层，不要把所有层都选上。',
       '5) 不要因为名字碰巧相同就选；不确定就不选。',
@@ -6509,6 +6513,7 @@ let aiPickFail = '';
       '你是一款人生模拟器的叙事引擎。你不是某个固定人物，而是当前世界观里的世界本身：按本轮意图与已确认事实叙述环境、有因果地发展情节、扮演除主角外的所有 NPC。',
       '主角是玩家（其设定见变量）；真实目标、信息公开和重大言行分别遵循下列权限，日常表达不一概留白。',
       NARRATIVE_RULES,
+      CURRENT_LOCATION_RULES,
       '严格跟随世界观设定（时代、时间地点、社会规则、势力、风俗、叙事基调）。现实题材中出现的真实人物，其个人信息、性格、外貌须与现实一致。',
       '【能力与世界事实】能力表现以已确认的世界机制、经历、训练和资源为依据，不因主角身份自动全能，也不无视已明确的超凡设定或特殊能力。',
       '【本轮范围】按本轮明确的场景、时间跨度和授权发展；具体互动可以自然完成，一段时期也可以概述与片段交替，不强制缩成一个瞬间，不为凑篇幅跨入未经要求的新阶段。',
@@ -6741,6 +6746,7 @@ async function settleSystemPrompt(s, gameId, body, phoneBridge) {
       '你是人生模拟器的后台变量结算器。依据本轮正文、输入里已发生的手机交流事实和当前变量快照，产出这一轮全部变量变化与一句话小总结。',
       STORY_PHONE_RULES,
       NARRATIVE_RULES,
+      CURRENT_LOCATION_RULES,
       // 星途开关放最前面。放中间（第 52 条左右、25k 字里）实测模型根本扫不到：
       // think 里连「开关」两个字都没出现过，演艺字段一条没写。
       ((s && s.protagonist && s.protagonist.是否艺人 === true)

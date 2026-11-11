@@ -9425,7 +9425,7 @@ onDoubleClick: () => {
           const sw = (state && state.world) || {};
           const sp = (state && state.protagonist) || {};
           const when = splitWhen(sw['当前日期时间']);
-          const place = String(sw['起始地点'] || '').trim();
+          const place = String(sw['当前地点'] || sw['起始地点'] || '').trim();
           const money = sp.金钱;
           const curName = String(sp.货币名 || '').trim() || '货币';
 
@@ -10447,7 +10447,7 @@ const applyBirth = (text) => setProtagMany({ 生日: text });
           /** 顶部大字：时间与地点 —— 这个页签最重要的两块 */
           function whenHero(world) {
             const time = String(world['当前日期时间'] || '').trim();
-            const place = String(world['起始地点'] || '').trim();
+            const place = String(world['当前地点'] || world['起始地点'] || '').trim();
             return h(
               'div',
               { className: 'sim-when' },
@@ -10469,7 +10469,7 @@ const applyBirth = (text) => setProtagMany({ 生日: text });
           const worldEditor = h(
             'div',
             { className: 'sim-fz2' },
-            whenHero(draft.world),
+            whenHero(state?.phase === 'play' ? state.world : draft.world),
             h(
               'div',
               { className: 'sim-card' },
