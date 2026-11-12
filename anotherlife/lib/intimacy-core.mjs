@@ -58,6 +58,7 @@ export function intimacyPayload(sources) {
   const values = [], issues = [];
   let provided = false;
   const accept = value => {
+    if (value == null) return;
     provided = true;
     if (typeof value === 'string') { try { value = JSON.parse(value); } catch { value = null; } }
     if (!Array.isArray(value)) { issues.push({ step: '性经验', why: '事件格式不可识别，原账本保留' }); return; }

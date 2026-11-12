@@ -7015,7 +7015,7 @@ async function settleSystemPrompt(s, gameId, body, phoneBridge) {
     if(!baseline){baseline=JSON.parse(JSON.stringify(s));rollbackDiffs(baseline,turn.diffs||[]);}
     const fresh=dataIntegrityIssues(baseline,s,turn.body,turn.diffs||[]).filter(computed);
     let issues=old.filter(x=>x&&(computed(x)?existingOnly&&fresh.some(y=>y.step===x.step&&y.why===x.why):existingOnly||!(x.step==='settle'||x.step==='资料'&&/^\d+项资料更新已跳过/.test(String(x.why||'')))));
-    if(!existingOnly){issues.push(...fresh);const cpIssues=diagnostics.filter(x=>x?.step==='CP'),ordinary=diagnostics.filter(x=>x?.step!=='CP');issues.push(...cpIssues);if(ordinary.length){const current=settlementIssueFromDiagnostics(ordinary);issues.push({step:'资料',why:current.why,details:current.details});}}
+    if(!existingOnly){issues.push(...fresh);const cpIssues=diagnostics.filter(x=>x?.step==='CP'),intimacyIssues=diagnostics.filter(x=>x?.step==='性经验'),ordinary=diagnostics.filter(x=>x?.step!=='CP'&&x?.step!=='性经验');issues.push(...cpIssues,...intimacyIssues);if(ordinary.length){const current=settlementIssueFromDiagnostics(ordinary);issues.push({step:'资料',why:current.why,details:current.details});}}
     if(issues.length)turn.issues=issues;else delete turn.issues;
   }
 
@@ -8154,7 +8154,7 @@ if (微博新条.length) {
       else if (submission.provided) {
         const result = applyIntimacyEvents(s, submission.payload, { seq, textVersion: cpTextVersion, enabledAtStart: intimacyAtStart, frame: intimacyStartFrame });
         diffs.push(...result.diffs); dataWarnings.push(...result.issues);
-      } else if (s.protagonist.intimacyHistory) dataWarnings.push({step:'性经验',why:'本轮未交事件结果，原账本保留'});
+      }
       await turnLog('[性经验] seq='+seq+' provided='+submission.provided+' events='+submission.payload.length);
     }
     const finalOptions = pickOptions(sp.options, settleOptions);
@@ -12513,8 +12513,9 @@ reg('rebuildSummaries', async ({ gameId }) => {
       if (!intimacyRecalcEnabled && oldIntimacy === undefined) return {diffs:[],issues:[]};
       if(Array.isArray(latest.issues)) latest.issues=latest.issues.filter(i=>i.step!=='性经验');
       const submission = intimacyPayload(cpResponseSources(res2, sj));
-      const keep = why => { if(oldIntimacy===undefined)delete s.protagonist.intimacyHistory;else s.protagonist.intimacyHistory=JSON.parse(JSON.stringify(oldIntimacy)); return {diffs:rolledBack?oldIntimacyDiffs:[],issues:oldIntimacy!==undefined||submission.provided?[{step:'性经验',why}]:[]}; };
-      if(res2?.stopped || isTruncated(res2?.finish) || !submission.provided || submission.issues.length) return keep('重算事件结果不完整或冲突，原账及回滚记录保留');
+      const keep = (why, quiet) => { if(oldIntimacy===undefined)delete s.protagonist.intimacyHistory;else s.protagonist.intimacyHistory=JSON.parse(JSON.stringify(oldIntimacy)); return {diffs:rolledBack?oldIntimacyDiffs:[],issues:quiet?[]:oldIntimacy!==undefined||submission.provided?[{step:'性经验',why}]:[]}; };
+      if(!submission.provided) return keep('', true);
+      if(res2?.stopped || isTruncated(res2?.finish) || submission.issues.length) return keep('重算事件结果不完整或冲突，原账及回滚记录保留');
       if(!rolledBack)rollbackDiffs(s,oldIntimacyDiffs);
       const result=applyIntimacyEvents(s,submission.payload,{seq:latest.seq,textVersion:latest.textVersion||'',enabledAtStart:intimacyRecalcEnabled,frame:intimacyRecalcFrame});
       if(!result.accepted)return keep(result.issues.map(i=>i.why).join('；')||'成年资料不明确，原账保留');

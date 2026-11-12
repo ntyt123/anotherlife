@@ -99,3 +99,52 @@ test('星途开启时截断由既有保护拒绝，账本仍完整保留', async
 test('本轮把既有未成年对象改成成年也不能绕过事件成年核对', async () => {
   const {e}=await rig({partnerAge:17,payload:{chars:[{姓名:'成年对象甲',年龄:24}],intimacyEvents:[event()]}});try{await generate(e);assert.equal(history(e),undefined);}finally{e.cleanup();}
 });
+
+test('已有账本时省略事件字段静默保留，不再打扰', async () => {
+  const { e, set } = await rig(); try {
+    await generate(e); const before = clone(history(e)); assert.equal(before.events.length, 1);
+    set({}); await generate(e);
+    const s = e.getState('test');
+    assert.equal((s.transcript.at(-1).issues || []).filter(i => i.step === '性经验').length, 0);
+    assert.deepEqual(history(e), before);
+  } finally { e.cleanup(); }
+});
+test('事件字段给 null 也按未提供静默处理', async () => {
+  const { e, set } = await rig(); try {
+    await generate(e); const before = clone(history(e));
+    set({ intimacyEvents: null }); await generate(e);
+    const s = e.getState('test');
+    assert.equal((s.transcript.at(-1).issues || []).filter(i => i.step === '性经验').length, 0);
+    assert.deepEqual(history(e), before);
+  } finally { e.cleanup(); }
+});
+test('坏格式仍提示且不清账', async () => {
+  const { e, set } = await rig(); try {
+    await generate(e); const before = clone(history(e));
+    set({ intimacyEvents: { bad: true } }); await generate(e);
+    const s = e.getState('test');
+    assert.ok((s.transcript.at(-1).issues || []).some(i => i.step === '性经验'));
+    assert.deepEqual(history(e), before);
+  } finally { e.cleanup(); }
+});
+test('重算省略字段静默，坏格式仍提示', async () => {
+  const { e, set } = await rig(); try {
+    await generate(e); const before = clone(history(e));
+    set({}); await e.call('regenerateLatestVars', { gameId: 'test' });
+    let s = e.getState('test');
+    assert.equal((s.transcript.at(-1).issues || []).filter(i => i.step === '性经验').length, 0);
+    assert.deepEqual(history(e), before);
+    set({ intimacyEvents: { bad: true } }); await e.call('regenerateLatestVars', { gameId: 'test' });
+    s = e.getState('test');
+    assert.ok((s.transcript.at(-1).issues || []).some(i => i.step === '性经验'));
+    assert.deepEqual(history(e), before);
+  } finally { e.cleanup(); }
+});
+test('真实性事件仍正常记账，静默改动没有放松写入', async () => {
+  const { e, set } = await rig(); try {
+    await generate(e);
+    set({ intimacyEvents: [{ eventId: 'new_9', mode: 'record', partners: [{ partner: 'actor:a', acts: [{ type: '性交', count: 2, countKnown: true }] }] }] });
+    await generate(e);
+    assert.equal(history(e).events.length, 2);
+  } finally { e.cleanup(); }
+});
