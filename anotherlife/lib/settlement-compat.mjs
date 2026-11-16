@@ -1,3 +1,4 @@
+import {routeSettlementIdentity} from './settlement-identity.mjs';
 import {assertSafeValue} from './runtime-core.mjs';
 import {rejectedUpdateDetail} from './data-integrity.mjs';
 const own=(o,k)=>!!o&&Object.prototype.hasOwnProperty.call(o,k),obj=v=>!!v&&typeof v==='object'&&!Array.isArray(v),copy=v=>JSON.parse(JSON.stringify(v)),same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
@@ -76,7 +77,7 @@ export function normalizeSettlementUpdate(state,raw,diagnostics=[]){
   for(const[k,value]of Object.entries(raw)){
     if(standard.has(k)||metadata.has(k))continue;
     if(own(boxes,k)){const root=boxes[k],box=decoded(value);if(!obj(box)){warn([k],value,'字段容器无法识别为对象，未应用');delete update[k];continue;}for(const[field,v]of Object.entries(box))put(root,root==='world'?worldLocationField(field):field,v,[k,field]);delete update[k];continue;}
-    if(own(lists,k)){const target=lists[k],parsed=decoded(value),rows=Array.isArray(parsed)?parsed:obj(parsed)?[parsed]:null;if(!rows)warn([k],value,'字段容器无法识别为人物或关系列表，未应用');else{const accepted=rows.flatMap((row,i)=>{if(!obj(row)){warn([k,i],row,'列表条目无法识别为人物或关系对象，未应用');return[];}const actors=Array.isArray(state.npcs)?state.npcs.filter(n=>row.actorId&&n.actorId===row.actorId):[];const name=String((target==='relationships'?row.对象:'')||row.姓名||row.名字||row.name||(actors.length===1?actors[0].姓名:'')||'').trim();if(!name){warn([k,i],row,'人物或关系条目无法确定姓名，未应用');return[];}return[{...row,[target==='chars'?'姓名':'对象']:name}];});update[target]=[...(Array.isArray(update[target])?update[target]:[]),...accepted];}delete update[k];continue;}
+    if(own(lists,k)){const target=lists[k],parsed=decoded(value),rows=Array.isArray(parsed)?parsed:obj(parsed)?[parsed]:null;if(!rows)warn([k],value,'字段容器无法识别为人物或关系列表，未应用');else{const accepted=rows.flatMap((row,i)=>{if(!obj(row)){warn([k,i],row,'列表条目无法识别为人物或关系对象，未应用');return[];}const pool=target==='chars'?[state.protagonist,...(Array.isArray(state.npcs)?state.npcs:[])]:Array.isArray(state.npcs)?state.npcs:[];const actors=pool.filter(n=>n&&row.actorId&&n.actorId===row.actorId);const name=String((target==='relationships'?row.对象:'')||row.姓名||row.名字||row.name||(actors.length===1?actors[0].姓名:'')||'').trim();if(!name){warn([k,i],row,'人物或关系条目无法确定姓名，未应用');return[];}return[{...row,[target==='chars'?'姓名':'对象']:name}];});update[target]=[...(Array.isArray(update[target])?update[target]:[]),...accepted];}delete update[k];continue;}
     if(internal.has(k)||k.startsWith('_')){warn([k],value,'不允许修改内部状态');delete update[k];continue;}
     const target=location(state,k);
     if(!target){warn([k],value,own(state.protagonist,k)&&own(state.world,k)?'字段同时存在于人物和世界，无法确定归属，未应用':'无法确定字段归属，未应用');delete update[k];continue;}
@@ -107,5 +108,5 @@ export function normalizeSettlementUpdate(state,raw,diagnostics=[]){
     const seen=new Set();update.粉丝动态=[];
     for(const c of candidates){const key=c.identity+'|'+c.row.增减;if(conflicts.has(c.identity)||seen.has(key))continue;seen.add(key);update.粉丝动态.push(c.row);}
   }
-  return {update,submittedFor:(row,source)=>{const rows=submitted.get(key(source,row?.path));return rows?.length?rows.shift():undefined;}};
+  return routeSettlementIdentity(state,update,diagnostics,(row,source)=>{const rows=submitted.get(key(source,row?.path));return rows?.length?rows.shift():undefined;});
 }
