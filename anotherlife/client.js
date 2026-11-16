@@ -249,6 +249,246 @@ function createIntimacyPanel(React, { intimacyEnabled, intimacySummary, foldProp
 return createIntimacyPanel(React, { intimacyEnabled, intimacySummary, foldProps: viewFoldProps });
 })();
       // INTIMACY_PANEL_END
+      // RELATIONS_PANEL_BEGIN
+      const RelationsPanel = (() => {
+const rgOwn = (o, k) => o != null && Object.prototype.hasOwnProperty.call(o, k);
+const rgClone = v => v === undefined ? undefined : JSON.parse(JSON.stringify(v));
+const rgText = v => typeof v === 'string' ? v.trim() : '';
+const rgRoots = new Set(['protagonist', 'npcs', 'relationships']);
+function rgPath(value) {
+  let p = value;
+  if (typeof p === 'string') {
+    try { p = p.trim().startsWith('[') ? JSON.parse(p) : p.startsWith('/') ? p.slice(1).split('/').map(x => x.replace(/~1/g, '/').replace(/~0/g, '~')) : p.replace(/\[(\d+)\]/g, '.$1').split('.'); } catch { return null; }
+  }
+  if (!Array.isArray(p) || !p.length) return null;
+  p = p.map(x => typeof x === 'string' && /^\d+$/.test(x) ? Number(x) : x);
+  if (!rgRoots.has(p[0]) || p.some(x => typeof x === 'number' ? !Number.isSafeInteger(x) || x < 0 || x > 100000 : typeof x !== 'string' || !x || ['__proto__', 'prototype', 'constructor'].includes(x))) return null;
+  return p;
+}
+function rgSet(root, path, value, remove) {
+  let at = root;
+  for (let i = 0; i < path.length - 1; i++) {
+    const key = path[i];
+    if (!rgOwn(at, key) || at[key] == null || typeof at[key] !== 'object') {
+      if (remove) return;
+      at[key] = typeof path[i + 1] === 'number' ? [] : {};
+    }
+    at = at[key];
+  }
+  const key = path.at(-1);
+  if (remove) {
+    if (Array.isArray(at) && typeof key === 'number' && key < at.length) at.splice(key, 1);
+    else delete at[key];
+  } else at[key] = rgClone(value);
+}
+function relationTurns(state) {
+  return (Array.isArray(state?.transcript) ? state.transcript : []).filter(t => t && (!t.role || t.role === 'assistant') && Number.isFinite(Number(t.seq))).slice().sort((a, b) => Number(a.seq) - Number(b.seq));
+}
+function relationSnapshot(state, round = -1) {
+  const frame = { protagonist: rgClone(state?.protagonist || {}), npcs: rgClone(state?.npcs || []), relationships: rgClone(state?.relationships || []) };
+  const turns = relationTurns(state), max = turns.length ? Number(turns.at(-1).seq) : 0;
+  const latest = round == null || !Number.isFinite(Number(round)) || Number(round) < 0 || Number(round) >= max;
+  const selected = latest ? max : Math.max(0, Math.floor(Number(round)));
+  let uncertain = 0;
+  if (!latest) for (let i = turns.length - 1; i >= 0; i--) {
+    const turn = turns[i]; if (Number(turn.seq) <= selected) continue;
+    const diffs = Array.isArray(turn.diffs) ? turn.diffs : [];
+    for (let j = diffs.length - 1; j >= 0; j--) {
+      const d = diffs[j], path = rgPath(d?.path); if (!path) continue;
+      if (d._had === false) {
+        rgSet(frame, path, undefined, true);
+        const missing = rgPath(d._missing); if (missing) rgSet(frame, missing, undefined, true);
+      } else if (d._had === true) rgSet(frame, path, d._prev, false);
+      else if (rgOwn(d, 'from')) rgSet(frame, path, d.from, d.from === undefined);
+      else { rgSet(frame, path, undefined, true); uncertain++; }
+    }
+  }
+  frame.protagonist = frame.protagonist && typeof frame.protagonist === 'object' ? frame.protagonist : {};
+  frame.npcs = Array.isArray(frame.npcs) ? frame.npcs.filter(n => n && typeof n === 'object') : [];
+  frame.relationships = Array.isArray(frame.relationships) ? frame.relationships.filter(n => n && typeof n === 'object') : [];
+  return { ...frame, round: selected, latest, uncertain };
+}
+function rgLabel(value) {
+  const s = rgText(value);
+  return !s || /^(无|暂无|没有)(?:$|[（(，,。；;])/.test(s) || ['未知', '未记录', '不详', '待补'].includes(s) ? '' : s;
+}
+const rgRoles = ['父亲', '母亲', '爸爸', '妈妈', '丈夫', '妻子', '哥哥', '姐姐', '弟弟', '妹妹', '儿子', '女儿', '外孙女', '外孙', '孙女', '孙子', '祖父', '祖母', '外公', '外婆', '爷爷', '奶奶', '男友', '女友', '前夫', '前妻', '未婚夫', '未婚妻', '同桌', '室友', '同学', '同事', '朋友', '老师', '学生', '助理', '经纪人'];
+const rgEscape = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+function relationNetwork(frame) {
+  const nodes = [], edges = [], names = new Map(), ids = new Map(), edgeMap = new Map();
+  function index(map, key, node) { if (!key) return; map.set(key, map.has(key) ? null : node); }
+  function addNode(actor, kind, i) {
+    const name = rgText(actor?.姓名 || actor?.name), actorId = rgText(actor?.actorId);
+    if (!name) return null;
+    const id = kind === 'protagonist' ? 'protagonist' : actorId ? 'actor:' + actorId : kind + ':' + encodeURIComponent(name) + ':' + i;
+    const node = { id, name, actorId, kind, identity: rgText(actor.身份), actor };
+    nodes.push(node); index(names, name, node); index(ids, actorId, node); return node;
+  }
+  const protagonist = addNode({ ...frame.protagonist, 姓名: rgText(frame.protagonist?.姓名) || '主角' }, 'protagonist', 0);
+  (frame.npcs || []).forEach((n, i) => addNode(n, 'npc', i));
+  function resolve(v, allowRecord = false) {
+    if (v && typeof v === 'object') { const key = rgText(v.actorId || v.id); if (key && ids.has(key)) return ids.get(key); v = v.姓名 || v.name || v.对象; }
+    const key = rgText(v); if (!key) return null;
+    if (ids.has(key)) return ids.get(key);
+    if (names.has(key)) return names.get(key);
+    if (key === '主角' || key === '玩家' || key === 'protagonist') return protagonist;
+    return allowRecord ? addNode({ 姓名: key }, 'relation', nodes.length) : null;
+  }
+  function connect(source, target, label, evidence = '') {
+    label = rgLabel(label); if (!source || !target || source.id === target.id || !label) return;
+    const key = [source.id, target.id].sort().join('\u0000');
+    let edge = edgeMap.get(key);
+    if (!edge) { edge = { id: key, source: source.id, target: target.id, label, assertions: [] }; edgeMap.set(key, edge); edges.push(edge); }
+    if (!edge.assertions.some(a => a.source === source.id && a.target === target.id && a.label === label)) edge.assertions.push({ source: source.id, target: target.id, sourceName: source.name, targetName: target.name, label, evidence });
+  }
+  const rootRelations = Array.isArray(frame.relationships) ? frame.relationships : [];
+  for (const r of rootRelations) {
+    const rawSource = r.主体 ?? r.sourceActorId ?? r.source ?? r.from;
+    const source = rawSource == null || rawSource === '' ? protagonist : resolve(rawSource);
+    const label = r.关系 ?? r.relation ?? r.type;
+    const target = resolve(r.targetActorId ?? r.对象 ?? r.target ?? r.to, Boolean(source && rgLabel(label)));
+    connect(source, target, label, rgText(r.备注 || r.当前状况));
+  }
+  for (const node of nodes.slice()) {
+    if (node.kind === 'npc') {
+      const hasRoot = edges.some(e => e.assertions.some(a => a.source === protagonist.id && a.target === node.id));
+      if (!hasRoot) connect(protagonist, node, node.actor.与主角关系);
+    }
+    for (const r of Array.isArray(node.actor.relationships) ? node.actor.relationships : Array.isArray(node.actor.人物关系) ? node.actor.人物关系 : []) {
+      if (!r || typeof r !== 'object' || Array.isArray(r)) continue;
+      connect(node, resolve(r.actorId || r.对象 || r.target), r.关系 || r.relation);
+    }
+    for (const role of rgRoles) {
+      const value = node.actor[role];
+      for (const ref of Array.isArray(value) ? value : value ? [value] : []) connect(node, resolve(ref), role);
+    }
+    for (const role of ['配偶', '子女']) for (const ref of Array.isArray(node.actor[role]) ? node.actor[role] : node.actor[role] ? [node.actor[role]] : []) connect(node, resolve(ref), role);
+  }
+  // 只识别档案里明确点名的亲属/同住等短语；不按同姓、同班、共同出场推断。
+  const people = nodes.filter(n => n.kind !== 'relation'), rolePattern = rgRoles.slice().sort((a, b) => b.length - a.length).join('|');
+  for (const owner of people) for (const field of ['身份', '背景', '与主角关系']) {
+    const text = rgText(owner.actor[field]); if (!text) continue;
+    for (const other of people) {
+      if (owner.id === other.id || names.get(other.name) !== other) continue;
+      const nm = rgEscape(other.name);
+      const before = new RegExp('(?:^|[，,。；;、：:\\s（(]|与|和|生下|有了|育有)(?:其|他的|她的)?(' + rolePattern + ')\\s*' + nm + '(?=$|[，,。；;、：:\\s）)都是为与和的])', 'g');
+      for (const m of text.matchAll(before)) {
+        const clause = text.slice(Math.max(0, text.lastIndexOf('。', m.index) + 1), m.index + m[0].length);
+        if (/不是|并非|如果|假如|传闻|据说|饰演|扮演|不再/.test(clause)) continue;
+        connect(owner, other, m[1], m[0]);
+      }
+      const after = new RegExp(nm + '(?:的)?(' + rolePattern + ')(?=$|[，,。；;、\\s（）()])', 'g');
+      for (const m of text.matchAll(after)) {
+        const prefix = text.slice(Math.max(0, text.lastIndexOf('。', m.index) + 1), m.index);
+        if (/不是|并非|如果|假如|传闻|据说|饰演|扮演|不再/.test(prefix)) continue;
+        connect(other, owner, m[1], m[0]);
+      }
+      for (const m of text.matchAll(new RegExp(nm + '(?:的)?同宿舍(?:上铺|下铺|室友|同学)?', 'g'))) {
+        const clause = text.slice(Math.max(0, text.lastIndexOf('。', m.index) + 1), m.index + m[0].length);
+        if (!/不是|并非|如果|假如|传闻|据说|饰演|扮演|不再/.test(clause)) connect(other, owner, '室友', field);
+      }
+    }
+  }
+  return { nodes, edges, round: frame.round, latest: frame.latest, uncertain: frame.uncertain || 0 };
+}
+function relationLayout(graph) {
+  const n = graph.nodes.length, width = Math.max(840, Math.ceil(Math.sqrt(n || 1) * 155)), height = Math.max(600, Math.ceil(Math.sqrt(n || 1) * 112));
+  const nodes = graph.nodes.map((v, i) => { let hash = 2166136261; for (const c of v.id) hash = Math.imul(hash ^ c.charCodeAt(0), 16777619); const angle = i * 2.399963229728653, radius = Math.sqrt((i + 1) / Math.max(1, n)); return { ...v, x: width / 2 + Math.cos(angle) * width * .36 * radius, y: height / 2 + Math.sin(angle) * height * .34 * radius, seed: hash >>> 0 }; });
+  const index = new Map(nodes.map((node, i) => [node.id, i])), forces = nodes.map(() => ({ x: 0, y: 0 }));
+  for (let iter = 0; iter < 160; iter++) {
+    forces.forEach(f => { f.x = 0; f.y = 0; });
+    for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
+      let dx = nodes[i].x - nodes[j].x, dy = nodes[i].y - nodes[j].y, d = Math.max(1, Math.hypot(dx, dy));
+      if (d < 2) { dx = ((nodes[i].seed % 13) + 1) / 7; dy = 1; d = Math.hypot(dx, dy); }
+      const force = 2200 / (d * d) + (d < 80 ? (80 - d) * .19 : 0), fx = dx / d * force, fy = dy / d * force;
+      forces[i].x += fx; forces[i].y += fy; forces[j].x -= fx; forces[j].y -= fy;
+    }
+    for (const edge of graph.edges) {
+      const i = index.get(edge.source), j = index.get(edge.target); if (i == null || j == null) continue;
+      const dx = nodes[j].x - nodes[i].x, dy = nodes[j].y - nodes[i].y, d = Math.max(1, Math.hypot(dx, dy)), force = (d - 155) * .018;
+      forces[i].x += dx / d * force; forces[i].y += dy / d * force; forces[j].x -= dx / d * force; forces[j].y -= dy / d * force;
+    }
+    for (let i = 0; i < n; i++) {
+      const f = forces[i], step = .8 * (1 - iter / 190);
+      f.x += (width / 2 - nodes[i].x) * .004; f.y += (height / 2 - nodes[i].y) * .004;
+      nodes[i].x = Math.max(60, Math.min(width - 60, nodes[i].x + Math.max(-12, Math.min(12, f.x)) * step));
+      nodes[i].y = Math.max(55, Math.min(height - 55, nodes[i].y + Math.max(-12, Math.min(12, f.y)) * step));
+    }
+  }
+  return { nodes, edges: graph.edges, width, height };
+}
+function relationChangedTurns(state) {
+  return relationTurns(state).filter(t => (t.diffs || []).some(d => { const p = rgPath(d?.path); return p && (p[0] === 'relationships' || p[0] === 'npcs' && (p.length <= 2 || ['与主角关系', '姓名', '身份', '背景', '人物关系', 'relationships', '配偶', '子女'].includes(p[2]))); })).map(t => Number(t.seq));
+}
+
+function createRelationsPanel(React, { relationSnapshot, relationNetwork, relationLayout, relationTurns, relationChangedTurns }) {
+  const h = React.createElement;
+  const layouts = new Map();
+  return function RelationsPanel({ state, round = -1, onRoundChange = () => {}, selectedId = '', onSelect = () => {}, zoom = 1, onZoom = () => {}, onOpenCurrent }) {
+    const frame = relationSnapshot(state, round), graph = relationNetwork(frame), turns = relationTurns(state);
+    const max = turns.length ? Number(turns.at(-1).seq) : 0, current = frame.round;
+    const signature = JSON.stringify([graph.nodes.map(n => n.id), graph.edges.map(e => [e.source, e.target])]);
+    let layout = layouts.get(signature);
+    if (!layout) {
+      const result = relationLayout(graph);
+      layout = { width: result.width, height: result.height, nodes: result.nodes.map(n => ({ id: n.id, x: n.x, y: n.y })) };
+      layouts.set(signature, layout); if (layouts.size > 8) layouts.delete(layouts.keys().next().value);
+    }
+    const positions = new Map(layout.nodes.map(n => [n.id, n])), selected = graph.nodes.find(n => n.id === selectedId);
+    const adjacent = new Set(selected ? [selected.id] : []);
+    const related = selected ? graph.edges.filter(e => e.source === selected.id || e.target === selected.id) : [];
+    related.forEach(e => { adjacent.add(e.source); adjacent.add(e.target); });
+    const changes = [...new Set(relationChangedTurns(state))], prev = changes.filter(n => n < current).at(-1), next = changes.find(n => n > current);
+    const switchRound = value => onRoundChange(Number(value) >= max ? -1 : Math.max(0, Number(value)));
+    const scale = Math.max(.6, Math.min(2, Number(zoom) || 1));
+    const facts = edge => edge.assertions.map(a => a.targetName + '是' + a.sourceName + '的' + a.label).join('\n');
+    const lineElements = graph.edges.flatMap(edge => {
+      const a = positions.get(edge.source), b = positions.get(edge.target); if (!a || !b) return [];
+      const active = !selected || edge.source === selected.id || edge.target === selected.id;
+      const color = /父|母|兄|妹|姐|弟|儿|女|妻|夫|亲/.test(edge.label) ? '#ac7997' : '#628fa6';
+      return [h('g', { key: 'edge:' + edge.id, 'data-relation-source': edge.source, 'data-relation-target': edge.target, opacity: active ? .8 : .1 },
+        h('title', null, facts(edge)),
+        h('line', { x1: a.x, y1: a.y, x2: b.x, y2: b.y, stroke: color, strokeWidth: selected && active ? 2.1 : 1.2 }),
+        active && (selected || graph.edges.length <= 18) ? h('text', { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 - 7, fill: color, fontSize: 11, textAnchor: 'middle', style: { paintOrder: 'stroke', stroke: 'var(--sim-bg, #fff)', strokeWidth: 3 } }, edge.label.length > 14 ? edge.label.slice(0, 13) + '…' : edge.label) : null)];
+    });
+    const nodeElements = graph.nodes.map(node => {
+      const point = positions.get(node.id), active = !selected || adjacent.has(node.id), focused = selected?.id === node.id;
+      const choose = () => onSelect(focused ? '' : node.id);
+      return h('g', { key: 'node:' + node.id, 'data-relation-node': node.name, role: 'button', tabIndex: 0, 'aria-label': '查看' + node.name + '的关系', 'aria-pressed': Boolean(focused), style: { cursor: 'pointer', opacity: active ? 1 : .25 }, onClick: choose, onKeyDown: event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault?.(); choose(); } } },
+        h('title', null, node.name + (node.identity ? '\n' + node.identity : '')),
+        h('circle', { cx: point.x, cy: point.y, r: focused ? 14 : node.kind === 'protagonist' ? 11 : 9, fill: focused ? '#386f91' : node.kind === 'protagonist' ? '#5a90ac' : '#91a8b4', stroke: focused ? '#285772' : 'transparent', strokeWidth: 3 }),
+        h('text', { x: point.x, y: point.y + 29, fill: 'var(--sim-t1, #333)', fontSize: 13, fontWeight: focused || node.kind === 'protagonist' ? 700 : 500, textAnchor: 'middle' }, node.name.length > 8 ? node.name.slice(0, 7) + '…' : node.name));
+    });
+    return h('div', { className: 'sim-page sim-relation-network' },
+      h('div', { className: 'sim-card' },
+        h('div', { style: { display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', justifyContent: 'space-between' } },
+          h('h3', { style: { margin: 0 } }, '人物关系网'),
+          h('span', { className: 'sim-hint' }, graph.nodes.length + '个人物 · ' + graph.edges.length + '条关系')),
+        h('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 12 } },
+          h('span', null, frame.latest ? '现在 · 第' + max + '轮' : '第' + current + '轮'),
+          h('input', { type: 'range', min: 0, max, step: 1, value: current, 'aria-label': '关系回溯', style: { flex: '1 1 200px' }, onChange: e => switchRound(e.target.value) }),
+          h('button', { className: 'sim-btn mini', disabled: prev == null, onClick: () => switchRound(prev) }, '上一处变化'),
+          h('button', { className: 'sim-btn mini', disabled: next == null, onClick: () => switchRound(next) }, '下一处变化'),
+          !frame.latest ? h('button', { className: 'sim-btn mini', onClick: () => onRoundChange(-1) }, '回到现在') : null),
+        h('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 10 } },
+          h('button', { className: 'sim-btn mini', 'aria-label': '缩小关系网', disabled: scale <= .6, onClick: () => onZoom(Math.max(.6, scale - .2)) }, '−'),
+          h('button', { className: 'sim-btn mini', 'aria-label': '还原关系网缩放', onClick: () => onZoom(1) }, Math.round(scale * 100) + '%'),
+          h('button', { className: 'sim-btn mini', 'aria-label': '放大关系网', disabled: scale >= 2, onClick: () => onZoom(Math.min(2, scale + .2)) }, '＋'),
+          selected ? h('button', { className: 'sim-btn mini', onClick: () => onSelect('') }, '清除选择') : h('span', { className: 'sim-hint' }, '点击人物查看相关连线')),
+        frame.uncertain ? h('div', { className: 'sim-hint', style: { marginTop: 8 } }, '部分旧记录缺少回退依据，历史关系可能不完整') : null,
+        h('div', { className: 'sim-relation-canvas', style: { overflow: 'auto', maxHeight: '72vh', marginTop: 12, border: '1px solid rgba(110,140,160,.18)', borderRadius: 10 } },
+          h('svg', { className: 'sim-relation-svg', role: 'img', 'aria-label': '人物关系网', width: Math.round(layout.width * scale), height: Math.round(layout.height * scale), viewBox: '0 0 ' + layout.width + ' ' + layout.height, style: { display: 'block' } }, lineElements, nodeElements)),
+        selected ? h('section', { className: 'sim-relation-selection', style: { marginTop: 14, padding: 12, borderTop: '1px solid rgba(110,140,160,.18)' } },
+          h('strong', null, selected.name),
+          selected.identity ? h('div', { className: 'sim-hint', style: { marginTop: 4 } }, selected.identity) : null,
+          related.length ? h('ul', { style: { margin: '10px 0', paddingLeft: 20, lineHeight: 1.9 } }, related.flatMap(edge => edge.assertions.map((a, i) => h('li', { key: edge.id + ':' + i }, a.targetName + '是' + a.sourceName + '的' + a.label)))) : h('div', { className: 'sim-hint', style: { marginTop: 8 } }, '尚无关系记录'),
+          frame.latest && selected.kind === 'npc' && typeof onOpenCurrent === 'function' ? h('button', { className: 'sim-btn mini', onClick: () => onOpenCurrent(selected) }, '查看当前档案') : null) : null));
+  };
+}
+
+return createRelationsPanel(React, { relationSnapshot, relationNetwork, relationLayout, relationTurns, relationChangedTurns });
+})();
+      // RELATIONS_PANEL_END
 
     // CP_PANEL_FACTORY_START
 function createCPPanel(React) {
@@ -5158,6 +5398,8 @@ function createWritingStyleViews(React, { downloadFile } = {}) {
           const [wearBusy, setWearBusy] = React.useState('');
           // 关系图回放：-1 表示看最新一轮，否则看第 N 轮结束时的关系网
           const [relRound, setRelRound] = React.useState(-1);
+          const [relSelected, setRelSelected] = React.useState(null);
+          const [relZoom, setRelZoom] = React.useState(1);
           const [tab, setTab] = React.useState('setup');
           const [busy, setBusy] = React.useState(false);
           const [stopping, setStopping] = React.useState(false);
@@ -12563,233 +12805,18 @@ function toggleFans(npc) {
            *   npcs[].与主角关系                             父亲/母亲/妹妹这类
            * 同名只留 relationships 那份（它有「好感/信任」这类补充）。
            */
-          const relationsView = (function () {
-            const p = draft.protagonist || {};
-            const me = String(p.姓名 || '主角').trim();
-              // 拖动时间轴时按「第 N 轮结束时」反推，不动就把当前值原样拿来
-              const rels = relsAtRound(state, relRound);
-              const npcs = Array.isArray(draft.npcs) ? draft.npcs : [];
-          
-                // 回放：从当前状态反推「第 N 轮结束时」的 relationships。
-                // relationships 的 diff 是整数组替换，所以从后往前反推一遍就够，不用重算别的字段。
-                // roundNo < 0 表示看最新，直接返回当前值。
-                function relsAtRound(s, roundNo) {
-                  let rels = [];
-                  try { rels = JSON.parse(JSON.stringify((s && s.relationships) || [])); } catch (e) { rels = []; }
-                  if (roundNo == null || roundNo < 0) return rels;
-                  const tr = (s && Array.isArray(s.transcript) ? s.transcript : [])
-                    .filter(function (t) { return Number(t && t.seq) > roundNo; });
-                  for (let i = tr.length - 1; i >= 0; i--) {
-                    const ds = (tr[i] && tr[i].diffs) || [];
-                    for (let j = ds.length - 1; j >= 0; j--) {
-                      const d = ds[j];
-                      if (!d || !Array.isArray(d.path) || d.path[0] !== 'relationships') continue;
-                      if (d._had === false) { rels = []; continue; }
-                      const prev = d._prev != null ? d._prev : d.from;
-                      rels = Array.isArray(prev) ? JSON.parse(JSON.stringify(prev)) : [];
-                    }
-                  }
-                  return rels;
-                }
-
-              // 关系深浅：从「当前状况」里读（"好感 中 · 信任 弱 · 欲望 无"）
-              // 取三项里最高的一档，作为这条线的轻重。读不出来就当 0。
-              function relScore(note, rel) {
-                const m = String(note || '');
-                function lv(w) {
-                  const r = new RegExp(w + '\\s*(无|弱|中|强|极强|很高|较高|较低|高|低)').exec(m);
-                  if (!r) return 0;
-                  const t = r[1];
-                  if (/极强|很高/.test(t)) return 4;
-                  if (/强|高/.test(t)) return 3;
-                  if (/中/.test(t)) return 2;
-                  if (/弱|低/.test(t)) return 1;
-                  return 0;
-                }
-                const best = Math.max(lv('好感'), lv('信任'), lv('欲望'));
-                // 读不出档位时按关系类型给个基础分 —— 家人的关系条目里往往没有
-                // 「好感/信任/欲望」那串（它们来自 npcs.与主角关系），只看 note 会让
-                // 父亲比室友还细，图上反过来读就错了。
-                if (best === 0 && rel) {
-                  if (/父|母|爸|妈|哥|姐|弟|妹|儿|女|妻|夫|恋|爱|未婚/.test(rel)) return 3;
-                  if (/师|导|徒|同学|室友|同事|同班|学/.test(rel)) return 2;
-                  if (/敌|仇|对手|竞争|前任|前妻/.test(rel)) return 2;
-                  return 1;
-                }
-                return best;
-              }
-            
-              // 关系类型 → 分组键。同组的人在图上是相邻的一段扇区，视觉上成团。
-              function relGroup(rel) {
-                if (/妻|夫|恋|情|爱|未婚|男友|女友/.test(rel)) return 'love';
-                if (/父|母|爸|妈|哥|姐|弟|妹|儿|女|亲属|家/.test(rel)) return 'family';
-                if (/师|导|徒|同学|室友|同事|同班|学/.test(rel)) return 'study';
-                if (/敌|仇|对手|竞争|前任|前妻/.test(rel)) return 'rival';
-                return 'other';
-              }
-              const GROUP_ORDER = ['family', 'love', 'study', 'rival', 'other'];
-
-            const seen = new Set();
-            const linked = [];
-            // relationships 里可能只写了「对象 + 当前状况」没写「关系」——
-            // 那样这一条就会把 npcs 里同名那条挡住（seen 已经加过了），
-            // 图上表现为「有连线、没标签、默认灰」。先建一张 npcs 的关系表兜底。
-            // 「无（沈清越的父亲）」这种不是与主角的关系，是「这人是谁」的说明。
-            // 模型被「字段尽量给齐」逼出来的写法，画到图上就是一根假线。
-            const isFakeRel = function (v) {
-              const t = String(v || '').trim();
-              return !t || t === '无' || t === '没有' || t === '沒有' || /^无[（(]/.test(t);
-            };
-
-            const npcRel = {};
-            npcs.forEach(function (n) {
-              const nm = String((n && n.姓名) || '').trim();
-              if (!nm) return;
-              const r2 = String((n && (n.与主角关系 || n.关系)) || '').trim();
-              if (r2 && !isFakeRel(r2)) npcRel[nm] = r2;
-            });
-            rels.forEach(function (r) {
-              const nm = String((r && r.对象) || '').trim();
-              if (!nm || seen.has(nm)) return;
-              const rel = String((r && r.关系) || '').trim() || npcRel[nm] || '';
-              if (isFakeRel(rel)) return; // 「无」不是关系，别画线，让他落到外圈灰点
-              seen.add(nm);
-              linked.push({ name: nm, rel: rel, note: String((r && r.当前状况) || '').trim() });
-            });
-            npcs.forEach(function (n) {
-              const nm = String((n && n.姓名) || '').trim();
-              const rel = String((n && (n.与主角关系 || n.关系)) || '').trim();
-              if (!nm || isFakeRel(rel) || seen.has(nm)) return;
-              seen.add(nm);
-              linked.push({ name: nm, rel: rel, note: '' });
-            });
-              // 没记录关系的按「最近出场」倒序 —— 常露面的人该排在没有存在感的角色前面
-                // 算出每条边的轻重，再按组排序 —— 同组的人排在一起，图上是连续的扇区
-                linked.forEach(function (x) { x.score = relScore(x.note, x.rel); });
-                linked.sort(function (x, y) {
-                  return GROUP_ORDER.indexOf(relGroup(x.rel)) - GROUP_ORDER.indexOf(relGroup(y.rel));
-                });
-
-              const others = npcs.slice()
-                .sort(function (x, y) { return (Number(y && y.最近出场) || 0) - (Number(x && x.最近出场) || 0); })
-                .map(function (n) { return String((n && n.姓名) || '').trim(); })
-                .filter(function (nm) { return nm && !seen.has(nm); });
-          
-            // 按关系类型分色，图上一眼能分出「家人 / 感情 / 学业职场 / 对立」
-            function relColor(rel) {
-              if (/妻|夫|恋|情|爱|未婚|男友|女友/.test(rel)) return '#b8465f';
-              if (/父|母|爸|妈|哥|姐|弟|妹|儿|女|亲属|家/.test(rel)) return '#8a6d3b';
-              if (/师|导|徒|同学|室友|同事|同班|学/.test(rel)) return '#3f6a96';
-              if (/敌|仇|对手|竞争|前任|前妻/.test(rel)) return '#a33d3d';
-              return '#7a8a99';
+          const relationsView = tab === 'relations' ? RelationsPanel({
+            state, round: relRound, onRoundChange: setRelRound,
+            selectedId: relSelected && relSelected.gameId === gameId ? relSelected.id : '',
+            onSelect: id => setRelSelected({gameId, id}), zoom: relZoom, onZoom: setRelZoom,
+            onOpenCurrent: node => {
+              const entries = Array.isArray(state.npcs) ? state.npcs : [];
+              const matches = entries.map((actor, i) => ({actor, i})).filter(({actor}) => node.actorId ? actor.actorId === node.actorId : actor.姓名 === node.name);
+              if(matches.length !== 1) return;
+              setNpcOpen({kind:'npc', actorId:matches[0].actor.actorId, i:matches[0].i, editing:false});
             }
+          }) : null;
           
-              // 名字太长会跟邻居压在一起（「迪丽热巴·迪力木拉提」有 12 个字）
-              function shortName(v) {
-                const s = String(v || '');
-                return s.length > 6 ? s.slice(0, 5) + '…' : s;
-              }
-
-              // 时间轴数据：一共几轮、哪几轮关系变过
-              const seqs = (state && Array.isArray(state.transcript) ? state.transcript : [])
-                .filter(function (t) { return t && t.role === 'assistant'; })
-                .map(function (t) { return Number(t.seq) || 0; });
-              const maxSeq = seqs.length ? Math.max.apply(null, seqs) : 0;
-              const changedSeqs = [];
-              (state && Array.isArray(state.transcript) ? state.transcript : []).forEach(function (t) {
-                if (!t || t.role !== 'assistant') return;
-                const hit = (t.diffs || []).some(function (d) {
-                  return d && Array.isArray(d.path) && d.path[0] === 'relationships';
-                });
-                if (hit) changedSeqs.push(Number(t.seq) || 0);
-              });
-              const curSeq = relRound < 0 ? maxSeq : relRound;
-
-            const idxOf = {};
-            npcs.forEach(function (n, i) {
-              const nm = String((n && n.姓名) || '').trim();
-              if (nm) idxOf[nm] = i;
-            });
-          
-            const W = 780;
-            const H = 620;
-            const cx = W / 2;
-            const cy = H / 2;
-            const R1 = 166;
-            const R2 = 258;
-            function pos(i, total, r) {
-              const a = (Math.PI * 2 * i) / Math.max(1, total) - Math.PI / 2;
-              return { x: cx + Math.cos(a) * r, y: cy + Math.sin(a) * r };
-            }
-          
-            const g = [];
-            linked.forEach(function (x, i) {
-              const pt = pos(i, linked.length, R1);
-              const col = relColor(x.rel);
-              g.push(h('line', { key: 'l' + i, x1: cx, y1: cy, x2: pt.x, y2: pt.y, stroke: col, strokeWidth: 1.1 + x.score * 1.15, strokeOpacity: 0.45 + x.score * 0.1 }));
-              g.push(h('text', { key: 'lt' + i, x: cx + (pt.x - cx) * 0.56, y: cy + (pt.y - cy) * 0.56 - 4, fill: col, fontSize: 11, textAnchor: 'middle', opacity: 0.9 },
-                x.rel || ''));
-              g.push(h(
-                'g',
-                { key: 'n' + i, style: { cursor: 'pointer' }, onClick: function () {
-                  if (idxOf[x.name] == null) return;
-                  setNpcOpen({ kind: 'npc', i: idxOf[x.name], editing: false });
-                } },
-                h('title', null, x.name + (x.rel ? ' · ' + x.rel : '') + (x.note ? '\n' + x.note : '')),
-                h('circle', { cx: pt.x, cy: pt.y, r: 5 + x.score * 1.7, fill: col }),
-                h('text', { x: pt.x, y: pt.y + 21, fill: 'var(--sim-t1, #333)', fontSize: 12.5, textAnchor: 'middle', fontWeight: 600 }, shortName(x.name))
-              ));
-            });
-            others.forEach(function (nm, i) {
-              const pt = pos(i, others.length, R2);
-              g.push(h(
-                'g',
-                { key: 'o' + i, style: { cursor: 'pointer', opacity: 0.5 }, onClick: function () {
-                  if (idxOf[nm] == null) return;
-                  setNpcOpen({ kind: 'npc', i: idxOf[nm], editing: false });
-                } },
-                h('circle', { cx: pt.x, cy: pt.y, r: 4.5, fill: '#9aa5b1' }),
-                h('text', { x: pt.x, y: pt.y + 16, fill: 'var(--sim-t1, #333)', fontSize: 11, textAnchor: 'middle' }, shortName(nm))
-              ));
-            });
-          
-            const hasAny = linked.length > 0 || others.length > 0;
-            return h(
-              'div',
-              { className: 'sim-page' },
-              h(
-                'div',
-                { className: 'sim-panel' },
-                h('div', { className: 'sim-panel-h' }, '关系'),
-                h(
-                  'div',
-                  { className: 'sim-panel-b', style: { overflow: 'auto' } },
-                  h('div', { className: 'sim-relaxis' },
-                    h('span', { className: 'lab' }, relRound < 0 ? ('现在 · 第 ' + maxSeq + ' 轮') : ('第 ' + curSeq + ' 轮')),
-                    h('input', {
-                      type: 'range', min: 0, max: maxSeq || 1, value: curSeq,
-                      onChange: function (e) {
-                        const v = Number(e.target.value);
-                        setRelRound(v >= maxSeq ? -1 : v);
-                      },
-                    }),
-                    h('span', { className: 'ev' }, changedSeqs.length ? (changedSeqs.length + ' 次关系变化') : '关系未变过'),
-                    relRound >= 0 ? h('button', { className: 'sim-btn mini', onClick: function () { setRelRound(-1); } }, '回到现在') : null
-                  ),
-                  hasAny
-                    ? h(
-                        'svg',
-                        { width: W, height: H, viewBox: '0 0 ' + W + ' ' + H, style: { display: 'block' } },
-                        g,
-                        h('circle', { cx: cx, cy: cy, r: 30, fill: '#5f83ab' }),
-                        h('text', { x: cx, y: cy + 5, fill: '#fff', fontSize: 13, textAnchor: 'middle', fontWeight: 700 }, me)
-                      )
-                    : h('div', { className: 'sim-hint' }, '还没有角色。')
-                )
-              )
-            );
-          })();
-
           const npcEditor = h(
             'div', null,
             h('style', null, '.sim-roster-fold>summary{display:flex;align-items:center;gap:10px;cursor:pointer;list-style:none;font-weight:650}.sim-roster-fold>summary::-webkit-details-marker{display:none}.sim-roster-fold>summary::before{content:"▸";opacity:.55;transition:transform .12s}.sim-roster-fold[open]>summary::before{transform:rotate(90deg)}.sim-roster-count{margin-left:auto;opacity:.6;font-weight:400;font-size:var(--sim-fs-2,12px)}.sim-roster-content{padding-top:10px}.sim-roster-fold>summary:focus-visible{outline:2px solid var(--sim-accent,#8b4c3c);outline-offset:4px}'),
