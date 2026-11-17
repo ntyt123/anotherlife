@@ -5806,6 +5806,8 @@ function createWritingStyleViews(React, { downloadFile } = {}) {
 
           // 每个「槽位|服务|模型」只问一次，避免每次 config 变动都打一遍
           const reasonFetchedRef = React.useRef({});
+          // 每个「槽位|渠道」的模型清单只预载一次，避免每次渲染都请求
+          const modelFetchedRef = React.useRef({});
           // 这里只能用 state / draft（在它们之后声明）—— dcfg 在提前 return 之后才定义，
           // 写进依赖数组会在首渲染时抛 Cannot access dcfg before initialization。
           React.useEffect(() => {
@@ -5832,6 +5834,23 @@ function createWritingStyleViews(React, { downloadFile } = {}) {
                     .catch(() => {
                       reasonFetchedRef.current[key] = 0;
                     });
+              });
+              // 进入设定页就把各槽位已保存渠道的模型清单拉回来 —— 以前要等用户切换渠道才请求，
+              // 第一次点开模型下拉时清单因此是空的。
+              ['retrieve', 'settle', 'weibo', 'summary', 'assistant', 'phone'].forEach((sl) => {
+                  const p = String(((cfg[sl] || {}).provider) || '').trim();
+                  if (!p) return;
+                  const mk2 = 'models|' + sl + '|' + p;
+                  if (modelFetchedRef.current[mk2]) return;
+                  if (models && models[sl] && Array.isArray(models[sl].list) && models[sl].list.length) { modelFetchedRef.current[mk2] = 1; return; }
+                  modelFetchedRef.current[mk2] = 1;
+                  call('modelsOf', { provider: p }, gameId)
+                    .then((r) => {
+                      const list2 = (r && r.models) || [];
+                      if (!list2.length) { modelFetchedRef.current[mk2] = 0; return; }
+                      setModels((all) => Object.assign({}, all, { [sl]: { loading: false, list: list2, error: '', url: '' } }));
+                    })
+                    .catch(() => { modelFetchedRef.current[mk2] = 0; });
               });
               const mv = mainModel || {};
               if (mv.provider && mv.model) {
@@ -13758,11 +13777,26 @@ function toggleFans(npc) {
            * 不必各填一份 BaseURL 与密钥。留空则用当前主模型。
            * 老配置里若还留着 baseURL，继续按老路走（下面给一句提示 + 一键清掉）。
            */
+          /** 候选：渠道给的全部模型，加上已选但不在清单里的值 —— 下拉不能因此变空白。 */
+          function modelCandidates(list, current) {
+            const out = [];
+            const seen = new Set();
+            (Array.isArray(list) ? list : []).forEach((m) => {
+              const id = m && typeof m === 'object' ? String(m.id == null ? '' : m.id) : String(m || '');
+              if (!id || seen.has(id)) return;
+              seen.add(id);
+              out.push({ id: id });
+            });
+            const cur = String(current || '').trim();
+            if (cur && !seen.has(cur)) out.unshift({ id: cur });
+            return out;
+          }
           function ModelCfg({ slot, title, sub, row }) {
             const saved = (dcfg && dcfg[slot]) || { provider: '', model: '' };
             // 正在编辑的选择（还没点「切换」）。没有就用已保存的。
             const pick = slotPick[slot] || { provider: saved.provider || '', model: saved.model || '' };
             const mm = models[slot] || { loading: false, list: [], error: '' };
+            const candidates = modelCandidates(mm.list, pick.model);
             const dirty = String(pick.provider || '') !== String(saved.provider || '') || String(pick.model || '') !== String(saved.model || '');
             function setPick(patch) {
               setSlotPick((all) => Object.assign({}, all, { [slot]: Object.assign({}, pick, patch) }));
@@ -13867,20 +13901,24 @@ function toggleFans(npc) {
                   h('option', { value: '' }, '用主模型'),
                   ((mmC && mmC.providers) || []).map((p) => h('option', { key: p.id, value: p.id }, p.name || p.id))
                 ),
-                h('input', {
-                  list: 'sim-slot-r-' + slot,
-                  value: pick.model || '',
-                  placeholder: '留空则用主模型',
-                  onChange: (e) => setPick({ model: e.target.value }),
-                }),
-                h(
-                  'datalist',
-                  { id: 'sim-slot-r-' + slot },
-                  (mm.list || []).map((m) => {
-                    const id = m && m.id != null ? m.id : String(m);
-                    return h('option', { key: id, value: id });
-                  })
+                h('select', {
+                  className: 'sim-select',
+                  value: pick.manual ? '__manual__' : (pick.model || ''),
+                  onChange: (e) => {
+                    const v = e.target.value;
+                    if (v === '__manual__') setPick({ manual: true });
+                    else setPick({ model: v, manual: false });
+                  },
+                },
+                  h('option', { value: '' }, '用主模型'),
+                  candidates.map((m) => h('option', { key: m.id, value: m.id }, m.id)),
+                  h('option', { value: '__manual__' }, '手动输入…')
                 ),
+                pick.manual ? h('input', {
+                  value: pick.model || '',
+                  placeholder: '填模型 id',
+                  onChange: (e) => setPick({ model: e.target.value, manual: true }),
+                }) : null,
                 h(
                     'select',
                     {
@@ -13942,20 +13980,24 @@ function toggleFans(npc) {
                 'div',
                 { className: 'sim-field' },
                 h('label', null, '模型'),
-                h('input', {
-                  list: 'sim-slot-' + slot,
+                h('select', {
+                  className: 'sim-select',
+                  value: pick.manual ? '__manual__' : (pick.model || ''),
+                  onChange: (e) => {
+                    const v = e.target.value;
+                    if (v === '__manual__') setPick({ manual: true });
+                    else setPick({ model: v, manual: false });
+                  },
+                },
+                  h('option', { value: '' }, '用主模型'),
+                  candidates.map((m) => h('option', { key: m.id, value: m.id }, m.id)),
+                  h('option', { value: '__manual__' }, '手动输入…')
+                ),
+                pick.manual ? h('input', {
                   value: pick.model || '',
                   placeholder: '留空则用主模型',
-                  onChange: (e) => setPick({ model: e.target.value }),
-                }),
-                h(
-                  'datalist',
-                  { id: 'sim-slot-' + slot },
-                  (mm.list || []).map((m) => {
-                    const id = m && m.id != null ? m.id : String(m);
-                    return h('option', { key: id, value: id });
-                  })
-                )
+                  onChange: (e) => setPick({ model: e.target.value, manual: true }),
+                }) : null,
               ),
               h(
                 'div',
@@ -14003,6 +14045,7 @@ const STYLE_NOTES_DEFAULT = [
   '  ③ 在脑子里预演到能直接落笔。第一个想到的是最平庸的那版 —— 再往前想一层。',
   '· 落笔时用画面语言：镜头、光线、布料被压出的褶子、温度、声音、呼吸的节奏。不写名词。'
 ].join('\n');
+          const mainModelCandidates = modelCandidates(mmC && mmC.models, mmPick.model);
           const visibleStyleNotes = state.simulation?.enabled && (dcfg.styleNotes == null || String(dcfg.styleNotes).replace(/\r\n/g,'\n') === STYLE_NOTES_DEFAULT.replace(/\r\n/g,'\n')) ? '' : dcfg.styleNotes == null ? STYLE_NOTES_DEFAULT : dcfg.styleNotes;
 
 /** think 块是不是漂成英文了。中文不到英文的一半、且英文超过 40 个字母，就判定跑偏。
@@ -14473,14 +14516,24 @@ function thinkDrifted(t) {
                 ),
                 h('div', { className: 'sim-field' },
                   h('label', null, '模型'),
-                  h('input', {
-                    list: 'sim-mmlist',
+                  h('select', {
+                    className: 'sim-select',
+                    value: mmPick.manual ? '__manual__' : (mmPick.model || ''),
+                    onChange: (e) => {
+                      const v = e.target.value;
+                      if (v === '__manual__') setMmPick(Object.assign({}, mmPick, { manual: true }));
+                      else setMmPick(Object.assign({}, mmPick, { model: v, manual: false }));
+                    },
+                  },
+                    h('option', { value: '' }, '— 选择模型 —'),
+                    mainModelCandidates.map((m) => h('option', { key: m.id, value: m.id }, m.id)),
+                    h('option', { value: '__manual__' }, '手动输入…')
+                  ),
+                  mmPick.manual ? h('input', {
                     value: mmPick.model,
                     placeholder: '从列表选，也可以手填',
-                    onChange: (e) => setMmPick(Object.assign({}, mmPick, { model: e.target.value })),
-                  }),
-                  h('datalist', { id: 'sim-mmlist' },
-                    ((mmC && mmC.models) || []).map((m) => h('option', { key: m.id, value: m.id }, m.name || ''))),
+                    onChange: (e) => setMmPick(Object.assign({}, mmPick, { model: e.target.value, manual: true })),
+                  }) : null,
                   h(Btn, { primary: true, disabled: mmBusy || !mmPick.provider || !mmPick.model, onClick: () => applyMainModel() },
                     mmBusy ? '切换中…' : '切换')
                 ),
