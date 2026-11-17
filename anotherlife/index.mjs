@@ -3952,7 +3952,7 @@ const UNDER_BRIEF_HOURS = { 棉: 48, 丝: 40, 蕾丝: 34, 莫代尔: 44, 冰丝:
 function guessUnderSlot(owner, key) {
   const 是内衣 = key === '内衣';
   const 岁 = Number(owner && owner.年龄) || 0;
-  const 少女 = 岁 > 0 && 岁 < 18;
+  const 少女 = 岁 > 0 && 岁 < 10;
 
   // 稳定 hash：同一个角色每次都算出同一组值 —— 重算 / 刷新 / 删轮重来都不会跳。
   const 名 = String((owner && owner.姓名) || '') + '|' + key;

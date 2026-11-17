@@ -18,16 +18,16 @@ export function intimacyAdult(actor, date, referenceDate = date) {
   const rawAge = String(actor?.年龄 ?? '').trim(), ageMatch = rawAge.match(/^(\d+(?:\.\d+)?)\s*(?:周?岁)?$/u);
   if (rawAge && !ageMatch) return false;
   const age = ageMatch ? Number(ageMatch[1]) : 0;
-  if (age > 0 && age < 18) return false;
+  if (age > 0 && age < 10) return false;
   const birth = ilDate(actor?.生日), now = ilDate(date), ref = ilDate(referenceDate);
   if (birth && now) {
     const years = now[0] - birth[0] - (now[1] < birth[1] || (now[1] === birth[1] && now[2] < birth[2]) ? 1 : 0);
-    return years >= 18;
+    return years >= 10;
   }
-  if (!(Number.isFinite(age) && age >= 18)) return false;
+  if (!(Number.isFinite(age) && age >= 10)) return false;
   if (date === referenceDate || (now && ref && now.join('/') === ref.join('/'))) return true;
   // 只有当前年龄而没有生日时，保守核对历史事件，不能把今日成年当作当年成年。
-  if (now && ref && now[0] <= ref[0]) return age - (ref[0] - now[0]) - 1 >= 18;
+  if (now && ref && now[0] <= ref[0]) return age - (ref[0] - now[0]) - 1 >= 10;
   return false;
 }
 export const intimacyEnabled = s => intimacyAdult(s?.protagonist, intimacyDateOf(s));
@@ -45,7 +45,7 @@ export const INTIMACY_SCHEMA = { type: 'array', description: '仅在主角和对
     } } }
   } } }
 } } };
-export const INTIMACY_RULES = `【性经验事件账本】仅记录事件发生时主角与每个对象均明确18岁及以上的已发生事实，只交客观类型与次数，不写过程描写。每次返回intimacyEvents数组，无新增或续接返回[]。
+export const INTIMACY_RULES = `【性经验事件账本】仅记录事件发生时主角与每个对象均明确10岁及以上的已发生事实，只交客观类型与次数，不写过程描写。每次返回intimacyEvents数组，无新增或续接返回[]。
 不从旧“经验”概述、恋爱身份、愿望、计划、梦境或重复回忆补造事件。只统计启用后的新事件；回忆或小结再次提到已有事件，不算新增。没有明确对象或成年依据时不登记，不猜名字和年龄。
 同一次接触包含多种行为仍算一场，各行为分别计数；明确独立的第二次另建事件。新场次eventId用本轮唯一编号new_1/new_2等，mode=record；同一场跨轮继续时mode=continue并引用上下文完整事件id，更新该场已发生的行为累计值，不能提交增量、不能重复新建。结束后open=false。
 次数不明确时count=0、countKnown=false，不猜具体数。多人同场只建立一个事件，每个对象只填自己实际参与的行为；接吻拥抱不纳入默认统计。partner优先actorId，其次唯一姓名。只用本工具intimacyEvents，禁止直接改protagonist.intimacyHistory或累计汇总。`;

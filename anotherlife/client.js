@@ -51,16 +51,16 @@ function intimacyAdult(actor, date, referenceDate = date) {
   const rawAge = String(actor?.年龄 ?? '').trim(), ageMatch = rawAge.match(/^(\d+(?:\.\d+)?)\s*(?:周?岁)?$/u);
   if (rawAge && !ageMatch) return false;
   const age = ageMatch ? Number(ageMatch[1]) : 0;
-  if (age > 0 && age < 18) return false;
+  if (age > 0 && age < 10) return false;
   const birth = ilDate(actor?.生日), now = ilDate(date), ref = ilDate(referenceDate);
   if (birth && now) {
     const years = now[0] - birth[0] - (now[1] < birth[1] || (now[1] === birth[1] && now[2] < birth[2]) ? 1 : 0);
-    return years >= 18;
+    return years >= 10;
   }
-  if (!(Number.isFinite(age) && age >= 18)) return false;
+  if (!(Number.isFinite(age) && age >= 10)) return false;
   if (date === referenceDate || (now && ref && now.join('/') === ref.join('/'))) return true;
   // 只有当前年龄而没有生日时，保守核对历史事件，不能把今日成年当作当年成年。
-  if (now && ref && now[0] <= ref[0]) return age - (ref[0] - now[0]) - 1 >= 18;
+  if (now && ref && now[0] <= ref[0]) return age - (ref[0] - now[0]) - 1 >= 10;
   return false;
 }
 const intimacyEnabled = s => intimacyAdult(s?.protagonist, intimacyDateOf(s));

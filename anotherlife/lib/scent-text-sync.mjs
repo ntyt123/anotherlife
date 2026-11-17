@@ -12,16 +12,16 @@ export function isAdultTextSyncActor(actor, date) {
   if (!actor || !String(actor.性别 || '').includes('女') || String(actor.性别).includes('男')) return false;
   let explicit = number(actor.年龄);
   if (explicit == null && typeof actor.年龄 === 'string' && /^\s*\d+(?:\.\d+)?\s*岁\s*$/.test(actor.年龄)) explicit = Number(actor.年龄.replace(/岁/g, '').trim());
-  if (explicit != null && explicit < 18) return false;
+  if (explicit != null && explicit < 10) return false;
   const birthday = String(actor.生日 || '').match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})/);
   const now = String(date || '').match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})/);
   let age = null;
   if (birthday && now) {
     age = Number(now[1]) - Number(birthday[1]);
     if (Number(now[2]) < Number(birthday[2]) || (Number(now[2]) === Number(birthday[2]) && Number(now[3]) < Number(birthday[3]))) age--;
-    if (age < 18) return false;
+    if (age < 10) return false;
   }
-  return age != null ? age >= 18 : explicit != null && explicit >= 18;
+  return age != null ? age >= 10 : explicit != null && explicit >= 10;
 }
 function slots(state) {
   const rows = [];
