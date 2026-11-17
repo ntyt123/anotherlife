@@ -4853,7 +4853,7 @@ function createGenericViews(React) {
     const key=JSON.stringify([state.world?.['世界观类型']||'',state.world?.['时代与年份']||'',profile.id||'',profile.description||'']);
     return list(sim.news?.items).filter(item=>item&&(!item.worldKey||item.worldKey===key)&&(!item.sourceTextVersion||list(state.transcript).some(entry=>entry.role==='assistant'&&Number(entry.seq)===Number(item.sourceSeq)&&entry.textVersion===item.sourceTextVersion)));
   }
-  const cleanNewsDisplayText=value=>String(value||'').split(/(?<=[。！？；])/u).filter(part=>!/(未经(?:独立)?核实|未经证实|尚未证实|没有证据|并无证据|此消息不构成)/u.test(part)).join('').replace(/^[，,。\s]+/u,'');
+  const cleanNewsDisplayText=value=>String(value||'').split(/(?<=[。！？；\n])/u).map(part=>part.split(/(?<=[，,])/u).filter(c=>!/此(?:消息|说法|传闻)不构成(?:合同|排期|收入)/u.test(c)).join('')).join('').replace(/^[，,。\s]+/u,'').replace(/[，,](?=[。！？；]|$)/gu,'');
   // 纯展示，不产生刷新请求，也不把旧版本/旧世界的新闻猜成本轮更新。
   function WorldNewsNotice({state,entry}) {
     if(!state?.simulation?.enabled||entry?.role!=='assistant')return null;

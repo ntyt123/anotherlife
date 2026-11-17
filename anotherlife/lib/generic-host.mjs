@@ -1,7 +1,7 @@
 import {managementAssetDiffs,MANAGEMENT_ASSET_RULES} from './management-assets.mjs';
 import { OCCUPATION_RULES } from './npc-profile.mjs';
 import { OPENING_BALANCE_RULES, withOpeningBalanceSchema, checkOpeningFundingOperations, setOpeningBalance } from './opening-balances.mjs';
-import {NEWS_RULES} from './news-text.mjs';
+import {NEWS_RULES,newsGenerationRules,newsRequestContext} from './news-text.mjs';
 import {duplicateAssetSummary} from './asset-identity.mjs';
 import {MANAGEMENT_PROFILE_RULES,managementProfileTasks,managementProfileSourceDiffs,withManagementProfileSchema,inspectManagementProfiles} from './management-profile.mjs';
 import {VIRTUAL_ASSET_DETAIL_RULES,virtualAssetDetailTasks,withVirtualAssetDetailsSchema,inspectVirtualAssetDetails,virtualAssetName} from './virtual-asset-details.mjs';
@@ -89,14 +89,19 @@ export function createGenericHost(deps){
   if(opening)tasks.units=backgroundTasks(s,sim,count,false,unitId).units;
   if(kind==='news')tasks.units=[];if(kind==='recommendations')tasks.news=false;
   if(!tasks.news&&!tasks.units.length)return [];
+  if(tasks.news&&tasks.units.length){
+   await refresh(s,{turnCount:count,force,unitId,kind:'recommendations',opening,diffs});
+   return refresh(s,{turnCount:count,force,unitId,kind:'news',opening,diffs});
+  }
   sim=recordBackgroundAttempt(sim,tasks,count);commit(s,sim,0,[],diffs);
   let unfinishedUnits=tasks.units;
   try{
    const tool=clone(SIMULATION_BACKGROUND_TOOL);if(!tasks.news)delete tool.parameters.properties.news;if(!tasks.units.length)delete tool.parameters.properties.units;
    tool.parameters.required=[...(tasks.news?['news']:[]),...(tasks.units.length?['units']:[])];
    if(tasks.units.length){const schema=tool.parameters.properties.units;schema.minItems=tasks.units.length;schema.maxItems=tasks.units.length;schema.items.properties.unitId.enum=tasks.units.map(x=>x.unitId);}
-   const instructions=[tasks.news?promptText('news',NEWS_RULES):'',tasks.units.length?'经营建设方案只生成本次任务要求的内容，不改变账户、资产、职位或实际项目。每个任务单位的recommendations至少3条互不重复、有实质区别的方案。每项{name,description,kind:"buildFacility|upgradeFacility",facilityId,definition:{id,name,description,cashOnly:true,cost:全包货币预算,durationDays:工期,targetLevel,effects:{capacity,staffSlots,description}}}。费用包含采购、人工、设备与部署；只用货币，不生成materials、inputs或物资需求。预算是待选择的方案报价，不是已发生成本或账户余额；不可据此改账、保证收入或自动建成。至少3项不同用途或规模的真实可选方案，不改名复制凑数，不覆盖已经开工订单。':'',tasks.units.length?'严格按tasks.units逐个提交unitId及recommendations，不改单位编号，不遗漏任务单位；只提交本次请求的字段。':''].filter(Boolean).join('\n');
-   const messages=[{role:'system',content:instructions},{role:'user',content:JSON.stringify({world:s.world,profile:sim.profile,turn:count,tasks,recent:rows(s.transcript).filter(x=>x.role==='assistant').slice(-3).map(x=>x.body),currentNews:currentNews(s,sim)})}];
+   const instructions=[tasks.news?newsGenerationRules(promptText('news',NEWS_RULES)):'',tasks.units.length?'经营建设方案只生成本次任务要求的内容，不改变账户、资产、职位或实际项目。每个任务单位的recommendations至少3条互不重复、有实质区别的方案。每项{name,description,kind:"buildFacility|upgradeFacility",facilityId,definition:{id,name,description,cashOnly:true,cost:全包货币预算,durationDays:工期,targetLevel,effects:{capacity,staffSlots,description}}}。费用包含采购、人工、设备与部署；只用货币，不生成materials、inputs或物资需求。预算是待选择的方案报价，不是已发生成本或账户余额；不可据此改账、保证收入或自动建成。至少3项不同用途或规模的真实可选方案，不改名复制凑数，不覆盖已经开工订单。':'',tasks.units.length?'严格按tasks.units逐个提交unitId及recommendations，不改单位编号，不遗漏任务单位；只提交本次请求的字段。':''].filter(Boolean).join('\n');
+   const request=tasks.news?newsRequestContext(s,count):{world:s.world,profile:sim.profile,turn:count,tasks,recent:rows(s.transcript).filter(x=>x.role==='assistant').slice(-3).map(x=>x.body),currentNews:currentNews(s,sim).filter(x=>x.kind==='event')};
+   const messages=[{role:'system',content:instructions},{role:'user',content:JSON.stringify(request)}];
    const result=unpack(await ask(s,messages,[tool],tasks.news?(tasks.units.length?'世界动态与建设推荐':'世界动态'):'建设推荐'));if(!result)throw new Error('没有返回可解析结果');
    if(tasks.units.length){const applied=applyBackgroundResult(s,sim,{...tasks,news:false},result,count);if(!applied.accepted)throw new Error('后台生成依据已变化，请重新更新');commit(s,applied.simulation,0,[],diffs);sim=simOf(s);unfinishedUnits=[];}
    if(tasks.news){const applied=applyBackgroundResult(s,sim,{...tasks,units:[]},result,count);if(!applied.accepted)throw new Error('后台生成依据已变化，请重新更新');commit(s,applied.simulation,0,[],diffs);}
